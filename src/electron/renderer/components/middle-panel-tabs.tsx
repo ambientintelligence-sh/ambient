@@ -1,0 +1,194 @@
+import { useState, useEffect, useRef, type ReactNode } from "react";
+import { XIcon } from "lucide-react";
+import type { Agent } from "@core/types";
+import type { SummaryModalState } from "./session-summary-modal";
+
+type TabId = "transcript" | "summary" | "new-agent" | `agent:${string}`;
+
+type MiddlePanelTabsProps = {
+  transcriptContent: ReactNode;
+  summaryContent: ReactNode;
+  agentContent: ReactNode;
+  summaryState: SummaryModalState;
+  newAgentMode?: boolean;
+  openAgentIds: string[];
+  selectedAgentId?: string | null;
+  agentSelectionNonce: number;
+  onSelectAgent: (agentId: string) => void;
+  onCloseAgent: (agentId: string) => void;
+  onCloseNewAgent: () => void;
+  onGenerateSummary?: () => void;
+  agents?: Agent[];
+};
+
+function getAgentTabId(agentId: string): `agent:${string}` {
+  return `agent:${agentId}`;
+}
+
+function isAgentTab(tabId: TabId): tabId is `agent:${string}` {
+  return tabId.startsWith("agent:");
+}
+
+function TabButton({
+  active,
+  label,
+  onClick,
+  onClose,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+  onClose?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`group relative flex items-center gap-1 px-3 h-8 text-xs font-medium transition-colors shrink-0 cursor-pointer ${
+        active ? "text-foreground" : "text-muted-foreground hover:text-foreground/80"
+      }`}
+    >
+      <span className="truncate max-w-[200px]">{label}</span>
+      {onClose && (
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label={`Close ${label} tab`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.stopPropagation();
+              e.preventDefault();
+              onClose();
+            }
+          }}
+          className={`ml-0.5 rounded-sm p-0.5 hover:bg-muted transition-all ${
+            active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}
+        >
+          <XIcon className="size-2.5" />
+        </span>
+      )}
+      {active && (
+        <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-foreground rounded-full" />
+      )}
+    </button>
+  );
+}
+
+function truncateTask(task: string, maxLen = 30): string {
+  const trimmed = task.trim();
+  if (trimmed.length <= maxLen) return trimmed;
+  const boundary = trimmed.lastIndexOf(" ", maxLen);
+  return (boundary > 10 ? trimmed.slice(0, boundary) : trimmed.slice(0, maxLen)).trim() + "...";
+}
+
+export function MiddlePanelTabs({
+  transcriptContent,
+  summaryContent,
+  agentContent,
+  summaryState,
+  newAgentMode,
+  openAgentIds,
+  selectedAgentId,
+  agentSelectionNonce,
+  onSelectAgent,
+  onCloseAgent,
+  onCloseNewAgent,
+  onGenerateSummary,
+  agents,
+}: MiddlePanelTabsProps) {
+  const [activeTab, setActiveTab] = useState<TabId>("transcript");
+  const prevSummaryKindRef = useRef(summaryState.kind);
+
+  const showAgentTabs = openAgentIds.length > 0;
+  const agentById = new Map((agents ?? []).map((agent) => [agent.id, agent]));
+
+  let validTab = activeTab;
+  if (activeTab === "new-agent" && !newAgentMode) {
+    validTab = selectedAgentId ? getAgentTabId(selectedAgentId) : "transcript";
+  } else if (isAgentTab(activeTab) && !openAgentIds.some((agentId) => getAgentTabId(agentId) === activeTab)) {
+    validTab = selectedAgentId ? getAgentTabId(selectedAgentId) : (newAgentMode ? "new-agent" : "transcript");
+  }
+
+  // Consolidated tab auto-switch: new agent > selected agent > summary transition
+  useEffect(() => {
+    if (newAgentMode) { setActiveTab("new-agent"); return; }
+    if (selectedAgentId) { setActiveTab(getAgentTabId(selectedAgentId)); return; }
+    if (prevSummaryKindRef.current === "idle" && summaryState.kind !== "idle") setActiveTab("summary");
+    prevSummaryKindRef.current = summaryState.kind;
+  }, [agentSelectionNonce, selectedAgentId, newAgentMode, summaryState.kind]);
+
+  return (
+    <main className="flex-1 flex flex-col min-h-0 min-w-0 relative">
+      {/* Tab bar */}
+      <div
+        role="tablist"
+        className="no-scrollbar shrink-0 flex items-center h-9 border-b border-border bg-background px-1 gap-0.5 overflow-x-auto"
+      >
+        <TabButton
+          active={validTab === "transcript"}
+          label="Transcript"
+          onClick={() => setActiveTab("transcript")}
+        />
+        <TabButton
+          active={validTab === "summary"}
+          label="Summary"
+          onClick={() => {
+            if (summaryState.kind === "idle" && onGenerateSummary) {
+              onGenerateSummary();
+            }
+            setActiveTab("summary");
+          }}
+        />
+        {newAgentMode && (
+          <TabButton
+            active={validTab === "new-agent"}
+            label="New Agent"
+            onClick={() => setActiveTab("new-agent")}
+            onClose={onCloseNewAgent}
+          />
+        )}
+        {showAgentTabs && openAgentIds.map((agentId) => {
+          const agent = agentById.get(agentId);
+          const label = agent ? truncateTask(agent.task) : "Agent";
+          const tabId = getAgentTabId(agentId);
+          return (
+            <TabButton
+              key={agentId}
+              active={validTab === tabId}
+              label={label}
+              onClick={() => {
+                onSelectAgent(agentId);
+                setActiveTab(tabId);
+              }}
+              onClose={() => onCloseAgent(agentId)}
+            />
+          );
+        })}
+      </div>
+
+      {/* Transcript — always mounted, hidden via CSS to preserve scroll */}
+      <div className={`flex-1 flex flex-col min-h-0 ${validTab === "transcript" ? "" : "hidden"}`}>
+        {transcriptContent}
+      </div>
+
+      {/* Summary — always mounted, hidden via CSS to preserve scroll */}
+      <div className={`flex-1 flex flex-col min-h-0 ${validTab === "summary" ? "" : "hidden"}`}>
+        {summaryContent}
+      </div>
+
+      {/* Agent — conditionally rendered */}
+      {(newAgentMode || showAgentTabs) && (validTab === "new-agent" || isAgentTab(validTab)) && (
+        <div className="flex-1 flex flex-col min-h-0">
+          {agentContent}
+        </div>
+      )}
+    </main>
+  );
+}
