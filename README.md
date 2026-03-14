@@ -1,15 +1,35 @@
 # Ambient
 
-Ambient is an Electron desktop app for live conversation capture, transcription, and agent-driven workflows. It captures system audio, transcribes in real-time, extracts tasks and insights, and spawns autonomous AI agents to act on them.
+The end of work about work. You stay in the zone. Ambient picks up everything around it — the research, the action items, the loose threads — and handles them while you keep going.
 
 ## Features
 
-- Real-time system audio capture (ScreenCaptureKit on modern macOS)
-- Optional microphone capture in parallel with system audio
-- Transcription via ElevenLabs (`scribe_v2`) by default
-- Translation and analysis via configurable LLM providers
-- Session history with transcripts, tasks, insights, and agents
-- Hash-route session navigation (`#/chat` and `#/chat/:sessionId`)
+### It Listens
+Every conversation, perfectly remembered — in any language, without you ever reaching for a notepad. Real-time system audio capture via ScreenCaptureKit with optional microphone input.
+
+### It Finds the Signal
+While you're still in the conversation, Ambient is already pulling out what matters. Tasks, key decisions, agreements, and the things everyone will forget by tomorrow — extracted live and classified as agent-doable or human-only.
+
+### It Actions In Parallel
+Ambient automatically delegates and launches multiple agents in parallel to get your tasks done quickly. Each agent plans, executes with tool access, and reports back — while you keep talking.
+
+### Context-Aware Transcription
+Powered by Gemini Flash with custom context injection. Add speaker names, glossary terms, and project-specific vocabulary in your project settings so Ambient transcribes names and terminology correctly.
+
+### Natively Multilingual
+Understands and translates across 13 languages on the spot. Auto-detects language from character sets (CJK, Arabic, Cyrillic, etc.) and handles code-switching within a single conversation.
+
+### Agent Fleet With Planning
+Agents create structured plans with approval gates before executing. Track progress via todos, ask clarifying questions, and learn from corrections — fully interactive, fully in control.
+
+### Continual Learning
+Agents extract durable learnings from every completed task — your preferences, workspace facts, past corrections — and persist them so they never make the same mistake twice.
+
+### MCP Servers
+Connect any MCP-compatible server by URL. Built-in OAuth connectors for Notion and Linear, plus custom servers with bearer token auth. Agents discover and use tools automatically.
+
+### Smart Task Delegation
+Tasks extracted from conversations are classified as "agent" (automatable) or "human" (needs you). Agents handle the research, lookups, and drafts. You handle the decisions that matter.
 
 ## Tech Stack
 
@@ -18,20 +38,17 @@ Ambient is an Electron desktop app for live conversation capture, transcription,
 - Vitest for tests
 - better-sqlite3 + Drizzle ORM for persistence
 
-## Prerequisites
+## Quick Start
 
-- Node.js 22+
-- pnpm
-- macOS 14.2+ for ScreenCaptureKit system-audio capture
+1. **Prerequisites:** Node.js 22+, pnpm, macOS 14.2+
+2. **Install & run:**
+   ```bash
+   pnpm install
+   pnpm dev
+   ```
+3. **Add your OpenRouter API key** in the app settings when prompted.
 
-Optional legacy audio mode requires `ffmpeg` and a loopback device.
-
-## Setup
-
-```bash
-pnpm install
-cp .env.example .env   # if needed in your environment
-```
+That's it. The default configuration uses Gemini Flash via OpenRouter for both transcription and analysis — a single `OPENROUTER_API_KEY` is all you need.
 
 ## Development
 
@@ -88,21 +105,16 @@ pnpm run check:deadcode
 
 ## Environment Variables
 
-Required in common setups:
+Only `OPENROUTER_API_KEY` is required to get started. API keys can be configured in the app's settings UI.
 
-- `ELEVENLABS_API_KEY`
-- `OPENROUTER_API_KEY`
+Optional keys for alternative providers or extra features:
 
-Optional provider configuration:
-
-- `GOOGLE_GENERATIVE_AI_API_KEY`
-- `GOOGLE_APPLICATION_CREDENTIALS`
-- `GOOGLE_VERTEX_PROJECT_ID`
-- `GOOGLE_VERTEX_PROJECT_LOCATION`
-
-Optional MCP integrations:
-
-- `MCP_INTEGRATIONS_ENABLED=false` to disable Notion/Linear MCP connectors (enabled by default).
+- `GEMINI_API_KEY` — Use Google AI (Gemini) directly instead of via OpenRouter
+- `ELEVENLABS_API_KEY` — ElevenLabs Scribe transcription
+- `FIREWORKS_API_KEY` — Fireworks AI provider
+- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` — Amazon Bedrock
+- `EXA_API_KEY` — Web search for AI agents
+- `MCP_INTEGRATIONS_ENABLED=false` — Disable Notion/Linear MCP connectors (enabled by default)
 
 ## Notes
 
