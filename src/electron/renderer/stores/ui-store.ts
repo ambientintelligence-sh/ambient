@@ -15,6 +15,7 @@ type UIState = {
   onboardingCompleted: boolean;
   tourStep: number;
   finalSummaryState: SummaryModalState;
+  demoMode: boolean;
 };
 
 type UIActions = {
@@ -30,6 +31,7 @@ type UIActions = {
   advanceTourStep: () => void;
   setFinalSummaryState: (state: SummaryModalState) => void;
   updateFinalSummary: (updater: (prev: SummaryModalState) => SummaryModalState) => void;
+  setDemoMode: (v: boolean) => void;
 };
 
 export const useUIStore = create<UIState & UIActions>()(
@@ -45,6 +47,7 @@ export const useUIStore = create<UIState & UIActions>()(
       onboardingCompleted: false,
       tourStep: 0,
       finalSummaryState: { kind: "idle" } as SummaryModalState,
+      demoMode: false,
 
       // Actions
       setSplashDone: (done) => set({ splashDone: done }),
@@ -60,6 +63,7 @@ export const useUIStore = create<UIState & UIActions>()(
       setFinalSummaryState: (state) => set({ finalSummaryState: state }),
       updateFinalSummary: (updater) =>
         set((s) => ({ finalSummaryState: updater(s.finalSummaryState) })),
+      setDemoMode: (v) => set({ demoMode: v }),
     }),
     {
       name: "ambient-ui-store",

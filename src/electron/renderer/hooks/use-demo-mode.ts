@@ -32,6 +32,122 @@ const SESSION_ORDER = [
   MEETING_SESSION_ID,
 ];
 
+function buildSuggestionsForSession(sessionId: string, now: number): TaskSuggestion[] {
+  switch (sessionId) {
+    case TRIP_SESSION_ID:
+      return [
+        {
+          id: "demo-sug-trip-1",
+          text: "Want me to research travel insurance options for a 10-day Japan trip?",
+          kind: "research",
+          details: "Nobody discussed travel insurance — important for international trips.",
+          sessionId,
+          createdAt: now,
+        },
+        {
+          id: "demo-sug-trip-2",
+          text: "I can look into luggage forwarding services (Yamato Transport) for city-to-city transit.",
+          kind: "action",
+          details: "Moving luggage between Tokyo, Hakone, and Kyoto wasn't addressed.",
+          sessionId,
+          createdAt: now,
+        },
+        {
+          id: "demo-sug-trip-3",
+          text: "ANA sale ends Tuesday — should everyone book flights now before prices increase?",
+          kind: "flag",
+          sessionId,
+          createdAt: now,
+        },
+      ];
+
+    case BRAIN_SESSION_ID:
+      return [
+        {
+          id: "demo-sug-brain-1",
+          text: "Want me to check domain availability for mise.app and supper.app?",
+          kind: "action",
+          details: "Team narrowed to two name candidates but didn't check availability.",
+          sessionId,
+          createdAt: now,
+        },
+        {
+          id: "demo-sug-brain-2",
+          text: "I can research GDPR implications of storing user fridge photos — privacy is a potential concern.",
+          kind: "research",
+          details: "No discussion of data privacy for the photo-based ingredient detection.",
+          sessionId,
+          createdAt: now,
+        },
+        {
+          id: "demo-sug-brain-3",
+          text: "The 6-week MVP timeline seems tight with LLM integration. Flag for scope review?",
+          kind: "flag",
+          sessionId,
+          createdAt: now,
+        },
+      ];
+
+    case STUDY_SESSION_ID:
+      return [
+        {
+          id: "demo-sug-study-1",
+          text: "Want me to create a comparison of linearizability vs sequential consistency with examples?",
+          kind: "research",
+          details: "This distinction came up but wasn't fully clarified.",
+          sessionId,
+          createdAt: now,
+        },
+        {
+          id: "demo-sug-study-2",
+          text: "Professor hinted BFT will be on the exam — should I draft practice questions on 3f+1 proofs?",
+          kind: "action",
+          details: "Byzantine fault tolerance was flagged as exam-critical.",
+          sessionId,
+          createdAt: now,
+        },
+        {
+          id: "demo-sug-study-3",
+          text: "The gossip protocol section was rushed. Want me to summarize convergence properties?",
+          kind: "followup",
+          sessionId,
+          createdAt: now,
+        },
+      ];
+
+    case MEETING_SESSION_ID:
+      return [
+        {
+          id: "demo-sug-meeting-1",
+          text: "Want me to research Datadog vs Grafana Cloud pricing for your infrastructure size?",
+          kind: "research",
+          details: "Team discussed monitoring tools but didn't compare pricing.",
+          transcriptExcerpt: "We should look at Datadog pricing tiers...",
+          sessionId,
+          createdAt: now,
+        },
+        {
+          id: "demo-sug-meeting-2",
+          text: "I noticed an action item: draft the webhook processor postmortem. Want me to start it?",
+          kind: "action",
+          details: "Marcus mentioned Friday's outage needs a postmortem.",
+          sessionId,
+          createdAt: now,
+        },
+        {
+          id: "demo-sug-meeting-3",
+          text: "The team agreed on 20% tech debt allocation but didn't define which items. Flag for follow-up?",
+          kind: "flag",
+          sessionId,
+          createdAt: now,
+        },
+      ];
+
+    default:
+      return [];
+  }
+}
+
 function buildSessionSteps(sessionId: string, ctx: DemoContext): DemoStep[] {
   switch (sessionId) {
     case TRIP_SESSION_ID:
@@ -39,11 +155,13 @@ function buildSessionSteps(sessionId: string, ctx: DemoContext): DemoStep[] {
         { action: () => ctx.loadSession(TRIP_SESSION_ID) },
         { action: () => ctx.scrollTranscript(0.3) },
         { action: () => ctx.scrollTranscript(0.6) },
-        { action: () => ctx.forceWorkTab() },
+        { action: () => { ctx.injectSuggestions(TRIP_SESSION_ID); ctx.forceWorkTab(); } },
+        { action: () => ctx.selectAgent("demo-agent-itinerary") },
+        { action: () => ctx.selectAgent("demo-agent-flights") },
+        { action: () => ctx.selectAgent("demo-agent-ryokan") },
+        { action: () => ctx.selectAgent("demo-agent-visa") },
         { action: () => ctx.loadSummary(TRIP_SESSION_ID) },
         { action: () => {} }, // hold on summary
-        { action: () => ctx.selectAgent("demo-agent-itinerary") },
-        { action: () => {} }, // hold on agent detail
       ];
 
     case BRAIN_SESSION_ID:
@@ -51,9 +169,11 @@ function buildSessionSteps(sessionId: string, ctx: DemoContext): DemoStep[] {
         { action: () => ctx.loadSession(BRAIN_SESSION_ID) },
         { action: () => ctx.scrollTranscript(0.4) },
         { action: () => ctx.scrollTranscript(0.8) },
-        { action: () => ctx.forceWorkTab() },
+        { action: () => { ctx.injectSuggestions(BRAIN_SESSION_ID); ctx.forceWorkTab(); } },
         { action: () => ctx.selectAgent("demo-agent-competitive") },
-        { action: () => {} }, // hold on agent detail
+        { action: () => ctx.selectAgent("demo-agent-mvp-spec") },
+        { action: () => ctx.selectAgent("demo-agent-domains") },
+        { action: () => ctx.selectAgent("demo-agent-interview-guide") },
         { action: () => ctx.loadSummary(BRAIN_SESSION_ID) },
         { action: () => {} }, // hold on summary
       ];
@@ -62,9 +182,11 @@ function buildSessionSteps(sessionId: string, ctx: DemoContext): DemoStep[] {
       return [
         { action: () => ctx.loadSession(STUDY_SESSION_ID) },
         { action: () => ctx.scrollTranscript(0.5) },
-        { action: () => ctx.forceWorkTab() },
+        { action: () => { ctx.injectSuggestions(STUDY_SESSION_ID); ctx.forceWorkTab(); } },
         { action: () => ctx.selectAgent("demo-agent-study-guide") },
-        { action: () => {} }, // hold on agent detail
+        { action: () => ctx.selectAgent("demo-agent-bft-review") },
+        { action: () => ctx.selectAgent("demo-agent-uncommitted") },
+        { action: () => ctx.selectAgent("demo-agent-practice") },
         { action: () => ctx.loadSummary(STUDY_SESSION_ID) },
         { action: () => {} }, // hold on summary
       ];
@@ -73,11 +195,12 @@ function buildSessionSteps(sessionId: string, ctx: DemoContext): DemoStep[] {
       return [
         { action: () => ctx.loadSession(MEETING_SESSION_ID) },
         { action: () => ctx.scrollTranscript(0.5) },
-        { action: () => ctx.injectSuggestions(MEETING_SESSION_ID) },
-        { action: () => ctx.forceWorkTab() },
+        { action: () => { ctx.injectSuggestions(MEETING_SESSION_ID); ctx.forceWorkTab(); } },
+        { action: () => {} }, // hold on suggestions + tasks
         { action: () => ctx.selectAgent("demo-agent-matviews") },
         { action: () => ctx.selectAgent("demo-agent-postmortem") },
         { action: () => ctx.selectAgent("demo-agent-monitoring") },
+        { action: () => ctx.selectAgent("demo-agent-migration") },
         { action: () => ctx.loadSummary(MEETING_SESSION_ID) },
         { action: () => {} }, // hold on summary
       ];
@@ -158,33 +281,9 @@ export function useDemoMode({
     },
     injectSuggestions: (sessionId: string) => {
       const now = Date.now();
-      const demoSuggestions: TaskSuggestion[] = [
-        {
-          id: "demo-suggestion-1",
-          text: "Want me to research Datadog vs Grafana Cloud pricing for your infrastructure size?",
-          kind: "research",
-          details: "Team discussed monitoring tools but didn't compare pricing.",
-          transcriptExcerpt: "We should look at Datadog pricing tiers...",
-          sessionId,
-          createdAt: now,
-        },
-        {
-          id: "demo-suggestion-2",
-          text: "I noticed an action item: draft the webhook processor postmortem. Want me to start it?",
-          kind: "action",
-          details: "Marcus mentioned Friday's outage needs a postmortem.",
-          sessionId,
-          createdAt: now,
-        },
-        {
-          id: "demo-suggestion-3",
-          text: "The team agreed on 20% tech debt allocation but didn't define which items. Flag for follow-up?",
-          kind: "flag",
-          sessionId,
-          createdAt: now,
-        },
-      ];
-      ts().appendSuggestions(demoSuggestions);
+      ts().setSuggestions([]);
+      const suggestions = buildSuggestionsForSession(sessionId, now);
+      ts().appendSuggestions(suggestions);
     },
   };
 

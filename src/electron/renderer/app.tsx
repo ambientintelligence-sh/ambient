@@ -16,6 +16,7 @@ import type { ResumeData } from "./hooks/use-session";
 import { useMicCapture } from "./hooks/use-mic-capture";
 import { useAgents } from "./hooks/use-agents";
 import { useKeyboard } from "./hooks/use-keyboard";
+import { useDemoMode } from "./hooks/use-demo-mode";
 import { useThemeMode } from "./hooks/use-theme-mode";
 import { useAppBootstrap } from "./hooks/use-app-bootstrap";
 import { buildSessionPath, parseSessionRoute, pushSessionPath, replaceSessionPath } from "./lib/session-route";
@@ -301,6 +302,13 @@ export function App() {
     ts().setTasks(demoTasks);
     seedAgents(sessionId, demoAgents);
   };
+
+  const { demoMode } = useDemoMode({
+    loadDemoSession,
+    transcriptRef,
+    selectAgent,
+    selectedSessionId: selectedSessionId ?? null,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -1424,7 +1432,7 @@ export function App() {
         )}
       </div>
 
-      {onboardingPhase === "tour" && splashDone && (
+      {onboardingPhase === "tour" && splashDone && !demoMode && (
         <OnboardingOverlay
           panelLayoutRef={panelLayoutRef}
           onSetUpKeys={handleOnboardingSetUpKeys}

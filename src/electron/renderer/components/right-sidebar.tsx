@@ -84,8 +84,15 @@ function SuggestionItem({
   const [progress, setProgress] = useState(100);
   const onDismissRef = useRef(onDismiss);
   onDismissRef.current = onDismiss;
+  const demoMode = useUIStore((s) => s.demoMode);
 
   useEffect(() => {
+    if (demoMode) {
+      setProgress(100);
+      setOpacity(1);
+      return;
+    }
+
     const age = Date.now() - suggestion.createdAt;
     const remaining = Math.max(0, SUGGESTION_TTL_MS - age);
 
@@ -105,7 +112,7 @@ function SuggestionItem({
       clearTimeout(fadeTimer);
       clearTimeout(dismissTimer);
     };
-  }, [suggestion.createdAt]);
+  }, [suggestion.createdAt, demoMode]);
 
   const KindIcon = suggestion.kind ? SUGGESTION_KIND_ICONS[suggestion.kind] : SearchIcon;
 
