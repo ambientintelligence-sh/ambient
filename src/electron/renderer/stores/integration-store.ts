@@ -11,7 +11,7 @@ import type {
 type IntegrationState = {
   mcpIntegrations: McpIntegrationStatus[];
   customMcpServers: CustomMcpStatus[];
-  nativeProviders: McpIntegrationStatus[];
+  codexConnected: boolean;
   mcpToolsByProvider: Record<string, McpProviderToolSummary>;
   mcpBusy: boolean;
   apiKeyDefinitions: ApiKeyDefinition[];
@@ -37,9 +37,9 @@ type IntegrationActions = {
   removeCustomServer: (id: string) => Promise<{ ok: boolean; error?: string; notice?: string }>;
   connectCustomServer: (id: string) => Promise<{ ok: boolean; error?: string; notice?: string }>;
   disconnectCustomServer: (id: string) => Promise<{ ok: boolean; error?: string; notice?: string }>;
-  refreshNativeProviders: () => Promise<void>;
-  connectNativeProvider: (id: string) => Promise<{ notice?: string }>;
-  disconnectNativeProvider: (id: string) => Promise<{ notice?: string }>;
+  refreshCodexStatus: () => Promise<void>;
+  connectCodex: () => Promise<{ notice?: string }>;
+  disconnectCodex: () => Promise<{ notice?: string }>;
   saveApiKey: (envVar: string, value: string) => Promise<{ ok: boolean; error?: string }>;
   deleteApiKey: (envVar: string) => Promise<{ ok: boolean; error?: string }>;
   refreshProjects: () => Promise<ProjectMeta[]>;
@@ -55,7 +55,7 @@ export const useIntegrationStore = create<IntegrationState & IntegrationActions>
       // State
       mcpIntegrations: [],
       customMcpServers: [],
-      nativeProviders: [],
+      codexConnected: false,
       mcpToolsByProvider: {},
       mcpBusy: false,
       apiKeyDefinitions: [],
@@ -65,11 +65,11 @@ export const useIntegrationStore = create<IntegrationState & IntegrationActions>
 
       // Actions
       init: async () => {
-        const [integrations, servers, nativeStatuses, toolSummaries, definitions, keyStatus, projects] =
+        const [integrations, servers, codexStatus, toolSummaries, definitions, keyStatus, projects] =
           await Promise.all([
             window.electronAPI.getMcpIntegrationsStatus(),
             window.electronAPI.getCustomMcpServersStatus(),
-            window.electronAPI.getNativeProvidersStatus(),
+            window.electronAPI.getCodexStatus(),
             window.electronAPI.getMcpToolsInfo(),
             window.electronAPI.getApiKeyDefinitions(),
             window.electronAPI.getApiKeyStatus(),
@@ -82,7 +82,7 @@ export const useIntegrationStore = create<IntegrationState & IntegrationActions>
         set({
           mcpIntegrations: integrations,
           customMcpServers: servers,
-          nativeProviders: nativeStatuses,
+          codexConnected: codexStatus.connected,
           mcpToolsByProvider: byProvider,
           apiKeyDefinitions: definitions,
           apiKeyStatus: keyStatus,
@@ -202,38 +202,32 @@ export const useIntegrationStore = create<IntegrationState & IntegrationActions>
         }
       },
 
-      refreshNativeProviders: async () => {
-        const statuses = await window.electronAPI.getNativeProvidersStatus();
-        set({ nativeProviders: statuses });
+      refreshCodexStatus: async () => {
+        const status = await window.electronAPI.getCodexStatus();
+        set({ codexConnected: status.connected });
       },
 
-      connectNativeProvider: async (id) => {
+      connectCodex: async () => {
         set({ mcpBusy: true });
         try {
-          const result = await window.electronAPI.connectNativeProvider(id);
+          const result = await window.electronAPI.connectCodex();
           const notice = result.ok
-            ? `${id} MCP connected.`
-            : `${id} connection failed: ${result.error ?? "Unknown error"}`;
+            ? "Codex connected."
+            : `Codex connection failed: ${result.error ?? "Unknown error"}`;
           return { notice };
         } finally {
-          const { refreshNativeProviders, refreshMcpToolsInfo } = get();
-          await Promise.all([refreshNativeProviders(), refreshMcpToolsInfo()]);
-          set({ mcpBusy: false });
+          const status = await window.electronAPI.getCodexStatus();
+          set({ codexConnected: status.connected, mcpBusy: false });
         }
       },
 
-      disconnectNativeProvider: async (id) => {
+      disconnectCodex: async () => {
         set({ mcpBusy: true });
         try {
-          const result = await window.electronAPI.disconnectNativeProvider(id);
-          const notice = result.ok
-            ? `${id} MCP disconnected.`
-            : `Could not disconnect ${id}: ${result.error ?? "Unknown error"}`;
-          return { notice };
+          await window.electronAPI.disconnectCodex();
+          return { notice: "Codex disconnected." };
         } finally {
-          const { refreshNativeProviders, refreshMcpToolsInfo } = get();
-          await Promise.all([refreshNativeProviders(), refreshMcpToolsInfo()]);
-          set({ mcpBusy: false });
+          set({ codexConnected: false, mcpBusy: false });
         }
       },
 

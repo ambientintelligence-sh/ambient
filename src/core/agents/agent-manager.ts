@@ -41,6 +41,7 @@ type AgentManagerDeps = {
   searchTranscriptHistory?: (query: string, limit?: number) => unknown[];
   searchAgentHistory?: (query: string, limit?: number) => unknown[];
   getExternalTools?: () => Promise<AgentExternalToolSet>;
+  getCodexClient?: () => { isConnected: boolean; run: typeof import("./codex-client").runCodexTask } | null;
   allowAutoApprove: boolean;
   db?: AppDatabase;
 };
@@ -492,6 +493,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         searchTranscriptHistory: deps.searchTranscriptHistory,
         searchAgentHistory: deps.searchAgentHistory,
         getExternalTools: deps.getExternalTools,
+        getCodexClient: deps.getCodexClient,
         allowAutoApprove: deps.allowAutoApprove,
         requestClarification: (request, options) =>
           requestClarification(agent.id, request, options),
@@ -551,6 +553,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         searchTranscriptHistory: deps.searchTranscriptHistory,
         searchAgentHistory: deps.searchAgentHistory,
         getExternalTools: deps.getExternalTools,
+        getCodexClient: deps.getCodexClient,
         allowAutoApprove: deps.allowAutoApprove,
         requestClarification: (request, options) =>
           requestClarification(agent.id, request, options),
@@ -792,6 +795,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         searchTranscriptHistory: deps.searchTranscriptHistory,
         searchAgentHistory: deps.searchAgentHistory,
         getExternalTools: deps.getExternalTools,
+        getCodexClient: deps.getCodexClient,
         allowAutoApprove: deps.allowAutoApprove,
         requestClarification: (request, options) => requestClarification(agentId, request, options),
         requestToolApproval: (request, options) => requestToolApproval(agentId, request, options),

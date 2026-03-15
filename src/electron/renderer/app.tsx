@@ -134,7 +134,6 @@ export function App() {
   const integrationApiKeyDefinitions = useIntegrationStore((s) => s.apiKeyDefinitions);
   const integrationApiKeyStatus = useIntegrationStore((s) => s.apiKeyStatus);
   const integrationProjects = useIntegrationStore((s) => s.projects);
-  const integrationNativeProviders = useIntegrationStore((s) => s.nativeProviders);
   const ig = useIntegrationStore.getState;
 
   // Stable action accessors — Zustand getState() is always the same function reference,
@@ -449,15 +448,6 @@ export function App() {
     return result;
   };
 
-  const handleConnectNativeProvider = async (id: string) => {
-    const { notice } = await ig().connectNativeProvider(id);
-    if (notice) ui().setRouteNotice(notice);
-  };
-
-  const handleDisconnectNativeProvider = async (id: string) => {
-    const { notice } = await ig().disconnectNativeProvider(id);
-    if (notice) ui().setRouteNotice(notice);
-  };
 
   const handleSaveApiKey = async (envVar: string, value: string) => {
     const result = await ig().saveApiKey(envVar, value);
@@ -1294,9 +1284,6 @@ export function App() {
             onRemoveCustomServer={handleRemoveCustomServer}
             onConnectCustomServer={handleConnectCustomServer}
             onDisconnectCustomServer={handleDisconnectCustomServer}
-            nativeProviders={integrationNativeProviders}
-            onConnectNativeProvider={handleConnectNativeProvider}
-            onDisconnectNativeProvider={handleDisconnectNativeProvider}
             mcpToolsByProvider={integrationMcpToolsByProvider}
             apiKeyDefinitions={integrationApiKeyDefinitions}
             apiKeyStatus={integrationApiKeyStatus}

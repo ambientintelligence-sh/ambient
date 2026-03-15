@@ -35,8 +35,5 @@ export function createIntegrationManager(
     disconnectCustomMcpServer: registry.disconnectCustomMcpServer,
     getCustomMcpServersStatus: registry.getCustomMcpServersStatus,
     getMcpToolsInfo: registry.getMcpToolsInfo,
-    connectNativeProvider: registry.connectNativeProvider,
-    disconnectNativeProvider: registry.disconnectNativeProvider,
-    getNativeProvidersStatus: registry.getNativeProvidersStatus,
   };
 }

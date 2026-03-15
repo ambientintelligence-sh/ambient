@@ -15,6 +15,7 @@ import { log } from "../logger";
 import {
   getAgentInitialUserPromptTemplate,
   getAgentSystemPromptTemplate,
+  getCodexInstructions,
   renderPromptTemplate,
 } from "../prompt-loader";
 import { normalizeProviderErrorMessage } from "../text/text-utils";
@@ -44,6 +45,7 @@ export type AgentDeps = {
   searchTranscriptHistory?: (query: string, limit?: number) => unknown[];
   searchAgentHistory?: (query: string, limit?: number) => unknown[];
   getExternalTools?: () => Promise<AgentExternalToolSet>;
+  getCodexClient?: () => { isConnected: boolean; run: typeof import("./codex-client").runCodexTask } | null;
   allowAutoApprove: boolean;
   requestClarification: (
     request: AgentQuestionRequest,
@@ -122,6 +124,7 @@ const buildSystemPrompt = (
   projectInstructions?: string,
   agentsMd?: string,
   responseLength?: import("../types").ResponseLength,
+  codexEnabled?: boolean,
 ) => {
   const base = renderPromptTemplate(getAgentSystemPromptTemplate(), {
     today: formatCurrentDateForPrompt(new Date()),
@@ -136,6 +139,10 @@ const buildSystemPrompt = (
     sections.push(`## Agent Memory\n\n${agentsMd.trim()}`);
   }
   sections.push(base);
+
+  if (codexEnabled) {
+    sections.push(getCodexInstructions());
+  }
 
   const lengthPrompt = RESPONSE_LENGTH_PROMPTS[responseLength ?? "standard"];
   if (lengthPrompt) {
@@ -282,6 +289,7 @@ async function buildTools(
   getExternalTools?: AgentDeps["getExternalTools"],
   searchTranscriptHistory?: AgentDeps["searchTranscriptHistory"],
   searchAgentHistory?: AgentDeps["searchAgentHistory"],
+  getCodexClient?: AgentDeps["getCodexClient"],
 ) {
   const baseTools: Parameters<typeof streamText>[0]["tools"] = {};
 
@@ -741,7 +749,53 @@ async function buildTools(
     },
   });
 
-  return { tools: baseTools, externalTools };
+  const codexClient = getCodexClient?.();
+  if (codexClient?.isConnected) {
+    log("INFO", "Registering codex tool in agent toolset");
+    baseTools["codex"] = tool({
+      description:
+        "Execute a coding task using OpenAI Codex. Codex can read, write, and edit code in a repository. " +
+        "Use for code generation, refactoring, bug fixes, and code review. " +
+        "Returns the Codex agent's response and a threadId for follow-up turns.",
+      inputSchema: z.object({
+        prompt: z.string().describe("The coding task or question for Codex"),
+        threadId: z.string().optional().describe("Thread ID from a previous codex call to continue the conversation"),
+        workingDirectory: z.string().optional().describe("Working directory for code operations"),
+      }),
+      execute: async ({ prompt, threadId, workingDirectory }, { abortSignal }) => {
+        const progressItems: string[] = [];
+        const result = await codexClient.run(prompt, {
+          threadId,
+          workingDirectory,
+          signal: abortSignal,
+          onEvent: (event) => {
+            if (event.type === "item.completed" && event.item) {
+              const item = event.item;
+              if (item.type === "command_execution") {
+                progressItems.push(`Ran: ${String(item.command)} (exit ${String(item.exit_code)})`);
+              } else if (item.type === "file_change" && Array.isArray(item.changes)) {
+                const changes = (item.changes as Array<{ kind: string; path: string }>)
+                  .map((c) => `${c.kind} ${c.path}`)
+                  .join(", ");
+                progressItems.push(`Files: ${changes}`);
+              } else if (item.type === "reasoning" && typeof item.text === "string") {
+                progressItems.push(`Thinking: ${item.text.slice(0, 200)}`);
+              }
+            }
+          },
+        });
+
+        return {
+          threadId: result.threadId,
+          response: result.result,
+          progress: progressItems,
+          hint: "Use the threadId to continue this Codex conversation in a follow-up call.",
+        };
+      },
+    });
+  }
+
+  return { tools: baseTools, externalTools, hasCodexTool: !!codexClient?.isConnected };
 }
 
 function safeJson(value: unknown): string {
@@ -973,6 +1027,7 @@ async function runAgentWithMessages(
     searchTranscriptHistory,
     searchAgentHistory,
     getExternalTools,
+    getCodexClient,
     allowAutoApprove,
     requestClarification,
     requestToolApproval,
@@ -987,7 +1042,7 @@ async function runAgentWithMessages(
   let streamError: string | null = null;
 
   try {
-    const { tools } = await buildTools(
+    const { tools, hasCodexTool } = await buildTools(
       exa,
       getTranscriptContext,
       requestClarification,
@@ -999,12 +1054,14 @@ async function runAgentWithMessages(
       getExternalTools,
       searchTranscriptHistory,
       searchAgentHistory,
+      getCodexClient,
     );
     const systemPrompt = buildSystemPrompt(
       getTranscriptContext(),
       projectInstructions,
       agentsMd,
       responseLength,
+      !!getCodexClient,
     );
 
     // Track consecutive tool errors to circuit-break runaway retries
@@ -1015,7 +1072,7 @@ async function runAgentWithMessages(
       system: systemPrompt,
       messages: inputMessages,
       maxRetries: STREAM_MAX_RETRIES,
-      timeout: { stepMs: STEP_TIMEOUT_MS, chunkMs: CHUNK_TIMEOUT_MS },
+      timeout: { stepMs: hasCodexTool ? 600_000 : STEP_TIMEOUT_MS, chunkMs: CHUNK_TIMEOUT_MS },
       stopWhen: stepCountIs(20),
       abortSignal,
       tools,

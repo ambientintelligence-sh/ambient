@@ -192,6 +192,7 @@ function dedupeInsightHistory(texts: readonly string[]): string[] {
 
 export type SessionExternalDeps = {
   getExternalTools?: () => Promise<AgentExternalToolSet>;
+  getCodexClient?: () => { isConnected: boolean; run: typeof import("./agents/codex-client").runCodexTask } | null;
   dataDir?: string;
 };
 
@@ -276,6 +277,7 @@ export class Session {
   private db: AppDatabase | null;
   private agentManager: AgentManager | null = null;
   private getExternalTools?: () => Promise<AgentExternalToolSet>;
+  private getCodexClient?: SessionExternalDeps["getCodexClient"];
   private dataDir?: string;
 
   private sourceLangLabel: string;
@@ -288,6 +290,7 @@ export class Session {
     this.db = db ?? null;
     this.sessionId = sessionId ?? crypto.randomUUID();
     this.getExternalTools = externalDeps?.getExternalTools;
+    this.getCodexClient = externalDeps?.getCodexClient;
     this.dataDir = externalDeps?.dataDir;
     this._translationEnabled = config.translationEnabled && (config.transcriptionProvider === "vertex" || config.transcriptionProvider === "google" || config.transcriptionProvider === "openrouter");
     this.userContext = this.loadProjectContext();
@@ -325,6 +328,7 @@ export class Session {
       searchTranscriptHistory: this.db ? (q: string, l?: number) => this.db!.searchBlocks(q, l) : undefined,
       searchAgentHistory: this.db ? (q: string, l?: number) => this.db!.searchAgents(q, l) : undefined,
       getExternalTools: this.getExternalTools,
+      getCodexClient: this.getCodexClient,
       responseLength: config.responseLength,
       allowAutoApprove: config.agentAutoApprove,
       db: this.db ?? undefined,

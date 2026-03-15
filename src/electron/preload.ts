@@ -141,9 +141,9 @@ export type ElectronAPI = {
   disconnectCustomMcpServer: (id: string) => Promise<{ ok: boolean; error?: string }>;
   getCustomMcpServersStatus: () => Promise<CustomMcpStatus[]>;
   getMcpToolsInfo: () => Promise<McpProviderToolSummary[]>;
-  connectNativeProvider: (id: string) => Promise<{ ok: boolean; error?: string }>;
-  disconnectNativeProvider: (id: string) => Promise<{ ok: boolean; error?: string }>;
-  getNativeProvidersStatus: () => Promise<McpIntegrationStatus[]>;
+  connectCodex: () => Promise<{ ok: boolean; error?: string }>;
+  disconnectCodex: () => Promise<{ ok: boolean }>;
+  getCodexStatus: () => Promise<{ connected: boolean }>;
 
   getApiKeyDefinitions: () => Promise<ApiKeyDefinition[]>;
   getApiKeyStatus: () => Promise<Record<string, boolean>>;
@@ -272,9 +272,9 @@ const api: ElectronAPI = {
   disconnectCustomMcpServer: (id) => ipcRenderer.invoke("disconnect-custom-mcp-server", id),
   getCustomMcpServersStatus: () => ipcRenderer.invoke("get-custom-mcp-servers-status"),
   getMcpToolsInfo: () => ipcRenderer.invoke("get-mcp-tools-info"),
-  connectNativeProvider: (id) => ipcRenderer.invoke("connect-native-provider", id),
-  disconnectNativeProvider: (id) => ipcRenderer.invoke("disconnect-native-provider", id),
-  getNativeProvidersStatus: () => ipcRenderer.invoke("get-native-providers-status"),
+  connectCodex: () => ipcRenderer.invoke("connect-codex"),
+  disconnectCodex: () => ipcRenderer.invoke("disconnect-codex"),
+  getCodexStatus: () => ipcRenderer.invoke("get-codex-status"),
 
   getApiKeyDefinitions: () => ipcRenderer.invoke("get-api-key-definitions"),
   getApiKeyStatus: () => ipcRenderer.invoke("get-api-key-status"),

@@ -206,6 +206,7 @@ export type SessionConfig = {
   legacyAudio: boolean;
   translationEnabled: boolean;
   agentAutoApprove: boolean;
+  codexEnabled: boolean;
   micDevice?: string;
 };
 
@@ -240,6 +241,7 @@ export type AppConfig = {
   translationEnabled: boolean;
   agentAutoApprove: boolean;
   autoDelegate: boolean;
+  codexEnabled: boolean;
 };
 
 export type AppConfigOverrides = Partial<AppConfig>;
@@ -251,7 +253,7 @@ export type ApiKeyDefinition = Readonly<{
   providers: string[];
 }>;
 
-export type McpIntegrationMode = "oauth" | "token" | "native";
+export type McpIntegrationMode = "oauth" | "token";
 export type McpIntegrationConnection = "connected" | "disconnected" | "error";
 
 export type McpIntegrationStatus = Readonly<{
@@ -382,6 +384,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   translationEnabled: true,
   agentAutoApprove: false,
   autoDelegate: false,
+  codexEnabled: false,
 };
 
 export function normalizeAppConfig(
@@ -498,6 +501,7 @@ export function normalizeAppConfig(
     translationEnabled: !!merged.translationEnabled,
     agentAutoApprove: !!merged.agentAutoApprove,
     autoDelegate: !!merged.autoDelegate,
+    codexEnabled: !!merged.codexEnabled,
     analysisProviderOnly,
     analysisReasoning,
     taskProviders:

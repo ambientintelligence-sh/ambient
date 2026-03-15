@@ -17,6 +17,20 @@ import type { EnsureSession, SessionRef } from "./ipc/types";
 import { createIntegrationManager } from "./integrations";
 import { SecureCredentialStore } from "./integrations/secure-credential-store";
 import type { IntegrationManager } from "./integrations/types";
+import { connectCodex, isCodexConnected, runCodexTask } from "@core/agents/codex-client";
+
+function getCodexClient() {
+  if (!isCodexConnected()) {
+    const result = connectCodex();
+    if (!result.ok) {
+      const errorMsg = "error" in result ? result.error : "Unknown error";
+      log("WARN", `Codex auto-connect failed: ${errorMsg}`);
+      return null;
+    }
+    log("INFO", "Codex auto-connected on first agent launch");
+  }
+  return { isConnected: true as const, run: runCodexTask };
+}
 
 const sessionRef: SessionRef = { current: null };
 let registeredDb: AppDatabase | null = null;
@@ -74,6 +88,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null, db: A
 
       const activeSession = new Session(desiredConfig, db, sessionId, {
         getExternalTools: manager.getExternalTools,
+        getCodexClient,
         dataDir: app.getPath("userData"),
       });
       sessionRef.current = activeSession;
@@ -127,6 +142,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null, db: A
     getWindow,
     sessionRef,
     getExternalTools: manager.getExternalTools,
+    getCodexClient,
     dataDir: app.getPath("userData"),
   });
   registerTaskInsightHandlers({ db, getWindow, sessionRef, ensureSession });

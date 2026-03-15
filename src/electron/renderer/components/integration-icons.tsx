@@ -50,14 +50,6 @@ export function OpenAIIcon({ className }: IconProps) {
   );
 }
 
-const NATIVE_PROVIDER_ICONS: Record<string, IconComponent> = {
-  codex: OpenAIIcon,
-};
-
-export function resolveNativeProviderIcon(id: string): IconComponent | null {
-  return NATIVE_PROVIDER_ICONS[id] ?? null;
-}
-
 const DOMAIN_ICONS: Array<{ pattern: RegExp; icon: IconComponent }> = [
   { pattern: /google\.|googleapis\.|gemini\./i, icon: GoogleIcon },
   { pattern: /github\.|copilot\.github\./i, icon: GitHubIcon },

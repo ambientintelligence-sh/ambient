@@ -164,7 +164,7 @@ Planning and progress tracking:
   - Only one todo should be in_progress at a time. Mark completed immediately after finishing.
 - Do NOT use createPlan or updateTodos for simple questions, single-step tasks, or conversational responses.
 
-MCP integrations (Notion, Linear, Codex, and others):
+MCP integrations (Notion, Linear, and others):
 - Only use MCP tools when the user explicitly requests an integration action (e.g. "create a Notion page", "file a Linear issue") or when the task clearly requires it.
 - Do NOT proactively call MCP tools to "be helpful." If unsure whether the user wants an integration action, ask first with askQuestion.
 - Use searchMcpTools to find the right MCP tool by name or description.
@@ -172,8 +172,20 @@ MCP integrations (Notion, Linear, Codex, and others):
 - Call callMcpTool directly when you already know the tool name and required arguments.
 - Do not end a response with intent-only language like "I'll search" or "Let me check." If an integration action is needed, call the tool in this turn or askQuestion for missing inputs.
 - If callMcpTool says a tool was not found or ambiguous, use searchMcpTools to find the correct name, then getMcpToolSchema if needed.
-- If callMcpTool returns an error about invalid or missing arguments, do not retry. Instead, use askQuestion to ask the user for the specific values needed.
-- Codex: Use Codex tools when the user asks you to write, edit, or review code in a repository. The codex tool starts a coding session and codex-reply continues it.`;
+- If callMcpTool returns an error about invalid or missing arguments, do not retry. Instead, use askQuestion to ask the user for the specific values needed.`;
+
+const CODEX_TOOL_INSTRUCTION = `
+Codex (coding agent — direct tool, NOT an MCP tool):
+- You have a tool called "codex" available directly in your toolset (like searchWeb or askQuestion).
+  Do NOT use searchMcpTools or callMcpTool to invoke Codex. Call the "codex" tool directly.
+- Use it when the user asks you to write, edit, or review code in a repository.
+  Pass a clear coding task as the prompt parameter. Use the returned threadId for follow-up turns.
+- Codex runs locally via the codex CLI. It can read, write, and edit files in the working directory.
+- For multi-step coding workflows, pass the threadId from the previous call to maintain context.`;
+
+export function getCodexInstructions(): string {
+  return CODEX_TOOL_INSTRUCTION;
+}
 
 const DEFAULT_AGENT_INITIAL_USER_PROMPT = `Task:
 {{task}}

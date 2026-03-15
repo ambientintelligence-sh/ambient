@@ -38,15 +38,19 @@ export function registerIntegrationHandlers(integrations: IntegrationManager) {
     return integrations.getMcpToolsInfo();
   });
 
-  ipcMain.handle("connect-native-provider", async (_event, id: string) => {
-    return integrations.connectNativeProvider(id);
+  ipcMain.handle("connect-codex", async () => {
+    const { connectCodex } = await import("@core/agents/codex-client");
+    return connectCodex();
   });
 
-  ipcMain.handle("disconnect-native-provider", async (_event, id: string) => {
-    return integrations.disconnectNativeProvider(id);
+  ipcMain.handle("disconnect-codex", async () => {
+    const { disconnectCodex } = await import("@core/agents/codex-client");
+    disconnectCodex();
+    return { ok: true };
   });
 
-  ipcMain.handle("get-native-providers-status", async () => {
-    return integrations.getNativeProvidersStatus();
+  ipcMain.handle("get-codex-status", async () => {
+    const { isCodexConnected } = await import("@core/agents/codex-client");
+    return { connected: isCodexConnected() };
   });
 }
