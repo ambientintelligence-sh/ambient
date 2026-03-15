@@ -49,7 +49,7 @@ import {
   WrenchIcon,
   XIcon,
 } from "lucide-react";
-import { resolveProviderIcon } from "./integration-icons";
+import { resolveProviderIcon, resolveNativeProviderIcon } from "./integration-icons";
 import {
   SiOpenrouter,
   SiGooglegemini,
@@ -86,6 +86,9 @@ type SettingsPageProps = {
   onDisconnectCustomServer: (
     id: string
   ) => Promise<{ ok: boolean; error?: string }>;
+  nativeProviders: McpIntegrationStatus[];
+  onConnectNativeProvider: (id: string) => void | Promise<void>;
+  onDisconnectNativeProvider: (id: string) => void | Promise<void>;
   mcpToolsByProvider: Record<string, McpProviderToolSummary>;
   apiKeyDefinitions: ApiKeyDefinition[];
   apiKeyStatus: Record<string, boolean>;
@@ -608,6 +611,9 @@ export function SettingsPage({
   onRemoveCustomServer,
   onConnectCustomServer,
   onDisconnectCustomServer,
+  nativeProviders,
+  onConnectNativeProvider,
+  onDisconnectNativeProvider,
   mcpToolsByProvider,
   apiKeyDefinitions,
   apiKeyStatus,
@@ -1330,6 +1336,63 @@ export function SettingsPage({
                 );
               })}
             </div>
+
+            {/* ── Native MCP Providers ── */}
+            {nativeProviders.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                {nativeProviders.map((status) => {
+                  const NativeIcon = resolveNativeProviderIcon(status.provider);
+                  return (
+                    <div key={status.provider} className="border border-border/70 bg-background px-3 py-3 rounded-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          {NativeIcon ? (
+                            <NativeIcon className="w-4 h-4 shrink-0" />
+                          ) : (
+                            <ServerIcon className="w-4 h-4 shrink-0 text-muted-foreground" />
+                          )}
+                          <p className="text-xs font-semibold text-foreground">
+                            {status.label ?? status.provider} MCP
+                          </p>
+                        </div>
+                        <span className="text-2xs text-muted-foreground">
+                          {status.state}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-2xs text-muted-foreground leading-relaxed">
+                        Local stdio MCP server. Requires CLI pre-installed.
+                      </p>
+                      {status.error && (
+                        <p className="mt-1 text-2xs text-destructive">
+                          {status.error}
+                        </p>
+                      )}
+                      <div className="mt-2 flex items-center gap-2">
+                        {status.state === "connected" ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void onDisconnectNativeProvider(status.provider)}
+                            disabled={mcpBusy || status.enabled === false}
+                          >
+                            Disconnect
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            onClick={() => void onConnectNativeProvider(status.provider)}
+                            disabled={mcpBusy || status.enabled === false}
+                          >
+                            Connect {status.label ?? status.provider}
+                          </Button>
+                        )}
+                      </div>
+                      <ToolList tools={mcpToolsByProvider[status.provider]?.tools ?? []} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* ── Custom MCP Servers ── */}
             <div className="mt-4">

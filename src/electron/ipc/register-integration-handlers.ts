@@ -37,4 +37,16 @@ export function registerIntegrationHandlers(integrations: IntegrationManager) {
   ipcMain.handle("get-mcp-tools-info", async () => {
     return integrations.getMcpToolsInfo();
   });
+
+  ipcMain.handle("connect-native-provider", async (_event, id: string) => {
+    return integrations.connectNativeProvider(id);
+  });
+
+  ipcMain.handle("disconnect-native-provider", async (_event, id: string) => {
+    return integrations.disconnectNativeProvider(id);
+  });
+
+  ipcMain.handle("get-native-providers-status", async () => {
+    return integrations.getNativeProvidersStatus();
+  });
 }

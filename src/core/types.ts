@@ -251,7 +251,7 @@ export type ApiKeyDefinition = Readonly<{
   providers: string[];
 }>;
 
-export type McpIntegrationMode = "oauth" | "token";
+export type McpIntegrationMode = "oauth" | "token" | "native";
 export type McpIntegrationConnection = "connected" | "disconnected" | "error";
 
 export type McpIntegrationStatus = Readonly<{

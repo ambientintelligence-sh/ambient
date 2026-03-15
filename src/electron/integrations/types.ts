@@ -56,4 +56,7 @@ export type IntegrationManager = {
   disconnectCustomMcpServer: (id: string) => Promise<{ ok: boolean; error?: string }>;
   getCustomMcpServersStatus: () => Promise<CustomMcpStatus[]>;
   getMcpToolsInfo: () => Promise<McpProviderToolSummary[]>;
+  connectNativeProvider: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  disconnectNativeProvider: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  getNativeProvidersStatus: () => McpIntegrationStatus[];
 };

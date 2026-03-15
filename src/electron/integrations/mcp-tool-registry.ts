@@ -1,6 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { ListToolsResult } from "@modelcontextprotocol/sdk/types.js";
 import type { McpIntegrationStatus, McpIntegrationConnection, CustomMcpStatus, CustomMcpTransport, McpProviderToolSummary, McpToolInfo } from "@core/types";
@@ -8,6 +9,8 @@ import type { AgentExternalToolSet, AgentExternalToolProvider } from "@core/agen
 import type { CustomMcpServerRecord } from "./types";
 import type { McpOAuthProviderConfig } from "./mcp-oauth-providers";
 import { MCP_OAUTH_PROVIDERS, getProviderConfig } from "./mcp-oauth-providers";
+import { MCP_NATIVE_PROVIDERS, getNativeProviderConfig } from "./mcp-native-providers";
+import type { McpNativeProviderConfig } from "./mcp-native-providers";
 import { createOAuthProvider, waitForOAuthAuthorizationCode } from "./mcp-oauth-client";
 import { SecureCredentialStore } from "./secure-credential-store";
 import { log } from "@core/logger";
@@ -21,7 +24,7 @@ const MUTATING_NAME_PATTERN = /(create|update|delete|archive|restore|comment|app
 
 type ProviderRuntime = {
   client: Client;
-  transport: StreamableHTTPClientTransport | SSEClientTransport;
+  transport: StreamableHTTPClientTransport | SSEClientTransport | StdioClientTransport;
   toolCache?: AgentExternalToolSet;
 };
 
@@ -103,6 +106,7 @@ export function createMcpToolRegistry(options: {
 
   const oauthRuntimes = new Map<string, ProviderRuntime>();
   const customRuntimes = new Map<string, ProviderRuntime>();
+  const nativeRuntimes = new Map<string, ProviderRuntime>();
 
   // ── Generic OAuth runtime factories ──
 
@@ -138,7 +142,7 @@ export function createMcpToolRegistry(options: {
 
     const code = await waitForOAuthAuthorizationCode(config, expectedState);
     log("INFO", `${config.label} OAuth callback received for ${kind}. Exchanging authorization code.`);
-    await runtime.transport.finishAuth(code);
+    await (runtime.transport as StreamableHTTPClientTransport | SSEClientTransport).finishAuth(code);
     await closeRuntime(runtime);
 
     const authenticatedRuntime = createOAuthRuntime(config, kind);
@@ -362,6 +366,69 @@ export function createMcpToolRegistry(options: {
     });
   }
 
+  // ── Native (stdio) MCP provider methods ──
+
+  function createNativeRuntime(config: McpNativeProviderConfig): ProviderRuntime {
+    const transport = new StdioClientTransport({
+      command: config.command,
+      args: config.args,
+      env: { ...process.env } as Record<string, string>,
+    });
+    const client = new Client(CLIENT_INFO);
+    return { client, transport };
+  }
+
+  async function connectNativeProvider(id: string): Promise<{ ok: boolean; error?: string }> {
+    if (!enabled) {
+      return { ok: false, error: "MCP integrations are disabled. Set MCP_INTEGRATIONS_ENABLED=true (or remove MCP_INTEGRATIONS_ENABLED=false)." };
+    }
+    const config = getNativeProviderConfig(id);
+    if (!config) {
+      return { ok: false, error: `Unknown native MCP provider: ${id}` };
+    }
+    try {
+      await closeRuntime(nativeRuntimes.get(id));
+      nativeRuntimes.delete(id);
+      const runtime = createNativeRuntime(config);
+      await runtime.client.connect(runtime.transport);
+      await runtime.client.listTools();
+      nativeRuntimes.set(id, runtime);
+      log("INFO", `${config.label} native MCP provider connected.`);
+      return { ok: true };
+    } catch (error) {
+      const message = formatError(error);
+      const isNotFound = /ENOENT|not found|command not found/i.test(message);
+      const hint = isNotFound
+        ? `${config.command} CLI not found. Install it with: npm install -g @openai/codex`
+        : message;
+      log("ERROR", `${config.label} native MCP connect failed: ${hint}`);
+      return { ok: false, error: hint };
+    }
+  }
+
+  async function disconnectNativeProvider(id: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      await closeRuntime(nativeRuntimes.get(id));
+      nativeRuntimes.delete(id);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: formatError(error) };
+    }
+  }
+
+  function getNativeProvidersStatus(): McpIntegrationStatus[] {
+    return MCP_NATIVE_PROVIDERS.map((config) => {
+      const isConnected = nativeRuntimes.has(config.id);
+      return {
+        provider: config.id,
+        mode: "native" as const,
+        state: isConnected ? ("connected" as const) : ("disconnected" as const),
+        enabled,
+        label: config.label,
+      };
+    });
+  }
+
   // ── Shared tool building ──
 
   async function buildAgentToolsForProvider(
@@ -501,6 +568,15 @@ export function createMcpToolRegistry(options: {
       }
     }
 
+    for (const [id, runtime] of nativeRuntimes) {
+      try {
+        Object.assign(merged, await buildAgentToolsForProvider(id as AgentExternalToolProvider, runtime));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log("WARN", `Native MCP provider ${id} tools unavailable: ${message}`);
+      }
+    }
+
     return merged;
   }
 
@@ -537,6 +613,10 @@ export function createMcpToolRegistry(options: {
       await collectTools(`custom:${id}`, runtime);
     }
 
+    for (const [id, runtime] of nativeRuntimes) {
+      await collectTools(id, runtime);
+    }
+
     return result;
   }
 
@@ -548,6 +628,10 @@ export function createMcpToolRegistry(options: {
     for (const [id, runtime] of customRuntimes) {
       await closeRuntime(runtime);
       customRuntimes.delete(id);
+    }
+    for (const [id, runtime] of nativeRuntimes) {
+      await closeRuntime(runtime);
+      nativeRuntimes.delete(id);
     }
   }
 
@@ -564,5 +648,8 @@ export function createMcpToolRegistry(options: {
     disconnectCustomMcpServer,
     getCustomMcpServersStatus,
     getMcpToolsInfo,
+    connectNativeProvider,
+    disconnectNativeProvider,
+    getNativeProvidersStatus,
   };
 }
