@@ -45,7 +45,12 @@ export type AgentDeps = {
   searchTranscriptHistory?: (query: string, limit?: number) => unknown[];
   searchAgentHistory?: (query: string, limit?: number) => unknown[];
   getExternalTools?: () => Promise<AgentExternalToolSet>;
-  getCodexClient?: () => { isConnected: boolean; run: typeof import("./codex-client").runCodexTask } | null;
+  getCodexClient?: () => {
+    isConnected: boolean;
+    startTask: typeof import("./codex-client").startCodexTask;
+    waitForTask: typeof import("./codex-client").waitForCodexTask;
+    cancelTask: typeof import("./codex-client").cancelCodexTask;
+  } | null;
   allowAutoApprove: boolean;
   requestClarification: (
     request: AgentQuestionRequest,
@@ -751,51 +756,75 @@ async function buildTools(
 
   const codexClient = getCodexClient?.();
   if (codexClient?.isConnected) {
-    log("INFO", "Registering codex tool in agent toolset");
+    log("INFO", "Registering codex + codexResult tools in agent toolset");
+
     baseTools["codex"] = tool({
       description:
-        "Execute a coding task using OpenAI Codex. Codex can read, write, and edit code in a repository. " +
-        "Use for code generation, refactoring, bug fixes, and code review. " +
-        "Returns the Codex agent's response and a threadId for follow-up turns.",
+        "Start a coding task using OpenAI Codex. Codex can read, write, and edit code in a repository. " +
+        "Returns a taskId and threadId immediately. Tell the user the task is running — " +
+        "do NOT call codexResult automatically. Wait for the user to ask for the result.",
       inputSchema: z.object({
         prompt: z.string().describe("The coding task or question for Codex"),
-        threadId: z.string().optional().describe("Thread ID from a previous codex call to continue the conversation"),
+        threadId: z.string().optional().describe("Thread ID from a previous codex task to continue the conversation"),
         workingDirectory: z.string().optional().describe("Working directory for code operations"),
       }),
-      execute: async ({ prompt, threadId, workingDirectory }, { abortSignal }) => {
-        const progressItems: string[] = [];
-        const result = await codexClient.run(prompt, {
-          threadId,
-          workingDirectory,
-          signal: abortSignal,
-          onEvent: (event) => {
-            if (event.type === "item.completed" && event.item) {
-              const item = event.item;
-              if (item.type === "command_execution") {
-                progressItems.push(`Ran: ${String(item.command)} (exit ${String(item.exit_code)})`);
-              } else if (item.type === "file_change" && Array.isArray(item.changes)) {
-                const changes = (item.changes as Array<{ kind: string; path: string }>)
-                  .map((c) => `${c.kind} ${c.path}`)
-                  .join(", ");
-                progressItems.push(`Files: ${changes}`);
-              } else if (item.type === "reasoning" && typeof item.text === "string") {
-                progressItems.push(`Thinking: ${item.text.slice(0, 200)}`);
-              }
-            }
-          },
-        });
+      execute: async ({ prompt, threadId, workingDirectory }) => {
+        const { taskId, threadId: newThreadId } = await codexClient.startTask(prompt, { threadId, workingDirectory });
+        return {
+          taskId,
+          threadId: newThreadId,
+          status: "running" as const,
+          hint: "Task started. Tell the user Codex is working on it. Do NOT call codexResult now — wait for the user to ask.",
+        };
+      },
+    });
+
+    baseTools["codexResult"] = tool({
+      description:
+        "Check the result of a Codex task. Only call this when the user asks about the status. " +
+        "Returns current status and progress. If still running, let the user know.",
+      inputSchema: z.object({
+        taskId: z.string().describe("The taskId returned by the codex tool"),
+      }),
+      execute: async ({ taskId }, { abortSignal }) => {
+        // Brief wait (5s) — gives fast tasks a chance to finish before returning
+        const status = await codexClient.waitForTask(taskId, 5_000, abortSignal);
+
+        if (status.status === "completed" && status.result) {
+          return {
+            status: "completed" as const,
+            threadId: status.result.threadId,
+            response: status.result.result,
+            progress: status.progress,
+            hint: "Task complete. Use the threadId in a new codex call for follow-up turns.",
+          };
+        }
+
+        if (status.status === "failed") {
+          return {
+            status: "failed" as const,
+            error: status.error,
+            progress: status.progress,
+          };
+        }
+
+        if (status.status === "not_found") {
+          return {
+            status: "not_found" as const,
+            error: "No task found with that taskId. Start a new task with the codex tool.",
+          };
+        }
 
         return {
-          threadId: result.threadId,
-          response: result.result,
-          progress: progressItems,
-          hint: "Use the threadId to continue this Codex conversation in a follow-up call.",
+          status: "running" as const,
+          progress: status.progress,
+          hint: "Task is still running. Call codexResult again with the same taskId to continue waiting.",
         };
       },
     });
   }
 
-  return { tools: baseTools, externalTools, hasCodexTool: !!codexClient?.isConnected };
+  return { tools: baseTools, externalTools };
 }
 
 function safeJson(value: unknown): string {
@@ -1042,7 +1071,7 @@ async function runAgentWithMessages(
   let streamError: string | null = null;
 
   try {
-    const { tools, hasCodexTool } = await buildTools(
+    const { tools } = await buildTools(
       exa,
       getTranscriptContext,
       requestClarification,
@@ -1072,7 +1101,7 @@ async function runAgentWithMessages(
       system: systemPrompt,
       messages: inputMessages,
       maxRetries: STREAM_MAX_RETRIES,
-      timeout: { stepMs: hasCodexTool ? 600_000 : STEP_TIMEOUT_MS, chunkMs: CHUNK_TIMEOUT_MS },
+      timeout: { stepMs: STEP_TIMEOUT_MS, chunkMs: CHUNK_TIMEOUT_MS },
       stopWhen: stepCountIs(20),
       abortSignal,
       tools,

@@ -175,13 +175,15 @@ MCP integrations (Notion, Linear, and others):
 - If callMcpTool returns an error about invalid or missing arguments, do not retry. Instead, use askQuestion to ask the user for the specific values needed.`;
 
 const CODEX_TOOL_INSTRUCTION = `
-Codex (coding agent — direct tool, NOT an MCP tool):
-- You have a tool called "codex" available directly in your toolset (like searchWeb or askQuestion).
-  Do NOT use searchMcpTools or callMcpTool to invoke Codex. Call the "codex" tool directly.
-- Use it when the user asks you to write, edit, or review code in a repository.
-  Pass a clear coding task as the prompt parameter. Use the returned threadId for follow-up turns.
+Codex (coding agent — direct tools, NOT MCP tools):
+- You have two tools: "codex" (start a task) and "codexResult" (check result).
+  Do NOT use searchMcpTools or callMcpTool for Codex. Call these tools directly.
+- Workflow: call codex with a prompt → get back taskId + threadId → tell the user the task is running.
+  Do NOT automatically call codexResult. Stop and let the user know Codex is working on it.
+  When the user asks for the status or result later, call codexResult with the taskId.
+- Use codex when the user asks you to write, edit, or review code in a repository.
 - Codex runs locally via the codex CLI. It can read, write, and edit files in the working directory.
-- For multi-step coding workflows, pass the threadId from the previous call to maintain context.`;
+- For follow-up coding tasks, pass the threadId from the previous codex call to maintain context.`;
 
 export function getCodexInstructions(): string {
   return CODEX_TOOL_INSTRUCTION;

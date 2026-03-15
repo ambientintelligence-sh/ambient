@@ -17,7 +17,7 @@ import type { EnsureSession, SessionRef } from "./ipc/types";
 import { createIntegrationManager } from "./integrations";
 import { SecureCredentialStore } from "./integrations/secure-credential-store";
 import type { IntegrationManager } from "./integrations/types";
-import { connectCodex, isCodexConnected, runCodexTask } from "@core/agents/codex-client";
+import { connectCodex, isCodexConnected, startCodexTask, waitForCodexTask, cancelCodexTask } from "@core/agents/codex-client";
 
 function getCodexClient() {
   if (!isCodexConnected()) {
@@ -29,7 +29,7 @@ function getCodexClient() {
     }
     log("INFO", "Codex auto-connected on first agent launch");
   }
-  return { isConnected: true as const, run: runCodexTask };
+  return { isConnected: true as const, startTask: startCodexTask, waitForTask: waitForCodexTask, cancelTask: cancelCodexTask };
 }
 
 const sessionRef: SessionRef = { current: null };

@@ -41,7 +41,12 @@ type AgentManagerDeps = {
   searchTranscriptHistory?: (query: string, limit?: number) => unknown[];
   searchAgentHistory?: (query: string, limit?: number) => unknown[];
   getExternalTools?: () => Promise<AgentExternalToolSet>;
-  getCodexClient?: () => { isConnected: boolean; run: typeof import("./codex-client").runCodexTask } | null;
+  getCodexClient?: () => {
+    isConnected: boolean;
+    startTask: typeof import("./codex-client").startCodexTask;
+    waitForTask: typeof import("./codex-client").waitForCodexTask;
+    cancelTask: typeof import("./codex-client").cancelCodexTask;
+  } | null;
   allowAutoApprove: boolean;
   db?: AppDatabase;
 };
