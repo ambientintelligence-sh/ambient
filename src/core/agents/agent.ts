@@ -45,12 +45,7 @@ export type AgentDeps = {
   searchTranscriptHistory?: (query: string, limit?: number) => unknown[];
   searchAgentHistory?: (query: string, limit?: number) => unknown[];
   getExternalTools?: () => Promise<AgentExternalToolSet>;
-  getCodexClient?: () => {
-    isConnected: boolean;
-    startTask: typeof import("./codex-client").startCodexTask;
-    waitForTask: typeof import("./codex-client").waitForCodexTask;
-    cancelTask: typeof import("./codex-client").cancelCodexTask;
-  } | null;
+  getCodexClient?: () => import("./codex-client").CodexClient | null;
   allowAutoApprove: boolean;
   requestClarification: (
     request: AgentQuestionRequest,
@@ -768,8 +763,12 @@ async function buildTools(
         threadId: z.string().optional().describe("Thread ID from a previous codex task to continue the conversation"),
         workingDirectory: z.string().optional().describe("Working directory for code operations"),
       }),
-      execute: async ({ prompt, threadId, workingDirectory }) => {
+      execute: async ({ prompt, threadId, workingDirectory }, { abortSignal }) => {
         const { taskId, threadId: newThreadId } = await codexClient.startTask(prompt, { threadId, workingDirectory });
+        // Forward agent cancellation to the background codex task
+        if (abortSignal) {
+          abortSignal.addEventListener("abort", () => codexClient.cancelTask(taskId), { once: true });
+        }
         return {
           taskId,
           threadId: newThreadId,

@@ -192,12 +192,7 @@ function dedupeInsightHistory(texts: readonly string[]): string[] {
 
 export type SessionExternalDeps = {
   getExternalTools?: () => Promise<AgentExternalToolSet>;
-  getCodexClient?: () => {
-    isConnected: boolean;
-    startTask: typeof import("./agents/codex-client").startCodexTask;
-    waitForTask: typeof import("./agents/codex-client").waitForCodexTask;
-    cancelTask: typeof import("./agents/codex-client").cancelCodexTask;
-  } | null;
+  getCodexClient?: () => import("./agents/codex-client").CodexClient | null;
   dataDir?: string;
 };
 

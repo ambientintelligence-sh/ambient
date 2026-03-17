@@ -164,8 +164,13 @@ export async function startCodexTask(
 
   runningTasks.set(taskId, task);
 
-  // Wait for threadId (arrives early), then return
-  const threadId = await threadIdReady;
+  // Wait for threadId (arrives early) with a 30s safety timeout
+  const threadId = await Promise.race([
+    threadIdReady,
+    new Promise<string>((_, reject) =>
+      setTimeout(() => reject(new Error("Codex thread start timed out after 30s")), 30_000),
+    ),
+  ]);
   return { taskId, threadId };
 }
 
@@ -224,3 +229,11 @@ export function cancelCodexTask(taskId: string): boolean {
   task.abort.abort();
   return true;
 }
+
+/** Shared type for the codex client passed through the dep chain. */
+export type CodexClient = {
+  isConnected: boolean;
+  startTask: typeof startCodexTask;
+  waitForTask: typeof waitForCodexTask;
+  cancelTask: typeof cancelCodexTask;
+};

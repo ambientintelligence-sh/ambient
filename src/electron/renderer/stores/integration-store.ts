@@ -37,9 +37,6 @@ type IntegrationActions = {
   removeCustomServer: (id: string) => Promise<{ ok: boolean; error?: string; notice?: string }>;
   connectCustomServer: (id: string) => Promise<{ ok: boolean; error?: string; notice?: string }>;
   disconnectCustomServer: (id: string) => Promise<{ ok: boolean; error?: string; notice?: string }>;
-  refreshCodexStatus: () => Promise<void>;
-  connectCodex: () => Promise<{ notice?: string }>;
-  disconnectCodex: () => Promise<{ notice?: string }>;
   saveApiKey: (envVar: string, value: string) => Promise<{ ok: boolean; error?: string }>;
   deleteApiKey: (envVar: string) => Promise<{ ok: boolean; error?: string }>;
   refreshProjects: () => Promise<ProjectMeta[]>;
@@ -199,35 +196,6 @@ export const useIntegrationStore = create<IntegrationState & IntegrationActions>
           const { refreshCustomMcpServers, refreshMcpToolsInfo } = get();
           await Promise.all([refreshCustomMcpServers(), refreshMcpToolsInfo()]);
           set({ mcpBusy: false });
-        }
-      },
-
-      refreshCodexStatus: async () => {
-        const status = await window.electronAPI.getCodexStatus();
-        set({ codexConnected: status.connected });
-      },
-
-      connectCodex: async () => {
-        set({ mcpBusy: true });
-        try {
-          const result = await window.electronAPI.connectCodex();
-          const notice = result.ok
-            ? "Codex connected."
-            : `Codex connection failed: ${result.error ?? "Unknown error"}`;
-          return { notice };
-        } finally {
-          const status = await window.electronAPI.getCodexStatus();
-          set({ codexConnected: status.connected, mcpBusy: false });
-        }
-      },
-
-      disconnectCodex: async () => {
-        set({ mcpBusy: true });
-        try {
-          await window.electronAPI.disconnectCodex();
-          return { notice: "Codex disconnected." };
-        } finally {
-          set({ codexConnected: false, mcpBusy: false });
         }
       },
 

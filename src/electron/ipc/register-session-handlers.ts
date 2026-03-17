@@ -12,12 +12,7 @@ import type { AgentExternalToolSet } from "@core/agents/external-tools";
 
 type SessionHandlerDeps = IpcDeps & {
   getExternalTools?: () => Promise<AgentExternalToolSet>;
-  getCodexClient?: () => {
-    isConnected: boolean;
-    startTask: typeof import("@core/agents/codex-client").startCodexTask;
-    waitForTask: typeof import("@core/agents/codex-client").waitForCodexTask;
-    cancelTask: typeof import("@core/agents/codex-client").cancelCodexTask;
-  } | null;
+  getCodexClient?: () => import("@core/agents/codex-client").CodexClient | null;
   dataDir?: string;
 };
 

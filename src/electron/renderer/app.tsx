@@ -448,7 +448,6 @@ export function App() {
     return result;
   };
 
-
   const handleSaveApiKey = async (envVar: string, value: string) => {
     const result = await ig().saveApiKey(envVar, value);
     if (result.ok && onboardingPhaseRef.current === "settings") {
