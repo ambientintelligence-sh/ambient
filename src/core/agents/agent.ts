@@ -45,7 +45,7 @@ export type AgentDeps = {
   searchTranscriptHistory?: (query: string, limit?: number) => unknown[];
   searchAgentHistory?: (query: string, limit?: number) => unknown[];
   getExternalTools?: () => Promise<AgentExternalToolSet>;
-  getCodexClient?: () => import("./codex-client").CodexClient | null;
+  getCodexClient?: import("./codex-client").GetCodexClient;
   allowAutoApprove: boolean;
   requestClarification: (
     request: AgentQuestionRequest,
@@ -749,8 +749,10 @@ async function buildTools(
     },
   });
 
+  let codexRegistered = false;
   const codexClient = getCodexClient?.();
   if (codexClient?.isConnected) {
+    codexRegistered = true;
     log("INFO", "Registering codex + codexResult tools in agent toolset");
 
     baseTools["codex"] = tool({
@@ -823,7 +825,7 @@ async function buildTools(
     });
   }
 
-  return { tools: baseTools, externalTools };
+  return { tools: baseTools, externalTools, codexRegistered };
 }
 
 function safeJson(value: unknown): string {
@@ -1070,7 +1072,7 @@ async function runAgentWithMessages(
   let streamError: string | null = null;
 
   try {
-    const { tools } = await buildTools(
+    const { tools, codexRegistered } = await buildTools(
       exa,
       getTranscriptContext,
       requestClarification,
@@ -1089,7 +1091,7 @@ async function runAgentWithMessages(
       projectInstructions,
       agentsMd,
       responseLength,
-      !!getCodexClient,
+      codexRegistered,
     );
 
     // Track consecutive tool errors to circuit-break runaway retries

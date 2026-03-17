@@ -18,18 +18,18 @@ import { createIntegrationManager } from "./integrations";
 import { SecureCredentialStore } from "./integrations/secure-credential-store";
 import type { IntegrationManager } from "./integrations/types";
 import { connectCodex, isCodexConnected, startCodexTask, waitForCodexTask, cancelCodexTask } from "@core/agents/codex-client";
+import type { CodexClient } from "@core/agents/codex-client";
 
-function getCodexClient() {
+function getCodexClient(): CodexClient | null {
   if (!isCodexConnected()) {
     const result = connectCodex();
-    if (!result.ok) {
-      const errorMsg = "error" in result ? result.error : "Unknown error";
-      log("WARN", `Codex auto-connect failed: ${errorMsg}`);
+    if (result.ok === false) {
+      log("WARN", `Codex auto-connect failed: ${result.error}`);
       return null;
     }
     log("INFO", "Codex auto-connected on first agent launch");
   }
-  return { isConnected: true as const, startTask: startCodexTask, waitForTask: waitForCodexTask, cancelTask: cancelCodexTask };
+  return { isConnected: true, startTask: startCodexTask, waitForTask: waitForCodexTask, cancelTask: cancelCodexTask };
 }
 
 const sessionRef: SessionRef = { current: null };

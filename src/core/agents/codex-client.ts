@@ -36,6 +36,8 @@ export type CodexRunningTask = {
   /** Resolves when the task completes or errors. */
   promise: Promise<void>;
   abort: AbortController;
+  /** Timestamp when the task completed (for eviction). */
+  completedAt: number | null;
 };
 
 let codexInstance: Codex | null = null;
@@ -45,6 +47,17 @@ const threadCache = new Map<string, any>();
 
 /** Running/completed tasks keyed by taskId. */
 const runningTasks = new Map<string, CodexRunningTask>();
+
+const TASK_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function evictStaleTasks() {
+  const now = Date.now();
+  for (const [id, task] of runningTasks) {
+    if (task.completedAt && now - task.completedAt > TASK_TTL_MS) {
+      runningTasks.delete(id);
+    }
+  }
+}
 
 export function connectCodex(options?: CodexClientOptions): { ok: true } | { ok: false; error: string } {
   try {
@@ -107,6 +120,7 @@ export async function startCodexTask(
     error: null,
     promise: Promise.resolve(),
     abort,
+    completedAt: null,
   };
 
   const codex = codexInstance;
@@ -154,9 +168,11 @@ export async function startCodexTask(
 
       task.result = { threadId, result: finalResponse, items };
       task.done = true;
+      task.completedAt = Date.now();
     } catch (error) {
       task.error = error instanceof Error ? error.message : String(error);
       task.done = true;
+      task.completedAt = Date.now();
       // Unblock threadId wait if we errored before getting one
       resolveThreadId(task.threadId || taskId);
     }
@@ -188,6 +204,8 @@ export async function waitForCodexTask(
   result?: CodexTaskResult;
   error?: string;
 }> {
+  evictStaleTasks();
+
   const task = runningTasks.get(taskId);
   if (!task) {
     return { status: "not_found", progress: [] };
@@ -200,14 +218,23 @@ export async function waitForCodexTask(
   }
 
   // Wait for completion or timeout, whichever comes first
-  await Promise.race([
-    task.promise,
-    new Promise<void>((resolve) => setTimeout(resolve, waitMs)),
-    ...(abortSignal ? [new Promise<void>((_, reject) => {
-      if (abortSignal.aborted) { reject(new Error("Cancelled")); return; }
-      abortSignal.addEventListener("abort", () => reject(new Error("Cancelled")), { once: true });
-    })] : []),
-  ]).catch(() => {
+  const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+
+  const abortPromise = abortSignal
+    ? new Promise<void>((_, reject) => {
+        if (abortSignal.aborted) { reject(new Error("Cancelled")); return; }
+        const onAbort = () => reject(new Error("Cancelled"));
+        abortSignal.addEventListener("abort", onAbort, { once: true });
+        // Clean up listener when race settles
+        void Promise.race([task.promise, timeoutPromise]).finally(() => {
+          abortSignal.removeEventListener("abort", onAbort);
+        });
+      })
+    : null;
+
+  await Promise.race(
+    [task.promise, timeoutPromise, abortPromise].filter(Boolean),
+  ).catch(() => {
     // Timeout or abort — return current status below
   });
 
@@ -237,3 +264,5 @@ export type CodexClient = {
   waitForTask: typeof waitForCodexTask;
   cancelTask: typeof cancelCodexTask;
 };
+
+export type GetCodexClient = () => CodexClient | null;

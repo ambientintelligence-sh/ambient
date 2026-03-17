@@ -12,7 +12,7 @@ import type { AgentExternalToolSet } from "@core/agents/external-tools";
 
 type SessionHandlerDeps = IpcDeps & {
   getExternalTools?: () => Promise<AgentExternalToolSet>;
-  getCodexClient?: () => import("@core/agents/codex-client").CodexClient | null;
+  getCodexClient?: import("@core/agents/codex-client").GetCodexClient;
   dataDir?: string;
 };
 

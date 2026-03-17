@@ -192,7 +192,7 @@ function dedupeInsightHistory(texts: readonly string[]): string[] {
 
 export type SessionExternalDeps = {
   getExternalTools?: () => Promise<AgentExternalToolSet>;
-  getCodexClient?: () => import("./agents/codex-client").CodexClient | null;
+  getCodexClient?: import("./agents/codex-client").GetCodexClient;
   dataDir?: string;
 };
 
