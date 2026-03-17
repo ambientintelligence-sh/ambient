@@ -60,7 +60,7 @@ export function AgentList({
           <button
             type="button"
             onClick={onNewAgent}
-            className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-background/80 hover:text-foreground"
+            className="cursor-pointer rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-background/80 hover:text-foreground"
             aria-label="New agent"
           >
             <PlusIcon className="size-3" />
@@ -77,7 +77,7 @@ export function AgentList({
               <button
                 type="button"
                 onClick={() => onSelectAgent(agent.id)}
-                className={`w-full text-left rounded-md border px-2.5 py-1.5 transition-colors ${
+                className={`w-full cursor-pointer text-left rounded-md border px-2.5 py-1.5 transition-colors ${
                   selectedAgentId === agent.id
                     ? "border-primary/30 bg-primary/7 shadow-sm"
                     : "border-transparent hover:border-border/60 hover:bg-background/60"

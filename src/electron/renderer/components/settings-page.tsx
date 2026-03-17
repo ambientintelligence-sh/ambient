@@ -136,7 +136,7 @@ const SEGMENTED_GROUP_CLASS =
   "inline-flex flex-wrap items-center justify-end gap-1 rounded-sm border border-border/70 bg-muted/35 p-1 max-w-[28rem]";
 
 function segmentedButtonClass(selected: boolean): string {
-  return `h-7 px-2.5 text-xs inline-flex items-center gap-1.5 rounded-[6px] border transition-colors ${
+  return `h-7 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 rounded-[6px] border transition-colors ${
     selected
       ? "border-border/85 bg-background text-foreground shadow-sm"
       : "border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground"
@@ -420,7 +420,7 @@ function ApiKeyRow({
           />
           <button
             type="button"
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer text-muted-foreground hover:text-foreground"
             onClick={() => setVisible(!visible)}
             tabIndex={-1}
           >
@@ -790,7 +790,7 @@ export function SettingsPage({
                     <button
                       key={option.value}
                       type="button"
-                      className={`h-8 px-2.5 text-xs inline-flex items-center gap-1.5 transition-colors ${
+                      className={`h-8 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 transition-colors ${
                         config.fontSize === option.value
                           ? "bg-primary text-primary-foreground"
                           : "bg-background text-muted-foreground hover:text-foreground"
@@ -812,7 +812,7 @@ export function SettingsPage({
                     <button
                       key={option.value}
                       type="button"
-                      className={`h-8 px-2.5 text-xs inline-flex items-center gap-1.5 transition-colors ${
+                      className={`h-8 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 transition-colors ${
                         config.fontFamily === option.value
                           ? "bg-primary text-primary-foreground"
                           : "bg-background text-muted-foreground hover:text-foreground"
@@ -850,7 +850,7 @@ export function SettingsPage({
                       <button
                         key={option.value}
                         type="button"
-                        className={`h-8 px-2.5 text-xs inline-flex items-center gap-1.5 transition-colors ${
+                        className={`h-8 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 transition-colors ${
                           config.responseLength === option.value
                             ? "bg-primary text-primary-foreground"
                             : "bg-background text-muted-foreground hover:text-foreground"

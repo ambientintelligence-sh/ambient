@@ -109,7 +109,7 @@ export function ToolbarHeader({
   const translationEnabled = (uiState?.translationEnabled ?? false) && canTranslate;
   const currentDirection = uiState?.direction ?? "auto";
   const micEnabled = uiState?.micEnabled ?? false;
-  const logoUrl = new URL("../../../../assets/ambient-eclipse.svg", import.meta.url).href;
+  const logoUrl = new URL("../../../../assets/ambient-eclipse-filled.svg", import.meta.url).href;
 
   const translateValue = translationEnabled
     ? encodeTranslateValue(currentDirection, targetLang)

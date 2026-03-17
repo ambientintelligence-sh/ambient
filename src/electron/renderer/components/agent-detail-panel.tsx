@@ -1402,7 +1402,7 @@ export function AgentDetailPanel({
               <button
                 type="button"
                 onClick={() => onRelaunch(agent)}
-                className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="cursor-pointer rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 aria-label="Relaunch agent"
               >
                 <RotateCcwIcon className="size-3.5" />
@@ -1412,7 +1412,7 @@ export function AgentDetailPanel({
               <button
                 type="button"
                 onClick={() => onArchive(agent)}
-                className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
+                className="cursor-pointer rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
                 aria-label="Archive agent"
               >
                 <ArchiveIcon className="size-3.5" />
@@ -1421,7 +1421,7 @@ export function AgentDetailPanel({
             <button
               type="button"
               onClick={onClose}
-              className="ml-1 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="ml-1 cursor-pointer rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               aria-label="Close panel"
             >
               <XIcon className="size-3.5" />

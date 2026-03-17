@@ -40,7 +40,7 @@ function TabsTrigger({
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "inline-flex items-center justify-center gap-1.5 rounded-[6px] border border-transparent px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors select-none",
+        "inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-[6px] border border-transparent px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors select-none",
         "hover:bg-background/70 hover:text-foreground",
         "data-[state=active]:border-border/85 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
         "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50",

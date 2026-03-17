@@ -4,9 +4,60 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ambient</title>
+    <style>
+      body {
+        margin: 0;
+      }
+
+      #root {
+        min-height: 100vh;
+      }
+
+      .boot-splash {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0a0a0a;
+        color: #e8e4dc;
+        font-family: "Inter Variable", "Inter", system-ui, sans-serif;
+      }
+
+      .boot-splash__inner {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: clamp(0.5rem, 1vw, 1rem);
+      }
+
+      .boot-splash__logo {
+        height: clamp(4rem, 12vw, 8rem);
+        width: auto;
+        display: block;
+        user-select: none;
+        -webkit-user-drag: none;
+      }
+
+      .boot-splash__wordmark {
+        margin: 0;
+        color: #e8e4dc;
+        font-family: "Lora Variable", "Lora", Georgia, serif;
+        font-size: clamp(4rem, 12vw, 8rem);
+        font-weight: 400;
+        line-height: 0.9;
+        letter-spacing: -0.02em;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-splash" aria-hidden="true">
+        <div class="boot-splash__inner">
+          <img class="boot-splash__logo" src="/assets/ambient-eclipse.svg" alt="" draggable="false" />
+          <h1 class="boot-splash__wordmark">Ambient</h1>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/electron/renderer/main.tsx"></script>
   </body>
 </html>

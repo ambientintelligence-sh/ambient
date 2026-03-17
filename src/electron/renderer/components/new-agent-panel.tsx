@@ -23,7 +23,7 @@ export function NewAgentPanel({ onLaunch, onClose }: NewAgentPanelProps) {
           <button
             type="button"
             onClick={onClose}
-            className="ml-1 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="ml-1 cursor-pointer rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             aria-label="Close panel"
           >
             <XIcon className="size-3.5" />

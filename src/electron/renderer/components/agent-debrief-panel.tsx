@@ -201,7 +201,7 @@ function DebriefContent({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    className="text-2xs text-muted-foreground hover:text-foreground transition-colors"
+                    className="cursor-pointer text-2xs text-muted-foreground hover:text-foreground transition-colors"
                     onClick={() => setSelected(new Set())}
                   >
                     Deselect all
@@ -214,7 +214,7 @@ function DebriefContent({
               ) : remainingSteps > 0 ? (
                 <button
                   type="button"
-                  className="text-2xs text-muted-foreground hover:text-foreground transition-colors"
+                  className="cursor-pointer text-2xs text-muted-foreground hover:text-foreground transition-colors"
                   onClick={() =>
                     setSelected(new Set(summary.nextSteps.map((_, i) => i).filter((i) => !accepted.has(i))))
                   }
@@ -261,7 +261,7 @@ export function AgentDebriefPanel({
           <button
             type="button"
             onClick={onGenerate}
-            className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className="cursor-pointer rounded-sm p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             aria-label="Regenerate debrief"
           >
             <RefreshCwIcon className="size-3" />
@@ -283,7 +283,7 @@ export function AgentDebriefPanel({
             <button
               type="button"
               onClick={onGenerate}
-              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+              className="cursor-pointer text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
             >
               Retry
             </button>
