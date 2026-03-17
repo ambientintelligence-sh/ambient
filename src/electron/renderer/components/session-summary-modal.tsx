@@ -416,17 +416,6 @@ export function SessionSummaryPanel({ state, existingTaskTexts, onClose, onAccep
     setAccepted(matched);
   }, [state, existingTaskTexts]);
 
-  useEffect(() => {
-    setTaskIntentById((prev) => {
-      const next: Record<string, string> = {};
-      for (const id of selected) {
-        const current = prev[id];
-        if (current && current.trim()) next[id] = current;
-      }
-      return next;
-    });
-  }, [selected]);
-
   const summary = state.kind === "ready" ? state.summary : null;
 
   const allTaskCandidates = (() => {

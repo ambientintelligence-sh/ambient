@@ -177,10 +177,6 @@ function EditableTaskItem({
   }, [editing]);
 
   useEffect(() => {
-    setDetailsOpen(false);
-  }, [task.id]);
-
-  useEffect(() => {
     const el = detailsRef.current;
     if (!el || detailsOpen) {
       setDetailsClamped(false);
