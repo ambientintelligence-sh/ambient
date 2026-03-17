@@ -335,7 +335,7 @@ function RailModeButton({
         "h-7 cursor-pointer rounded-sm text-xs transition-colors",
         active
           ? "bg-background text-foreground"
-          : "text-muted-foreground hover:text-foreground hover:bg-background/70",
+          : "border-transparent text-muted-foreground hover:text-foreground hover:bg-background/70",
       ].join(" ")}
     >
       {label}
@@ -447,7 +447,7 @@ export function RightSidebar({
   return (
     <div className="w-full h-full shrink-0 border-l border-border flex flex-col min-h-0 bg-sidebar">
       <div className="px-2 py-2 shrink-0 border-b border-border/70">
-        <div className="grid grid-cols-2 gap-1 rounded-md bg-muted/50 p-1">
+        <div className="grid grid-cols-2 gap-1 rounded-md bg-foreground/[0.045] p-1 dark:bg-muted/50">
           <RailModeButton
             active={mode === "agents"}
             onClick={() => setMode("agents")}

@@ -80,7 +80,7 @@ function RailModeButton({
         "h-7 rounded-sm text-xs transition-colors cursor-pointer",
         active
           ? "bg-background text-foreground"
-          : "text-muted-foreground hover:text-foreground hover:bg-background/70",
+          : "border-transparent text-muted-foreground hover:text-foreground hover:bg-background/70",
       ].join(" ")}
     >
       {label}
@@ -263,7 +263,7 @@ export function LeftSidebar({
       <Separator />
 
       <div className="px-2 py-2 shrink-0">
-        <div className="grid grid-cols-2 gap-1 rounded-md bg-muted/50 p-1">
+        <div className="grid grid-cols-2 gap-1 rounded-md bg-foreground/[0.045] p-1 dark:bg-muted/50">
           <RailModeButton
             label={`Sessions (${sessions.length})`}
             active={mode === "sessions"}

@@ -239,40 +239,46 @@ export function OnboardingOverlay({
       )}
 
       <div
-        key={step}
-        className="absolute z-10 w-[260px] overflow-hidden rounded-lg border border-border bg-popover shadow-xl"
+        className="absolute z-10 w-[260px]"
         style={{
           ...getTooltipStyle(),
-          animation: "onboarding-tooltip-in 300ms cubic-bezier(0.16, 1, 0.3, 1)",
           pointerEvents: "auto",
         }}
       >
-        {/* Subtle top accent */}
-        <div className="h-px bg-gradient-to-r from-transparent via-foreground/15 to-transparent" />
+        <div
+          key={step}
+          className="overflow-hidden rounded-lg border border-border bg-popover shadow-xl"
+          style={{
+            animation: "onboarding-tooltip-in 300ms cubic-bezier(0.16, 1, 0.3, 1)",
+          }}
+        >
+          {/* Subtle top accent */}
+          <div className="h-px bg-gradient-to-r from-transparent via-foreground/15 to-transparent" />
 
-        <div className="px-4 pb-4 pt-3.5">
-          <h3 className="mb-0.5 text-[15px] font-semibold tracking-tight text-popover-foreground">
-            {currentStep.title}
-          </h3>
-          <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
-            {currentStep.body}
-          </p>
+          <div className="px-4 pb-4 pt-3.5">
+            <h3 className="mb-0.5 text-[15px] font-semibold tracking-tight text-popover-foreground">
+              {currentStep.title}
+            </h3>
+            <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
+              {currentStep.body}
+            </p>
 
-          <div className="flex items-center justify-between">
-            <ProgressBar current={step} total={TOTAL_STEPS} />
+            <div className="flex items-center justify-between">
+              <ProgressBar current={step} total={TOTAL_STEPS} />
 
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                className="px-2 py-1 text-xs text-muted-foreground/50 transition-colors hover:text-foreground cursor-pointer"
-                onClick={onDismiss}
-              >
-                Skip
-              </button>
-              <Button size="sm" variant="ghost" onClick={advanceTourStep}>
-                Next
-                <ArrowRightIcon className="ml-1 size-3" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  className="px-2 py-1 text-xs text-muted-foreground/50 transition-colors hover:text-foreground cursor-pointer"
+                  onClick={onDismiss}
+                >
+                  Skip
+                </button>
+                <Button size="sm" variant="ghost" onClick={advanceTourStep}>
+                  Next
+                  <ArrowRightIcon className="ml-1 size-3" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>

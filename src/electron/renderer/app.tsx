@@ -1257,7 +1257,11 @@ export function App() {
         onEndSession={sessionActive ? handleStop : undefined}
         settingsOpen={settingsOpen}
         onToggleSettings={() => {
-          if (onboardingPhase === "settings") return;
+          if (settingsOpen && onboardingPhase === "settings") {
+            ui().setOnboardingPhase("done");
+            ui().setSettingsOpen(false);
+            return;
+          }
           ui().toggleSettings();
         }}
       />
