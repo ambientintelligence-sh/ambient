@@ -48,14 +48,15 @@ const threadCache = new Map<string, any>();
 /** Running/completed tasks keyed by taskId. */
 const runningTasks = new Map<string, CodexRunningTask>();
 
-const TASK_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const MAX_COMPLETED_TASKS = 10;
 
 function evictStaleTasks() {
-  const now = Date.now();
-  for (const [id, task] of runningTasks) {
-    if (task.completedAt && now - task.completedAt > TASK_TTL_MS) {
-      runningTasks.delete(id);
-    }
+  const completed = [...runningTasks.entries()]
+    .filter(([, t]) => t.completedAt !== null)
+    .sort((a, b) => b[1].completedAt! - a[1].completedAt!);
+
+  for (const [id] of completed.slice(MAX_COMPLETED_TASKS)) {
+    runningTasks.delete(id);
   }
 }
 
