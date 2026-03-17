@@ -141,6 +141,9 @@ export type ElectronAPI = {
   disconnectCustomMcpServer: (id: string) => Promise<{ ok: boolean; error?: string }>;
   getCustomMcpServersStatus: () => Promise<CustomMcpStatus[]>;
   getMcpToolsInfo: () => Promise<McpProviderToolSummary[]>;
+  connectCodex: () => Promise<{ ok: boolean; error?: string }>;
+  disconnectCodex: () => Promise<{ ok: boolean }>;
+  getCodexStatus: () => Promise<{ connected: boolean }>;
 
   getApiKeyDefinitions: () => Promise<ApiKeyDefinition[]>;
   getApiKeyStatus: () => Promise<Record<string, boolean>>;
@@ -269,6 +272,9 @@ const api: ElectronAPI = {
   disconnectCustomMcpServer: (id) => ipcRenderer.invoke("disconnect-custom-mcp-server", id),
   getCustomMcpServersStatus: () => ipcRenderer.invoke("get-custom-mcp-servers-status"),
   getMcpToolsInfo: () => ipcRenderer.invoke("get-mcp-tools-info"),
+  connectCodex: () => ipcRenderer.invoke("connect-codex"),
+  disconnectCodex: () => ipcRenderer.invoke("disconnect-codex"),
+  getCodexStatus: () => ipcRenderer.invoke("get-codex-status"),
 
   getApiKeyDefinitions: () => ipcRenderer.invoke("get-api-key-definitions"),
   getApiKeyStatus: () => ipcRenderer.invoke("get-api-key-status"),

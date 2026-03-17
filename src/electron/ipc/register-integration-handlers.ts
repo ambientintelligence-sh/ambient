@@ -1,5 +1,6 @@
 import { ipcMain } from "electron";
 import type { IntegrationManager } from "../integrations/types";
+import { connectCodex, disconnectCodex, isCodexConnected } from "@core/agents/codex-client";
 
 export function registerIntegrationHandlers(integrations: IntegrationManager) {
   ipcMain.handle("get-mcp-integrations-status", async () => {
@@ -36,5 +37,18 @@ export function registerIntegrationHandlers(integrations: IntegrationManager) {
 
   ipcMain.handle("get-mcp-tools-info", async () => {
     return integrations.getMcpToolsInfo();
+  });
+
+  ipcMain.handle("connect-codex", async () => {
+    return connectCodex();
+  });
+
+  ipcMain.handle("disconnect-codex", async () => {
+    disconnectCodex();
+    return { ok: true };
+  });
+
+  ipcMain.handle("get-codex-status", async () => {
+    return { connected: isCodexConnected() };
   });
 }

@@ -49,12 +49,13 @@ import {
   WrenchIcon,
   XIcon,
 } from "lucide-react";
-import { resolveProviderIcon } from "./integration-icons";
+import { resolveProviderIcon, OpenAIIcon } from "./integration-icons";
 import {
   SiOpenrouter,
   SiGooglegemini,
   SiElevenlabs,
 } from "@icons-pack/react-simple-icons";
+import { useIntegrationStore } from "../stores/integration-store";
 
 type SettingsPageProps = {
   config: AppConfig;
@@ -616,6 +617,7 @@ export function SettingsPage({
   initialTab,
   onShowTutorial,
 }: SettingsPageProps) {
+  const codexConnected = useIntegrationStore((s) => s.codexConnected);
   const [systemPrefersDark, setSystemPrefersDark] = useState(() =>
     typeof globalThis.matchMedia === "function"
       ? globalThis.matchMedia("(prefers-color-scheme: dark)").matches
@@ -878,6 +880,16 @@ export function SettingsPage({
                   <Switch
                     checked={config.autoDelegate}
                     onCheckedChange={(v) => set("autoDelegate", v)}
+                  />
+                }
+              />
+              <SettingRow
+                label="Codex"
+                description="Enable OpenAI Codex coding agent. Requires the codex CLI installed and logged in (codex login)."
+                control={
+                  <Switch
+                    checked={config.codexEnabled}
+                    onCheckedChange={(v) => set("codexEnabled", v)}
                   />
                 }
               />
@@ -1330,6 +1342,29 @@ export function SettingsPage({
                 );
               })}
             </div>
+
+            {/* ── Codex ── */}
+            {config.codexEnabled && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                <div className="border border-border/70 bg-background px-3 py-3 rounded-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <OpenAIIcon className="w-4 h-4 shrink-0" />
+                      <p className="text-xs font-semibold text-foreground">
+                        Codex
+                      </p>
+                    </div>
+                    <span className="text-2xs text-muted-foreground">
+                      {codexConnected ? "connected" : "ready"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-2xs text-muted-foreground leading-relaxed">
+                    Local coding agent. Auto-connects when an agent needs it.
+                    Requires <code>codex</code> CLI installed and logged in (<code>codex login</code>).
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* ── Custom MCP Servers ── */}
             <div className="mt-4">

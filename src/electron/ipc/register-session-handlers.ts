@@ -12,10 +12,11 @@ import type { AgentExternalToolSet } from "@core/agents/external-tools";
 
 type SessionHandlerDeps = IpcDeps & {
   getExternalTools?: () => Promise<AgentExternalToolSet>;
+  getCodexClient?: import("@core/agents/codex-client").GetCodexClient;
   dataDir?: string;
 };
 
-export function registerSessionHandlers({ db, getWindow, sessionRef, getExternalTools, dataDir }: SessionHandlerDeps) {
+export function registerSessionHandlers({ db, getWindow, sessionRef, getExternalTools, getCodexClient, dataDir }: SessionHandlerDeps) {
   ipcMain.handle("get-languages", () => {
     return SUPPORTED_LANGUAGES;
   });
@@ -49,7 +50,7 @@ export function registerSessionHandlers({ db, getWindow, sessionRef, getExternal
         db.createSession(sessionId, sourceLang, targetLang, undefined, projectId);
       }
 
-      const activeSession = new Session(config, db, sessionId, { getExternalTools, dataDir });
+      const activeSession = new Session(config, db, sessionId, { getExternalTools, getCodexClient, dataDir });
       sessionRef.current = activeSession;
       wireSessionEvents(sessionRef, activeSession, getWindow, db);
 
@@ -87,7 +88,7 @@ export function registerSessionHandlers({ db, getWindow, sessionRef, getExternal
         return { ok: false, error: toReadableError(error) };
       }
 
-      const activeSession = new Session(config, db, sessionId, { getExternalTools, dataDir });
+      const activeSession = new Session(config, db, sessionId, { getExternalTools, getCodexClient, dataDir });
       sessionRef.current = activeSession;
       wireSessionEvents(sessionRef, activeSession, getWindow, db);
 
