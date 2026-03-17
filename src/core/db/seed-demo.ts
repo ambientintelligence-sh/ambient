@@ -12,6 +12,7 @@ export const MEETING_SESSION_ID = "demo-meeting-session";
 export const TRIP_SESSION_ID = "demo-trip-session";
 export const BRAIN_SESSION_ID = "demo-brain-session";
 export const STUDY_SESSION_ID = "demo-study-session";
+export const PM_SESSION_ID = "demo-pm-session";
 
 // Deterministic task IDs for MEETING session (agents reference these)
 const MEETING_TASK_IDS = {
@@ -31,6 +32,31 @@ const TRIP_TASK_IDS = {
   flights: "trip-task-flights",
   ryokan: "trip-task-ryokan",
   visa: "trip-task-visa",
+} as const;
+
+// Deterministic task IDs for BRAIN session (agents reference these)
+const BRAIN_TASK_IDS = {
+  prototype: "brain-task-prototype",
+  interviews: "brain-task-interviews",
+  domains: "brain-task-domains",
+  spoonacular: "brain-task-spoonacular",
+} as const;
+
+// Deterministic task IDs for STUDY session (agent references this)
+const STUDY_TASK_IDS = {
+  comparison: "study-task-comparison",
+  practice: "study-task-practice",
+  bft: "study-task-bft",
+  uncommitted: "study-task-uncommitted",
+} as const;
+
+// Deterministic task IDs for PM session (agents reference these)
+const PM_TASK_IDS = {
+  linearIssues: "pm-task-linear-issues",
+  preferencesApi: "pm-task-preferences-api",
+  batchingEngine: "pm-task-batching-engine",
+  preferencesUi: "pm-task-preferences-ui",
+  digestDesign: "pm-task-digest-design",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -525,35 +551,131 @@ const MEETING_INSIGHTS: InsightSeed[] = [
 // TASKS (with deterministic IDs for MEETING session)
 // ===========================================================================
 const TRIP_TASKS: TaskSeed[] = [
-  { id: TRIP_TASK_IDS.flights, text: "Book round-trip flights SFO -> NRT for April 5-15", details: "Compare ANA ($870), JAL ($890), Zipair ($640), United ($780). Group prefers ANA or JAL for comfort but open to budget if savings are significant. Need to book before prices increase.", size: "large", source: "ai" },
-  { id: TRIP_TASK_IDS.ryokan, text: "Reserve ryokan in Hakone for 2 nights", details: "Budget under $250/night. Must have private onsen. Look at Hakone Ginyu, Yama no Chaya, Senkyoro. Book early for April availability.", size: "large", source: "ai" },
+  { id: TRIP_TASK_IDS.flights, text: "Book round-trip flights SFO -> NRT for April 5-15", details: "Compare ANA ($870), JAL ($890), Zipair ($640), United ($780). Group prefers ANA or JAL for comfort but open to budget if savings are significant. Need to book before prices increase.", size: "large", source: "ai", completed: true },
+  { id: TRIP_TASK_IDS.ryokan, text: "Reserve ryokan in Hakone for 2 nights", details: "Budget under $250/night. Must have private onsen. Look at Hakone Ginyu, Yama no Chaya, Senkyoro. Book early for April availability.", size: "large", source: "ai", completed: true },
   { id: TRIP_TASK_IDS.itinerary, text: "Create shared Google Doc for trip itinerary", details: "Danny volunteered. Include: daily schedule, hotel bookings, restaurant reservations, transportation (JR Pass), budget tracker, packing list.", size: "small", source: "ai", completed: true },
-  { id: TRIP_TASK_IDS.visa, text: "Check advance parole requirements for H-1B re-entry", details: "Priya needs to verify with immigration lawyer whether she needs advance parole to re-enter US on H-1B after Japan trip. Time-sensitive — may affect whether she can join.", size: "large", source: "ai" },
+  { id: TRIP_TASK_IDS.visa, text: "Check advance parole requirements for H-1B re-entry", details: "Priya needs to verify with immigration lawyer whether she needs advance parole to re-enter US on H-1B after Japan trip. Time-sensitive — may affect whether she can join.", size: "large", source: "ai", completed: true },
 ];
 
 const BRAIN_TASKS: TaskSeed[] = [
-  { text: "Build photo recognition prototype with Claude API", details: "Quick prototype to test ingredient detection accuracy from fridge photos. Use Claude's vision capabilities. Measure: how many ingredients correctly identified, false positives, missed items.", size: "large", source: "ai" },
-  { text: "Interview 10 target users about meal planning pain points", details: "5 parents, 5 young professionals. Key questions: how they decide what to cook, biggest frustrations, would multi-profile dietary matching change their behavior, willingness to pay.", size: "large", source: "ai" },
-  { text: "Check domain availability for supper.app and mise.app", details: "Also check mise.co, getsupper.com, supperapp.com as fallbacks. Register if available and under $50.", size: "small", source: "ai" },
-  { text: "Test Spoonacular API compound dietary filtering", details: "Specifically test: can it handle 'dairy-free AND pescatarian AND low-carb' simultaneously? If not, need to build matching layer on top. Document API limitations.", size: "large", source: "ai" },
+  { id: BRAIN_TASK_IDS.prototype, text: "Build photo recognition prototype with Claude API", details: "Quick prototype to test ingredient detection accuracy from fridge photos. Use Claude's vision capabilities. Measure: how many ingredients correctly identified, false positives, missed items.", size: "large", source: "ai", completed: true },
+  { id: BRAIN_TASK_IDS.interviews, text: "Interview 10 target users about meal planning pain points", details: "5 parents, 5 young professionals. Key questions: how they decide what to cook, biggest frustrations, would multi-profile dietary matching change their behavior, willingness to pay.", size: "large", source: "ai" },
+  { id: BRAIN_TASK_IDS.domains, text: "Check domain availability for supper.app and mise.app", details: "Also check mise.co, getsupper.com, supperapp.com as fallbacks. Register if available and under $50.", size: "small", source: "ai", completed: true },
+  { id: BRAIN_TASK_IDS.spoonacular, text: "Test Spoonacular API compound dietary filtering", details: "Specifically test: can it handle 'dairy-free AND pescatarian AND low-carb' simultaneously? If not, need to build matching layer on top. Document API limitations.", size: "large", source: "ai", completed: true },
 ];
 
 const STUDY_TASKS: TaskSeed[] = [
-  { text: "Create Raft vs Paxos vs ZAB comparison table", details: "Cover: leader model, fault tolerance, message complexity, liveness guarantees, real-world implementations (etcd, ZooKeeper, Chubby). Focus on what the exam would ask.", size: "large", source: "ai" },
-  { text: "Do practice problems from week 8 problem set", details: "Focus on vector clock exercises and consensus scenarios. Alex will send the problem set. Work through independently then compare answers.", size: "large", source: "manual" },
-  { text: "Review Byzantine fault tolerance section", details: "Professor hinted this will be on the exam. Cover: BFT vs CFT, 3f+1 requirement proof intuition, PBFT basics, why most practical systems avoid BFT.", size: "large", source: "ai" },
-  { text: "Solve the uncommitted log entry problem from homework", details: "The scenario where a leader crashes after replicating to minority. Need to trace through what happens during re-election and how the new leader handles the uncommitted entry.", size: "small", source: "manual" },
+  { id: STUDY_TASK_IDS.comparison, text: "Create Raft vs Paxos vs ZAB comparison table", details: "Cover: leader model, fault tolerance, message complexity, liveness guarantees, real-world implementations (etcd, ZooKeeper, Chubby). Focus on what the exam would ask.", size: "large", source: "ai", completed: true },
+  { id: STUDY_TASK_IDS.practice, text: "Do practice problems from week 8 problem set", details: "Focus on vector clock exercises and consensus scenarios. Alex will send the problem set. Work through independently then compare answers.", size: "large", source: "manual" },
+  { id: STUDY_TASK_IDS.bft, text: "Review Byzantine fault tolerance section", details: "Professor hinted this will be on the exam. Cover: BFT vs CFT, 3f+1 requirement proof intuition, PBFT basics, why most practical systems avoid BFT.", size: "large", source: "ai", completed: true },
+  { id: STUDY_TASK_IDS.uncommitted, text: "Solve the uncommitted log entry problem from homework", details: "The scenario where a leader crashes after replicating to minority. Need to trace through what happens during re-election and how the new leader handles the uncommitted entry.", size: "small", source: "manual", completed: true },
 ];
 
 const MEETING_TASKS: TaskSeed[] = [
   { id: MEETING_TASK_IDS.oauth, text: "Roll out OAuth2 to 100% of users", details: "Remove feature flag, monitor error rates and login success metrics for 48 hours. Have rollback plan ready. Sarah owns this.", size: "large", source: "ai" },
   { id: MEETING_TASK_IDS.dashboardPerf, text: "Benchmark materialized views for the analytics dashboard", details: "Currently 8 seconds load time. Evaluate materialized views in Postgres with scheduled refresh vs Redis caching. Sarah taking this — target sub-2-second load.", size: "large", source: "ai", completed: true },
   { id: MEETING_TASK_IDS.stripeInvoicing, text: "Complete Stripe invoicing integration", details: "Blocked on legal sign-off for tax calculation. Once unblocked, swap in real tax rates and test with approved config. Jake estimates 2 days of work.", size: "large", source: "ai" },
-  { id: MEETING_TASK_IDS.migrationGuide, text: "Write API migration guide for auth changes", details: "Document breaking changes in auth flow for API consumers. Sarah to draft by Wednesday. Include: new endpoints, token format changes, migration steps.", size: "large", source: "ai" },
+  { id: MEETING_TASK_IDS.migrationGuide, text: "Write API migration guide for auth changes", details: "Document breaking changes in auth flow for API consumers. Sarah to draft by Wednesday. Include: new endpoints, token format changes, migration steps.", size: "large", source: "ai", completed: true },
   { id: MEETING_TASK_IDS.datadog, text: "Set up Datadog initial integration", details: "Jake's stretch goal. Install agent, configure APM tracing, set up basic dashboards for API latency and error rates. Timebox to 1 day.", size: "large", source: "ai" },
   { id: MEETING_TASK_IDS.webhookAlerting, text: "Add alerting on webhook processor queue depth", details: "Post-incident action item from Tuesday's outage. Need alerts when queue depth exceeds threshold. Prevents silent failures.", size: "small", source: "ai" },
   { id: MEETING_TASK_IDS.postmortem, text: "Write postmortem for Friday's webhook processor outage", details: "45 minutes of downtime, lost batch of Stripe events. Root cause: migration locked webhooks table. Include timeline, impact, remediation steps, and prevention measures.", size: "large", source: "ai", completed: true },
   { id: MEETING_TASK_IDS.datadogPricing, text: "Compare Datadog pricing tiers", details: "Team discussed Datadog vs Grafana Cloud. Need detailed pricing comparison for 6 hosts with APM tracing. Factor in engineering time savings.", size: "large", source: "ai", completed: true },
+];
+
+// ===========================================================================
+// PM SESSION — "Smart Notifications" Feature Spec
+// Speakers: Lena (PM, mic), Dev (eng lead, system), Kai (designer, system)
+// ===========================================================================
+const PM_BLOCKS: BlockSeed[] = [
+  // Beat 1: Problem statement — notification fatigue
+  { sourceText: "Alright so I wanted to get everyone together because the notification problem is getting serious. We had a 15% drop in engagement last month and I think notifications are a huge part of it.", audioSource: "mic", newTopic: true },
+  { sourceText: "Yeah I saw that Mixpanel report. We're sending an average of 47 notifications per user per day. That's insane. No wonder people are turning them off entirely.", audioSource: "system" },
+  { sourceText: "It's worse than that actually. I pulled the support ticket data yesterday — notification-related complaints are up 3x since January. People are literally saying 'your app won't stop buzzing me.'", audioSource: "mic" },
+  { sourceText: "I had a user interview last week and the woman told me she uninstalled the app specifically because of notification overload. She loved the product otherwise.", audioSource: "system" },
+  { sourceText: "That's the scariest part. We're losing users who actually like us because we're annoying them. It's a self-inflicted wound.", audioSource: "mic" },
+  { sourceText: "So what's the plan? Are we talking about just letting users adjust their notification settings or is this something bigger?", audioSource: "system" },
+  { sourceText: "I think it needs to be bigger. A simple preferences page isn't going to solve the root problem. We need to be smarter about what we send and when.", audioSource: "mic" },
+
+  // Beat 2: Solution — AI-powered batching + priority scoring
+  { sourceText: "Okay so I've been thinking about this for a while and I want to pitch an approach. What if we build an intelligent notification system that batches, prioritizes, and learns from user behavior?", audioSource: "mic", newTopic: true },
+  { sourceText: "What do you mean by batching exactly?", audioSource: "system" },
+  { sourceText: "Instead of sending 47 individual pings throughout the day, we group related notifications and deliver them in 2-3 digests. Like a morning summary, a midday update, and an evening recap. Unless something is truly urgent.", audioSource: "mic" },
+  { sourceText: "Slack does something like that with their notification batching. And honestly I think Gmail's priority inbox is the gold standard here — it learns what's important to you over time.", audioSource: "system" },
+  { sourceText: "Exactly. So the second piece is priority scoring. Every notification gets a score based on relevance signals — who sent it, what type it is, has the user engaged with similar ones before, time of day sensitivity.", audioSource: "mic" },
+  { sourceText: "Are we talking ML here or more like a rules engine?", audioSource: "system" },
+  { sourceText: "Phase one would be a weighted scoring model — basically a rules engine with tunable weights. We can ship that in two weeks. Phase two would be a proper ML model trained on user interaction data but that's a Q3 thing.", audioSource: "mic" },
+  { sourceText: "I like the phased approach. The rules engine gets us 80% of the value without the ML complexity.", audioSource: "system" },
+  { sourceText: "And then the third piece — digest emails. For users who don't want to check the app constantly, we send a daily email digest summarizing everything they missed. This is actually a retention play too because it brings people back.", audioSource: "mic" },
+  { sourceText: "Oh that's smart. Notion does daily digests and their re-engagement numbers from email are really strong. I've seen case studies on that.", audioSource: "system" },
+
+  // Beat 3: Technical scoping — preferences API, batching cron, priority model
+  { sourceText: "Dev, from a technical standpoint, how are you thinking about this?", audioSource: "mic", newTopic: true },
+  { sourceText: "So the preferences API is the foundation. We need endpoints for users to configure: which channels they want notifications on, quiet hours, batching frequency, and per-category toggles. Standard REST, maybe 6-8 endpoints. I'd estimate 3-4 days for that.", audioSource: "system" },
+  { sourceText: "What about the data model? Are we bolting this onto the existing user settings or is it its own thing?", audioSource: "mic" },
+  { sourceText: "Separate table. NotificationPreferences with a user_id foreign key. Columns for quiet_hours_start, quiet_hours_end, batch_frequency, digest_enabled, digest_time, and then a JSONB column for per-category overrides.", audioSource: "system" },
+  { sourceText: "Makes sense. And the batching service?", audioSource: "mic" },
+  { sourceText: "That's the meaty part. I'd build it as a cron service that runs every 15 minutes. It pulls pending notifications from a queue, groups them by user and category, scores them, and then either sends immediately if urgent or holds for the next batch window.", audioSource: "system" },
+  { sourceText: "What queue are you thinking? We're already on Redis right?", audioSource: "mic" },
+  { sourceText: "Yeah Redis sorted sets would work perfectly here. Score is the priority, we just ZRANGEBYSCORE to pull the top items. For the cron itself I'd use BullMQ — we already have it for the email pipeline.", audioSource: "system" },
+  { sourceText: "How long for the batching service?", audioSource: "mic" },
+  { sourceText: "I'd say a week if I'm being honest. The batching logic itself isn't that bad but the priority scoring rules, the quiet hours handling, timezone stuff — all the edge cases add up.", audioSource: "system" },
+  { sourceText: "So preferences API is 3-4 days, batching engine is a week. That's the backend covered. What about the scoring model Dev? How does the priority scoring actually work?", audioSource: "mic" },
+  { sourceText: "I'm thinking five signals: sender importance based on the user's interaction history, notification category weight which we can configure per-user, recency decay so older notifications score lower, time-of-day sensitivity, and engagement history — has the user tapped similar notifications before.", audioSource: "system" },
+  { sourceText: "That's solid. Should we also factor in the user's current activity? Like if they're actively using the app don't batch, but if they haven't opened it in 6 hours then definitely batch.", audioSource: "system" },
+  { sourceText: "Oh that's a good one Kai. Yeah we can use last_active_at from the sessions table. If they're active, immediate delivery. If they're away, batch it. That's actually a really elegant signal.", audioSource: "system" },
+
+  // Beat 4: Design — preferences page, digest template, quiet hours
+  { sourceText: "Kai, talk to me about the design side. What does the user-facing part of this look like?", audioSource: "mic", newTopic: true },
+  { sourceText: "So I'm envisioning three things. First, a notification preferences page — this is where users configure everything. I want it to feel powerful but not overwhelming. Think iOS notification settings but cleaner.", audioSource: "system" },
+  { sourceText: "Can you walk through the layout?", audioSource: "mic" },
+  { sourceText: "Yeah. Top section is quiet hours — a simple time range picker. 'Don't disturb me between 10 PM and 8 AM.' Below that, batch frequency — 'Send me updates: Immediately, Every hour, 3 times a day, Once daily.' And then below that, per-category toggles in a clean list. Messages, comments, mentions, task updates, team activity.", audioSource: "system" },
+  { sourceText: "I like that it's progressive disclosure. Most users will just set quiet hours and batch frequency and never touch the category toggles.", audioSource: "mic" },
+  { sourceText: "Exactly. And we should have sensible defaults so users get value without ever visiting this page.", audioSource: "system" },
+  { sourceText: "What about the digest email? That's a design artifact too right?", audioSource: "mic" },
+  { sourceText: "Big time. The digest email is basically a mini dashboard. I want it to have: a summary header with key stats, then sections grouped by category — 'You had 12 new comments, 3 mentions, and 2 task completions.' Each section is collapsible with the top 3 most important items shown by default.", audioSource: "system" },
+  { sourceText: "Should the email be plain text or HTML?", audioSource: "system" },
+  { sourceText: "HTML but minimal. Think Linear's emails — clean typography, good hierarchy, renders great on mobile. Nothing fancy with images or heavy styling. Fast to load, easy to scan.", audioSource: "system" },
+  { sourceText: "One thing — the digest should link back to the app. Every item in the digest should be tappable and deep-link to the exact notification in the app. That's the re-engagement mechanism.", audioSource: "mic" },
+  { sourceText: "Absolutely. And we should track which items in the digest get tapped. That feeds back into the priority scoring model — if users consistently click on comment notifications but ignore task updates, we learn from that.", audioSource: "system" },
+
+  // Beat 5: Sprint planning — stories, sizing, assignments
+  { sourceText: "Okay let's get tactical. Two-week sprint, what are we looking at?", audioSource: "mic", newTopic: true },
+  { sourceText: "I see four main stories. Story one: notification preferences API. Story two: notification batching engine. Story three: preferences UI page. Story four: digest email template and sending.", audioSource: "system" },
+  { sourceText: "Sizing wise?", audioSource: "mic" },
+  { sourceText: "Preferences API is a 5 — it's well-scoped REST endpoints with tests. Batching engine is an 8 — lots of edge cases with quiet hours, timezone handling, priority scoring. Preferences UI is a 5 if Kai has the designs done by Wednesday. Digest email is a 5 — template plus the SendGrid integration.", audioSource: "system" },
+  { sourceText: "That's 23 points total. With two engineers that's tight for two weeks but doable if we don't get pulled into other stuff.", audioSource: "mic" },
+  { sourceText: "I can have the designs done by Tuesday actually. I already started sketching the preferences page over the weekend.", audioSource: "system" },
+  { sourceText: "Nice. Dev, who's taking what?", audioSource: "mic" },
+  { sourceText: "I'll take the API and the batching engine since they're tightly coupled. My plan is API first three days, then batching engine for a week. The other engineer — probably Amir — can take the UI and digest email in parallel once Kai's designs land.", audioSource: "system" },
+  { sourceText: "We should create the Linear issues for all of this today so everyone can see the sprint board. Can we get those created?", audioSource: "mic" },
+  { sourceText: "Yeah I'll create them after this meeting. Or actually, can Ambient create them for us? Save me 20 minutes.", audioSource: "system" },
+  { sourceText: "Good call. Let's have Ambient create the four sprint stories in Linear with the sizing and assignments we just discussed.", audioSource: "mic" },
+  { sourceText: "Oh and one more thing — we should think about A/B testing this. We can't just flip the switch for everyone. I'd want to see the impact on engagement and retention before rolling out to 100%.", audioSource: "system" },
+  { sourceText: "Great point. Let's add that as a follow-up though, not sprint scope. If we try to boil the ocean we won't ship anything.", audioSource: "mic" },
+  { sourceText: "Agreed. Ship the feature, test with 10% of users, measure for a week, then decide.", audioSource: "system" },
+  { sourceText: "Also wondering about email deliverability. If we're sending digests to everyone we need to make sure our SendGrid sender reputation stays clean. Warm up the IP, authentication records, all that.", audioSource: "system" },
+  { sourceText: "Good flag. Dev can you add that to the digest email story as a subtask?", audioSource: "mic" },
+  { sourceText: "Will do.", audioSource: "system" },
+  { sourceText: "Perfect. I think we're aligned. Let me recap — we're building smart notifications with batching, priority scoring, preferences UI, and digest emails. Four stories, two engineers, two weeks. Dev and Amir splitting the work. Kai designs landing Tuesday. Let's ship this thing.", audioSource: "mic" },
+];
+
+const PM_INSIGHTS: InsightSeed[] = [
+  { text: "Notification fatigue driving 15% engagement drop and 3x support ticket increase — self-inflicted user attrition" },
+  { text: "Intelligent batching strategy: group 47 daily notifications into 2-3 digest windows unless truly urgent" },
+  { text: "Priority scoring model uses 5 signals: sender importance, category weight, recency decay, time sensitivity, engagement history" },
+  { text: "User activity state (last_active_at) determines delivery mode — immediate when active, batched when away" },
+  { text: "Quiet hours with timezone-aware delivery — simple UX with high retention impact" },
+  { text: "Digest emails as re-engagement mechanism — Notion case study shows strong re-engagement from daily email summaries" },
+  { text: "Phased ML approach: rules engine in sprint 1 (80% value), proper ML model in Q3" },
+  { text: "Sprint scoped to 23 story points across 4 stories — tight but doable with 2 engineers in 2 weeks" },
+];
+
+const PM_TASKS: TaskSeed[] = [
+  { id: PM_TASK_IDS.linearIssues, text: "Create Linear issues for notifications sprint", details: "Create 4 stories in Linear: preferences API (5pt), batching engine (8pt), preferences UI (5pt), digest email (5pt). Assign Dev and Amir respectively.", size: "small", source: "ai", completed: true, completedAt: Date.now() - 20 * 60_000 },
+  { id: PM_TASK_IDS.preferencesApi, text: "Implement notification preferences API", details: "REST API with 6-8 endpoints for notification settings. Separate NotificationPreferences table with quiet hours, batch frequency, digest config, and JSONB per-category overrides. Dev owns this, estimated 3-4 days.", size: "large", source: "ai", completed: true, completedAt: Date.now() - 15 * 60_000 },
+  { id: PM_TASK_IDS.batchingEngine, text: "Build notification batching service", details: "Cron service on BullMQ that runs every 15 minutes. Pulls from Redis sorted set queue, groups by user/category, applies priority scoring, handles quiet hours with timezone support. Dev owns this, estimated 1 week.", size: "large", source: "ai", completed: true, completedAt: Date.now() - 10 * 60_000 },
+  { id: PM_TASK_IDS.preferencesUi, text: "Build notification preferences UI", details: "Preferences page with quiet hours picker, batch frequency selector, and per-category toggles. Kai's designs landing Tuesday. Amir taking this, 5 story points.", size: "large", source: "ai" },
+  { id: PM_TASK_IDS.digestDesign, text: "Design digest email template", details: "HTML email template with summary header, category-grouped sections, collapsible items with deep links. Linear-style clean typography. Kai designing, Amir implementing with SendGrid.", size: "large", source: "ai", completed: true, completedAt: Date.now() - 8 * 60_000 },
 ];
 
 // ===========================================================================
@@ -666,6 +788,93 @@ function buildAgents(baseTs: number): AgentSeed[] {
       createdAt: stepTs(60),
       completedAt: stepTs(78),
     },
+
+    // Agent 5: Compare flights (TRIP session)
+    {
+      id: "demo-agent-flights",
+      kind: "analysis",
+      taskId: TRIP_TASK_IDS.flights,
+      sessionId: TRIP_SESSION_ID,
+      task: "Compare round-trip flights SFO to Tokyo for April 5-15",
+      taskContext: "Group of 4 flying SFO to Tokyo. Discussed ANA ($870), JAL ($890), Zipair ($640 budget), United ($780). Prefer comfort but open to budget. ANA sale ends Tuesday.",
+      status: "completed",
+      result: "## Flight Comparison: SFO → Tokyo (April 5-15)\n\n| Airline | Price | Route | Duration | Bags | Seat Pitch | Meals |\n|---------|-------|-------|----------|------|-----------|-------|\n| **ANA** | **$870** | SFO→HND direct | 11h 15m | 2 checked | 34\" | Full kaiseki-style |\n| JAL | $890 | SFO→NRT direct | 11h 30m | 2 checked | 33\" | Full Japanese/Western |\n| United | $780 | SFO→NRT direct | 11h 20m | 1 checked | 31\" | Basic economy meal |\n| Zipair | $640 | SFO→NRT direct | 11h 30m | None included | 31\" | Buy onboard |\n\n### Recommendation: ANA at $870\n\n1. **Best value for comfort** — 2 free checked bags saves ~$120 vs United/Zipair, narrowing the real price gap\n2. **Haneda airport** — 30 min to Shinjuku vs 90 min from Narita (saves $30+ in transit per person)\n3. **Sale ends Tuesday** — current $870 is historically low; these routes averaged $1,100 last year\n4. **Service quality** — ANA consistently ranks top 5 globally for economy class\n\n### True Cost Comparison (including bags + transit)\n| | ANA | JAL | United | Zipair |\n|---|---|---|---|---|\n| Ticket | $870 | $890 | $780 | $640 |\n| Bags | $0 | $0 | +$70 | +$120 |\n| Airport→Hotel | ~$8 | ~$30 | ~$30 | ~$30 |\n| **Real total** | **$878** | **$920** | **$880** | **$790** |\n\nZipair saves ~$88/person but with no meals, tight seats, and Narita transit hassle for 4 people — not worth it for an 11-hour flight.",
+      steps: [
+        { id: "fl-step-1", kind: "user", content: "Compare round-trip flights SFO to Tokyo for April 5-15", createdAt: stepTs(80) },
+        { id: "fl-step-2", kind: "thinking", content: "Need to compare ANA, JAL, United, and Zipair for the group's April dates. Should factor in total cost including bags and airport transit since Haneda vs Narita makes a real difference.", createdAt: stepTs(82) },
+        { id: "fl-step-3", kind: "tool-call", content: "", toolName: "searchWeb", toolInput: "ANA flight SFO to Haneda April 2026 round trip price economy", createdAt: stepTs(84) },
+        { id: "fl-step-4", kind: "tool-result", content: "ANA NH7 SFO→HND: $870 round trip (sale price, ends March 18). Direct flight, 11h 15m. 2 checked bags included. Economy seat pitch 34\".", createdAt: stepTs(86) },
+        { id: "fl-step-5", kind: "tool-call", content: "", toolName: "searchWeb", toolInput: "JAL United Zipair SFO Tokyo April 2026 economy comparison", createdAt: stepTs(88) },
+        { id: "fl-step-6", kind: "tool-result", content: "JAL JL1 SFO→NRT: $890, United UA837 SFO→NRT: $780 (1 bag), Zipair ZG22 SFO→NRT: $640 (no bags, no meals).", createdAt: stepTs(90) },
+        { id: "fl-step-7", kind: "text", content: "## Recommendation: ANA at $870\n\nBest value when you factor in bags, Haneda transit savings, and service quality. Sale ends Tuesday — book now.", createdAt: stepTs(94) },
+      ],
+      createdAt: stepTs(80),
+      completedAt: stepTs(96),
+    },
+
+    // Agent 6: Research ryokan options (TRIP session)
+    {
+      id: "demo-agent-ryokan",
+      kind: "analysis",
+      taskId: TRIP_TASK_IDS.ryokan,
+      sessionId: TRIP_SESSION_ID,
+      task: "Research and compare Hakone ryokans with private onsen",
+      taskContext: "Budget under $300/night. Must have private onsen. Group mentioned Hakone Ginyu. Two rooms, two nights for 4 people.",
+      status: "completed",
+      result: "## Hakone Ryokan Comparison\n\n| Ryokan | Price/night | Private Onsen | Kaiseki Dinner | Rating | Availability |\n|--------|-----------|--------------|----------------|--------|-------------|\n| **Hakone Ginyu** | **$280** | ✅ Balcony | ✅ Included | 4.7/5 | Apr 9-11 ✅ |\n| Yama no Chaya | $320 | ✅ In-room | ✅ Included | 4.8/5 | Apr 9-11 ✅ |\n| Senkyoro | $180 | ✅ Shared private | ✅ Included | 4.3/5 | Apr 9-11 ✅ |\n| Gora Kadan | $800 | ✅ Suite | ✅ Multi-course | 4.9/5 | ❌ Sold out |\n| Fukuzumiro | $150 | ❌ Shared only | ❌ Optional | 4.1/5 | Apr 9-11 ✅ |\n\n### Recommendation: Hakone Ginyu\n\n**Best balance of experience and value:**\n- Private open-air onsen on each room's balcony (the dream)\n- Multi-course kaiseki dinner + traditional breakfast included\n- 2 rooms × 2 nights = $1,120 total → **$280/person**\n- Mountain valley views, 15 min from Hakone-Yumoto station\n\nYama no Chaya is slightly nicer but $320/night pushes total to $320/person. Senkyoro is cheaper but the private onsen is shared (book a slot) rather than in-room.\n\n### Booking Notes\n- April is peak season — book THIS WEEK\n- Cancellation: free up to 7 days before\n- Check-in 3pm, check-out 10am\n- They arrange shuttle from Hakone-Yumoto station",
+      steps: [
+        { id: "ry-step-1", kind: "user", content: "Research and compare Hakone ryokans with private onsen", createdAt: stepTs(100) },
+        { id: "ry-step-2", kind: "tool-call", content: "", toolName: "searchWeb", toolInput: "Hakone ryokan private onsen April 2026 availability under $300", createdAt: stepTs(102) },
+        { id: "ry-step-3", kind: "tool-result", content: "Top results: Hakone Ginyu ($280/night, private balcony onsen), Yama no Chaya ($320), Senkyoro ($180, shared private), Gora Kadan ($800, sold out April).", createdAt: stepTs(104) },
+        { id: "ry-step-4", kind: "text", content: "## Recommendation: Hakone Ginyu at $280/night\nPrivate balcony onsen, kaiseki dinner included. $280/person for 2 nights. Book this week — April is peak.", createdAt: stepTs(108) },
+      ],
+      createdAt: stepTs(100),
+      completedAt: stepTs(110),
+    },
+
+    // Agent 7: Visa research (TRIP session)
+    {
+      id: "demo-agent-visa",
+      kind: "analysis",
+      taskId: TRIP_TASK_IDS.visa,
+      sessionId: TRIP_SESSION_ID,
+      task: "Research H-1B advance parole requirements for Japan travel",
+      taskContext: "Priya is on H-1B visa and needs to check if she can re-enter the US after Japan trip. May need advance parole document. Trip is April 5-15.",
+      status: "completed",
+      result: "## H-1B Re-entry Requirements for Japan Trip\n\n### Short Answer\nPriya does **NOT** need Advance Parole if she has a valid H-1B visa stamp in her passport. She needs Advance Parole only if her H-1B was approved via change of status (I-797) without leaving the US to get a visa stamp.\n\n### Key Requirements\n1. **Valid H-1B visa stamp** in passport (not expired) → can re-enter freely\n2. **Valid passport** with 6+ months validity from return date (Priya confirmed valid through 2027 ✅)\n3. **I-797 Approval Notice** — bring original as backup\n4. **Recent pay stubs** (2-3 months) — proves ongoing employment\n5. **Employer letter** — confirms active H-1B status and return to work\n\n### If Visa Stamp is Expired\nIf Priya's H-1B visa stamp has expired but her I-797 status is current:\n- She'll need to get a new H-1B visa stamp at a US consulate (NOT in Japan — no US consulate appointments available on short notice)\n- Alternative: Apply for Advance Parole if she has a pending I-485 (green card application)\n- **Timeline concern**: Advance Parole takes 3-6 months to process — likely too late for April trip\n\n### Action Items for Priya\n1. Check if H-1B visa stamp in passport is still valid (not the I-797 expiry — the actual visa stamp)\n2. If valid → no additional documents needed beyond passport + I-797\n3. If expired → consult immigration lawyer ASAP about options\n4. Either way: bring I-797, recent pay stubs, and employer letter as backup\n\n### Japan-Specific Notes\n- Japan grants 90-day visa-free entry for US passport holders (but Priya may be on Indian passport)\n- If Indian passport: Japan tourist visa required — apply at Japanese consulate 2+ weeks before trip\n- Japan immigration does NOT check US re-entry eligibility",
+      steps: [
+        { id: "visa-step-1", kind: "user", content: "Research H-1B advance parole requirements for Japan travel", createdAt: stepTs(112) },
+        { id: "visa-step-2", kind: "thinking", content: "Priya is on H-1B and worried about re-entry. I need to clarify the difference between advance parole and H-1B visa stamp — many people confuse these. Also need to check Japan entry requirements.", createdAt: stepTs(114) },
+        { id: "visa-step-3", kind: "tool-call", content: "", toolName: "searchWeb", toolInput: "H-1B visa holder travel abroad re-entry advance parole requirements 2026", createdAt: stepTs(116) },
+        { id: "visa-step-4", kind: "tool-result", content: "H-1B holders with valid visa stamp can re-enter freely. Advance Parole only needed if: (1) no valid visa stamp and (2) pending adjustment of status. Processing time: 3-6 months.", createdAt: stepTs(118) },
+        { id: "visa-step-5", kind: "tool-call", content: "", toolName: "searchWeb", toolInput: "Japan tourist visa requirements Indian passport H-1B holder", createdAt: stepTs(120) },
+        { id: "visa-step-6", kind: "tool-result", content: "Indian passport holders need a tourist visa for Japan. Apply at Japanese consulate, processing 5-7 business days. Required: passport, photo, itinerary, bank statement, employment letter.", createdAt: stepTs(122) },
+        { id: "visa-step-7", kind: "text", content: "## Key Finding\nPriya likely does NOT need Advance Parole — just a valid H-1B visa stamp. But she may need a Japan tourist visa if on an Indian passport. Both are solvable but time-sensitive.", createdAt: stepTs(126) },
+      ],
+      createdAt: stepTs(112),
+      completedAt: stepTs(128),
+    },
+
+    // Agent 8: API migration guide (MEETING session)
+    {
+      id: "demo-agent-migration",
+      kind: "analysis",
+      taskId: MEETING_TASK_IDS.migrationGuide,
+      sessionId: MEETING_SESSION_ID,
+      task: "Draft API migration guide for OAuth2 auth breaking changes",
+      taskContext: "Sarah shipped OAuth2 with Google, GitHub, and magic link auth. Moving from session-based to token-based auth. API consumers need migration guide by Wednesday.",
+      status: "completed",
+      result: "## API Migration Guide: Auth v1 → v2 (OAuth2)\n\n### Breaking Changes Summary\n\n| Change | v1 (Current) | v2 (New) | Migration Effort |\n|--------|-------------|----------|------------------|\n| Auth mechanism | Session cookies | Bearer tokens (JWT) | Medium |\n| Login endpoint | `POST /auth/login` | `POST /auth/token` | Low |\n| Token format | Opaque session ID | JWT with claims | Low |\n| Refresh | Automatic (cookie) | Explicit `POST /auth/refresh` | Medium |\n| Logout | `POST /auth/logout` | Token expiry + optional revoke | Low |\n\n### Step-by-Step Migration\n\n**1. Update Authentication Headers**\n```diff\n- Cookie: session_id=abc123\n+ Authorization: Bearer eyJhbG...\n```\n\n**2. Replace Login Flow**\n```diff\n- POST /auth/login { email, password }\n+ POST /auth/token { grant_type: \"password\", email, password }\n  Response: { access_token, refresh_token, expires_in: 3600 }\n```\n\n**3. Implement Token Refresh**\n```javascript\n// Before: cookies auto-refresh\n// After: explicit refresh before expiry\nPOST /auth/refresh { refresh_token: \"...\" }\n→ { access_token: \"new...\", expires_in: 3600 }\n```\n\n**4. Handle New Error Codes**\n- `401 Unauthorized` — token expired, refresh needed\n- `403 Forbidden` — valid token but insufficient scope\n- `429 Too Many Requests` — rate limit (new in v2)\n\n### Timeline\n- **Now → March 20**: v1 and v2 both active (feature flag)\n- **March 20 → April 3**: v1 deprecated, warning headers added\n- **April 3**: v1 endpoints removed\n\n### Known Edge Cases\n- Multi-tab token refresh: if two tabs refresh simultaneously, one will get a 401. Implement a token refresh mutex or use a shared service worker.\n- Mobile apps: store refresh token in secure storage, not localStorage.",
+      steps: [
+        { id: "mig-step-1", kind: "user", content: "Draft API migration guide for OAuth2 auth breaking changes", createdAt: stepTs(130) },
+        { id: "mig-step-2", kind: "thinking", content: "Need to document the migration from session-based auth to OAuth2 JWT tokens. Should cover: endpoint changes, header changes, refresh flow, error codes, timeline, and the known multi-tab edge case.", createdAt: stepTs(132) },
+        { id: "mig-step-3", kind: "tool-call", content: "", toolName: "searchTranscriptHistory", toolInput: "OAuth2 auth migration breaking changes token refresh", createdAt: stepTs(134) },
+        { id: "mig-step-4", kind: "tool-result", content: "Transcript excerpts:\n- \"Sarah shipped OAuth2 flow with Google, GitHub, and email magic link\"\n- \"Token refresh with multiple tabs open is a known edge case\"\n- \"We need the migration guide by Wednesday\"\n- \"Currently behind feature flag, ready for 100% rollout\"", createdAt: stepTs(136) },
+        { id: "mig-step-5", kind: "text", content: "## API Migration Guide: Auth v1 → v2 (OAuth2)\n\nComplete guide covering endpoint changes, token format, refresh flow, error codes, timeline, and the multi-tab edge case. Ready for review.", createdAt: stepTs(140) },
+      ],
+      createdAt: stepTs(130),
+      completedAt: stepTs(142),
+    },
   ];
 }
 
@@ -722,7 +931,7 @@ function buildMeetingFinalSummary(baseTs: number) {
 // ===========================================================================
 function buildMeetingAgentsSummary(baseTs: number) {
   return {
-    overallNarrative: "Three agents completed research and documentation tasks from the sprint review meeting. The materialized views research agent provided a clear recommendation with implementation steps, the postmortem agent drafted a comprehensive incident report, and the monitoring comparison agent delivered a detailed cost-benefit analysis that supports the team's decision to adopt Datadog. Together, these agents saved approximately 3-4 hours of manual research and writing time.",
+    overallNarrative: "Four agents completed research and documentation tasks from the sprint review meeting. The materialized views agent recommended Postgres mat views over Redis (8s → 50ms, zero new infra). The postmortem agent drafted a comprehensive incident report for the webhook outage. The monitoring agent delivered a cost-benefit analysis confirming Datadog as the right choice. The migration guide agent produced a complete API migration document for the OAuth2 transition. Together, these agents saved approximately 4-5 hours of manual work.",
     agentHighlights: [
       {
         agentId: "demo-agent-matviews",
@@ -742,21 +951,178 @@ function buildMeetingAgentsSummary(baseTs: number) {
         status: "completed" as const,
         keyFinding: "Datadog costs $408/mo vs Grafana's $128/mo, but the 4 hrs/week Grafana maintenance ($2,400/mo in eng time) makes Datadog the clear ROI winner for a 4-person team.",
       },
+      {
+        agentId: "demo-agent-migration",
+        task: "Draft API migration guide for OAuth2 auth changes",
+        status: "completed" as const,
+        keyFinding: "Complete migration guide covering session→JWT transition, new endpoints, token refresh flow, error codes, and a phased rollout timeline with v1 deprecation by April 3.",
+      },
     ],
     coverageGaps: [
       "No agent investigated the OAuth2 multi-tab token refresh edge case — this could use dedicated testing",
       "The Stripe invoicing blocker (legal approval) wasn't addressed since it requires human escalation",
     ],
     nextSteps: [
-      "Implement the materialized view based on Agent 1's recommendation — estimated 1 day of work",
+      "Implement the materialized view based on the research recommendation — estimated 1 day of work",
       "Share the postmortem draft with the team and schedule a 30-minute review meeting",
-      "Begin Datadog setup using the pricing tier recommended by Agent 3",
+      "Begin Datadog setup using the pricing tier recommended by the monitoring agent",
+      "Review and distribute the API migration guide to API consumers before Wednesday",
     ],
     generatedAt: baseTs + 85_000,
-    totalAgents: 3,
-    succeededAgents: 3,
+    totalAgents: 4,
+    succeededAgents: 4,
     failedAgents: 0,
-    totalDurationSecs: 180,
+    totalDurationSecs: 240,
+  };
+}
+
+// ===========================================================================
+// AGENTS FLEET SUMMARY (TRIP session)
+// ===========================================================================
+function buildTripAgentsSummary(baseTs: number) {
+  return {
+    overallNarrative: "Four agents tackled the key logistics for the Japan trip. The itinerary agent created a comprehensive day-by-day plan with a Notion doc. The flights agent compared all carrier options and confirmed ANA at $870 is the best value. The ryokan agent found Hakone Ginyu as the ideal pick with private onsen at $280/night. The visa agent clarified that Priya likely doesn't need Advance Parole but may need a Japan tourist visa. All critical booking decisions now have data backing them.",
+    agentHighlights: [
+      {
+        agentId: "demo-agent-itinerary",
+        task: "Create shared itinerary document",
+        status: "completed" as const,
+        keyFinding: "Complete day-by-day itinerary covering Tokyo (5 days), Hakone (2 days), Kyoto (3 days) with budget breakdown of ~$2,500/person all-in.",
+      },
+      {
+        agentId: "demo-agent-flights",
+        task: "Compare round-trip flights SFO to Tokyo",
+        status: "completed" as const,
+        keyFinding: "ANA at $870 is best value when factoring in bags and Haneda transit savings. True cost gap vs budget Zipair is only ~$88 for 11 hours of comfort.",
+      },
+      {
+        agentId: "demo-agent-ryokan",
+        task: "Research Hakone ryokans with private onsen",
+        status: "completed" as const,
+        keyFinding: "Hakone Ginyu: $280/night with private balcony onsen and kaiseki dinner. $280/person for 2 nights. April availability confirmed — book this week.",
+      },
+      {
+        agentId: "demo-agent-visa",
+        task: "Research H-1B visa requirements for Japan",
+        status: "completed" as const,
+        keyFinding: "Priya doesn't need Advance Parole if her H-1B visa stamp is valid. But she may need a Japan tourist visa on Indian passport — 5-7 business days processing.",
+      },
+    ],
+    coverageGaps: [
+      "No agent researched travel insurance options — important for international trip",
+      "Luggage forwarding between cities (Yamato Transport) wasn't investigated",
+    ],
+    nextSteps: [
+      "Book ANA flights immediately — sale ends Tuesday",
+      "Reserve Hakone Ginyu this week before April availability fills up",
+      "Priya: verify visa stamp status and apply for Japan tourist visa if needed",
+      "Book the Kyoto machiya on Airbnb for April 11-14",
+    ],
+    generatedAt: baseTs + 95_000,
+    totalAgents: 4,
+    succeededAgents: 4,
+    failedAgents: 0,
+    totalDurationSecs: 200,
+  };
+}
+
+// ===========================================================================
+// AGENTS FLEET SUMMARY (BRAIN session)
+// ===========================================================================
+function buildBrainAgentsSummary(baseTs: number) {
+  return {
+    overallNarrative: "Four agents explored the AI recipe app concept from multiple angles. The competitive analysis revealed a genuine market gap — no app combines photo-based ingredient detection with multi-profile dietary matching. The MVP spec validated the 6-week timeline but flagged Spoonacular's 2-diet-type API limit as a technical risk. The domain check found supper.app available at $14/yr. The interview guide provides a structured approach to validate demand with 10 target users. The team now has enough data to make a go/no-go decision.",
+    agentHighlights: [
+      {
+        agentId: "demo-agent-competitive",
+        task: "Research competitive landscape for AI recipe apps",
+        status: "completed" as const,
+        keyFinding: "No competitor offers photo-based ingredient detection + multi-profile dietary matching. SuperCook is manual, Yummly is single-profile, Mealime has no fridge awareness. This is a genuinely open opportunity.",
+      },
+      {
+        agentId: "demo-agent-mvp-spec",
+        task: "Draft MVP feature spec",
+        status: "completed" as const,
+        keyFinding: "6-week timeline is feasible. Key risk: Spoonacular API limits compound dietary filters to 2 types per query — need client-side post-filtering for complex households.",
+      },
+      {
+        agentId: "demo-agent-domains",
+        task: "Check domain availability",
+        status: "completed" as const,
+        keyFinding: "supper.app available at $14/yr. mise.app taken. Recommend registering supper.app + getsupper.com ($26/yr total). Social handles @supperapp available on Twitter and Instagram.",
+      },
+      {
+        agentId: "demo-agent-interview-guide",
+        task: "Create user interview guide",
+        status: "completed" as const,
+        keyFinding: "30-minute structured interview covering current behavior, pain points, concept validation, and willingness to pay. Screening criteria for 5 parents + 5 young professionals.",
+      },
+    ],
+    coverageGaps: [
+      "No agent investigated data privacy implications of storing fridge photos (GDPR, user trust)",
+      "Offline-first architecture for kitchen use (no connectivity) wasn't explored",
+    ],
+    nextSteps: [
+      "Register supper.app and getsupper.com before someone else grabs them",
+      "Start user interviews using the interview guide — aim for 10 interviews in 2 weeks",
+      "Build photo recognition prototype to validate ingredient detection accuracy",
+      "Test Spoonacular API compound filtering to confirm the workaround approach",
+    ],
+    generatedAt: baseTs + 85_000,
+    totalAgents: 4,
+    succeededAgents: 4,
+    failedAgents: 0,
+    totalDurationSecs: 220,
+  };
+}
+
+// ===========================================================================
+// AGENTS FLEET SUMMARY (STUDY session)
+// ===========================================================================
+function buildStudyAgentsSummary(baseTs: number) {
+  return {
+    overallNarrative: "Four agents produced comprehensive exam prep materials for distributed systems. The study guide provides a detailed Raft vs Paxos vs ZAB comparison with exam-style Q&A. The BFT review covers the 3f+1 proof intuition and PBFT protocol with practice problems. The uncommitted log entry trace walks through the exact scenario from the homework step by step. The vector clock solutions cover 4 key practice problems. Together, these materials cover all major exam topics identified during the study session.",
+    agentHighlights: [
+      {
+        agentId: "demo-agent-study-guide",
+        task: "Raft vs Paxos vs ZAB comparison",
+        status: "completed" as const,
+        keyFinding: "All three protocols require 2f+1 nodes. Raft wins on understandability (decomposed design), Paxos is more general (leaderless), ZAB optimizes for primary-ordered broadcasts. Key exam distinction: Raft guarantees no log gaps, Paxos allows them.",
+      },
+      {
+        agentId: "demo-agent-bft-review",
+        task: "Byzantine fault tolerance review",
+        status: "completed" as const,
+        keyFinding: "BFT needs 3f+1 nodes (vs 2f+1 for CFT) because faulty nodes can lie. PBFT has O(n²) message complexity — too expensive for most practical systems. 3 exam practice problems with solutions included.",
+      },
+      {
+        agentId: "demo-agent-uncommitted",
+        task: "Uncommitted log entry problem",
+        status: "completed" as const,
+        keyFinding: "Step-by-step trace: leader crashes after replicating to minority → entry is NOT committed → new leader may or may not have it → either outcome is safe because client never got confirmation.",
+      },
+      {
+        agentId: "demo-agent-practice",
+        task: "Vector clock practice problems",
+        status: "completed" as const,
+        keyFinding: "4 problems solved: causal ordering detection, conflicting write detection, Lamport vs vector clock limitations, and Raft behavior during network partitions.",
+      },
+    ],
+    coverageGaps: [
+      "Gossip protocols and consistent hashing were mentioned but not covered in depth",
+      "Linearizability vs sequential consistency distinction needs more work",
+    ],
+    nextSteps: [
+      "Review all 4 agent outputs before the exam — focus on the Q&A sections",
+      "Ask professor whether CRDTs are in scope for the exam",
+      "Do one more pass on the BFT practice problems without looking at solutions",
+      "Read the Dynamo paper's vector clock section for real-world context",
+    ],
+    generatedAt: baseTs + 75_000,
+    totalAgents: 4,
+    succeededAgents: 4,
+    failedAgents: 0,
+    totalDurationSecs: 190,
   };
 }
 
@@ -808,6 +1174,545 @@ function buildTripFinalSummary(baseTs: number) {
 }
 
 // ===========================================================================
+// FINAL SUMMARY (BRAIN session)
+// ===========================================================================
+function buildBrainFinalSummary(baseTs: number) {
+  return {
+    narrative: "The team brainstormed an AI-powered recipe app concept that identifies fridge contents from photos and suggests meals matching household dietary restrictions. The key differentiator is multi-profile support — one meal that works for lactose intolerant, vegetarian, keto, etc. simultaneously. Competitive analysis showed gaps in existing apps (SuperCook is manual, Whisk is just bookmarking, Yummly is bloated). The business model combines freemium consumer pricing ($5.99/mo) with grocery affiliate revenue and B2B licensing. MVP scope was scoped to 6 weeks: photo ingredient detection, 2-profile dietary restrictions, and recipe matching. Top name candidates are 'Mise' and 'Supper'. Go-to-market strategy focuses on food TikTok/Reels content and 50 food blogger partnerships.",
+    agreements: [
+      "MVP scope: photo ingredient detection + 2-profile dietary matching + recipe suggestions — ship in 6 weeks",
+      "Tech stack: multimodal LLM (Claude) for food recognition, Spoonacular API for recipes, USDA FoodData Central for nutrition",
+      "Pricing: free tier (5 lookups/week), premium $5.99/mo (unlimited), annual $49.99",
+      "Target market: dual-income households 25-40, parents overwhelmed by daily meal decisions",
+      "Go-to-market: food TikTok/Reels content, Product Hunt launch, 50 food blogger partnerships",
+    ],
+    missedItems: [
+      "No discussion of data privacy implications of storing fridge photos — important for user trust",
+      "Didn't address offline mode — what happens when user has no connectivity in the kitchen?",
+      "No accessibility considerations for users with visual impairments using the photo feature",
+    ],
+    unansweredQuestions: [
+      "How accurate is photo-based ingredient detection in practice? Need prototype data",
+      "What's the Spoonacular API rate limit and can it handle compound dietary filters?",
+      "Is 6 weeks realistic for the MVP given the LLM integration complexity?",
+    ],
+    agreementTodos: [
+      { text: "Build photo recognition prototype with Claude vision API", doer: "agent" as const },
+      { text: "Set up Spoonacular API sandbox and test compound dietary filtering", doer: "agent" as const },
+      { text: "Draft MVP feature spec with user stories and acceptance criteria", doer: "agent" as const },
+    ],
+    missedItemTodos: [
+      { text: "Research food photo privacy best practices and GDPR implications", doer: "agent" as const },
+      { text: "Evaluate offline-first architecture options for the mobile app", doer: "human" as const },
+    ],
+    unansweredQuestionTodos: [
+      { text: "Run 50 test photos through Claude vision API and measure accuracy", doer: "human" as const },
+      { text: "Check Spoonacular API compound filter support and document limitations", doer: "agent" as const },
+    ],
+    actionItems: [
+      { text: "Check domain availability for mise.app and supper.app", doer: "human" as const },
+      { text: "Interview 10 target users about meal planning pain points", doer: "human" as const },
+      { text: "Create competitive analysis document with feature comparison matrix", doer: "agent" as const },
+    ],
+    generatedAt: baseTs + 80_000,
+  };
+}
+
+// ===========================================================================
+// FINAL SUMMARY (STUDY session)
+// ===========================================================================
+function buildStudyFinalSummary(baseTs: number) {
+  return {
+    narrative: "Study session covered distributed systems consensus protocols for exam prep. Deep comparison of Raft vs Paxos: Raft uses strong leader model with randomized election timeouts, while Paxos uses proposer/acceptor/learner roles with prepare/accept phases. Also covered CAP theorem tradeoffs (DynamoDB/Cassandra = AP, Spanner = CP), vector clocks vs Lamport clocks for causal ordering, and Byzantine fault tolerance (3f+1 requirement vs crash fault tolerance's 2f+1). Key exam focus areas identified: consensus protocol comparison, failure model assumptions, and the 2PC/3PC blocking problem. The uncommitted log entry scenario from homework needs more work.",
+    agreements: [
+      "Focus exam prep on: Raft vs Paxos comparison, CAP theorem tradeoffs, vector clocks, BFT vs CFT",
+      "Create comprehensive comparison table for consensus protocols (Raft, Paxos, ZAB)",
+      "Professor hinted Byzantine fault tolerance will be on the exam — prioritize BFT review",
+      "Work through week 8 problem set independently then compare answers",
+    ],
+    missedItems: [
+      "Didn't cover gossip protocols in detail — consistent hashing section was rushed",
+      "No discussion of real-world case studies (e.g., Google Spanner, Amazon Dynamo paper)",
+      "Skipped over the formal proof of why 3f+1 nodes needed for BFT",
+    ],
+    unansweredQuestions: [
+      "How does ZAB (ZooKeeper) differ from Raft in practice? Need to review ZAB paper",
+      "What's the exact difference between linearizability and sequential consistency?",
+      "Will the exam cover CRDTs or just vector clocks for conflict resolution?",
+    ],
+    agreementTodos: [
+      { text: "Create Raft vs Paxos vs ZAB comparison table with exam-relevant details", doer: "agent" as const },
+      { text: "Complete week 8 problem set focusing on vector clocks and consensus", doer: "human" as const },
+    ],
+    missedItemTodos: [
+      { text: "Review gossip protocol convergence properties and consistent hashing", doer: "human" as const },
+      { text: "Read Dynamo and Spanner papers for real-world consensus examples", doer: "human" as const },
+    ],
+    unansweredQuestionTodos: [
+      { text: "Research ZAB protocol and compare with Raft leader election", doer: "agent" as const },
+      { text: "Ask professor whether CRDTs are in scope for the exam", doer: "human" as const },
+    ],
+    actionItems: [
+      { text: "Solve the uncommitted log entry problem from homework", doer: "human" as const },
+      { text: "Review Byzantine fault tolerance section and 3f+1 proof", doer: "human" as const },
+    ],
+    generatedAt: baseTs + 70_000,
+  };
+}
+
+// ===========================================================================
+// AGENTS (BRAIN session)
+// ===========================================================================
+function buildBrainAgents(baseTs: number): AgentSeed[] {
+  const stepTs = (offset: number) => baseTs + offset * 1000;
+
+  return [
+    {
+      id: "demo-agent-competitive",
+      kind: "analysis",
+      taskId: BRAIN_TASK_IDS.prototype,
+      sessionId: BRAIN_SESSION_ID,
+      task: "Research competitive landscape for AI recipe apps",
+      taskContext: "Team brainstorming AI recipe app that identifies fridge contents from photos. Need to understand competitive landscape: SuperCook, Whisk, Yummly, Mealime, and any new AI-powered entrants.",
+      status: "completed",
+      result: "## AI Recipe App Competitive Landscape\n\n### Direct Competitors\n\n| App | AI Features | Dietary Profiles | Fridge Scan | Pricing | Weaknesses |\n|-----|------------|-----------------|-------------|---------|------------|\n| **SuperCook** | None | Basic filters | Manual input | Free | No AI, tedious manual entry |\n| **Whisk** (Samsung) | Basic suggestions | Single profile | No | Free | Bookmarking focus, no generation |\n| **Yummly** (Whirlpool) | Taste matching | Single profile | No | Free/$5/mo | Bloated UX, heavy ads on free tier |\n| **Mealime** | Meal planning | Basic restrictions | No | Free/$6/mo | No fridge awareness at all |\n| **SideChef** | Step-by-step video | Single profile | No | Free/$10/mo | Expensive, no ingredient detection |\n\n### Emerging AI Players\n- **Plant Jammer** — AI-powered flavor pairing, acquired by HelloFresh. Strong tech but B2B only now.\n- **DishGen** — GPT-powered recipe generation from ingredients (text input). No photo detection.\n- **Instacart AI** — Adding recipe suggestions but tied to their grocery platform.\n\n### Key Gap in Market\nNo app currently offers: **photo-based ingredient detection + multi-profile dietary matching**. This is a genuinely open opportunity.\n\n- SuperCook requires manual ingredient entry (friction)\n- Yummly/Mealime only support single-user dietary preferences\n- No competitor handles \"make one meal for a household with different dietary needs\"\n\n### Recommendation\nThe multi-profile household angle is the strongest differentiator. Lead marketing with: \"One photo. One meal. Every dietary need in your household.\" The photo detection is table stakes — the multi-profile matching is the moat.",
+      steps: [
+        { id: "comp-step-1", kind: "user", content: "Research competitive landscape for AI recipe apps", createdAt: stepTs(5) },
+        { id: "comp-step-2", kind: "thinking", content: "I need to map the competitive landscape for AI recipe apps. The team mentioned SuperCook, Whisk, Yummly, and Mealime. Let me research each one and also look for emerging AI-powered competitors.", createdAt: stepTs(7) },
+        { id: "comp-step-3", kind: "tool-call", content: "", toolName: "searchWeb", toolInput: "AI recipe app fridge photo ingredient detection 2026 competitive landscape", createdAt: stepTs(9) },
+        { id: "comp-step-4", kind: "tool-result", content: "Found: SuperCook (manual ingredient input, free), Whisk by Samsung (recipe bookmarking), Yummly by Whirlpool (taste preferences), Mealime (meal planning), SideChef (guided cooking), Plant Jammer (acquired by HelloFresh), DishGen (GPT recipe generation from text)", createdAt: stepTs(11) },
+        { id: "comp-step-5", kind: "tool-call", content: "", toolName: "searchWeb", toolInput: "multi-profile dietary restriction meal planning app household family", createdAt: stepTs(13) },
+        { id: "comp-step-6", kind: "tool-result", content: "No existing apps found that handle multi-profile dietary restrictions for households. Most apps support single-user preferences only. Mealime has basic household support but only applies one set of restrictions.", createdAt: stepTs(15) },
+        { id: "comp-step-7", kind: "text", content: "## AI Recipe App Competitive Landscape\n\nNo app currently offers photo-based ingredient detection + multi-profile dietary matching. This is a genuinely open opportunity.\n\n### Key Competitors: SuperCook (manual, free), Yummly ($5/mo, bloated), Mealime ($6/mo, no fridge scan), Whisk (bookmarking only)\n\n### Recommendation\nThe multi-profile household angle is the strongest differentiator. Lead with: \"One photo. One meal. Every dietary need in your household.\"", createdAt: stepTs(19) },
+      ],
+      createdAt: stepTs(5),
+      completedAt: stepTs(21),
+    },
+    {
+      id: "demo-agent-mvp-spec",
+      kind: "analysis",
+      taskId: BRAIN_TASK_IDS.spoonacular,
+      sessionId: BRAIN_SESSION_ID,
+      task: "Draft MVP feature spec for multi-profile dietary matching",
+      taskContext: "AI recipe app MVP: photo ingredient detection, 2-profile dietary restrictions, recipe matching. Ship in 6 weeks. Tech: Claude vision API, Spoonacular API, USDA FoodData Central.",
+      status: "completed",
+      result: "## MVP Feature Spec: Multi-Profile Dietary Matching\n\n### Core User Flow\n1. **Photo Capture** — User photographs fridge contents\n2. **Ingredient Detection** — Claude vision API identifies ingredients with confidence scores\n3. **Profile Selection** — User selects which household profiles to match (max 2 for MVP)\n4. **Recipe Matching** — Spoonacular API filtered by combined dietary restrictions\n5. **Results** — Ranked recipe list with nutrition info per profile\n\n### Profile System (MVP)\n- Max 2 profiles per household\n- Supported restrictions: vegetarian, vegan, gluten-free, dairy-free, nut-free, pescatarian, keto, halal\n- Each profile has: name, avatar, dietary restrictions, allergies, disliked ingredients\n- Matching logic: intersection of safe ingredients across all active profiles\n\n### Technical Architecture\n```\nPhoto → Claude Vision API → Ingredient List (with confidence > 0.7)\n  → Spoonacular API (filtered by combined restrictions)\n  → Ranked results (by ingredient match %, cook time, rating)\n```\n\n### API Integration Details\n- **Claude Vision**: ~$0.01/photo at current pricing. Batch ingredient detection prompt.\n- **Spoonacular**: $30/mo for 150 req/day. `complexSearch` endpoint supports multiple dietary filters via `diet` and `intolerances` params. **Limitation**: max 2 diet types per query — need to post-filter for complex combos.\n- **USDA FoodData**: Free, no rate limit. Use for nutrition enrichment.\n\n### 6-Week Timeline\n- **Week 1-2**: Photo → ingredient detection pipeline. Prompt engineering + accuracy testing.\n- **Week 3**: Profile system + dietary restriction data model.\n- **Week 4**: Recipe matching engine with Spoonacular integration.\n- **Week 5**: UI/UX for core flow (React Native).\n- **Week 6**: Testing, edge cases, soft launch.\n\n### Success Metrics (MVP)\n- Ingredient detection accuracy > 80% on top 50 common fridge items\n- Recipe match rate > 90% (at least 3 recipes returned for any valid combo)\n- User task completion < 60 seconds (photo to recipe list)\n\n### Known Risks\n1. Spoonacular's 2-diet-type limit means complex households need client-side filtering\n2. Photo quality in kitchen lighting varies wildly — need robust prompt engineering\n3. 6-week timeline is tight if ingredient detection accuracy requires fine-tuning",
+      steps: [
+        { id: "mvp-step-1", kind: "user", content: "Draft MVP feature spec for multi-profile dietary matching", createdAt: stepTs(25) },
+        { id: "mvp-step-2", kind: "thinking", content: "I need to create a detailed MVP spec covering the user flow, profile system, API integrations, and timeline. The team agreed on 6 weeks with photo detection, 2-profile restrictions, and recipe matching.", createdAt: stepTs(27) },
+        { id: "mvp-step-3", kind: "plan", content: "MVP spec plan", planTitle: "MVP Spec Outline", planContent: "1. Define core user flow (photo → detect → match → results)\n2. Specify profile system constraints for MVP\n3. Document API integration details and limitations\n4. Create 6-week timeline\n5. Define success metrics", planApprovalState: "approved", createdAt: stepTs(29) },
+        { id: "mvp-step-4", kind: "tool-call", content: "", toolName: "searchWeb", toolInput: "Spoonacular API complexSearch dietary filters multiple restrictions", createdAt: stepTs(31) },
+        { id: "mvp-step-5", kind: "tool-result", content: "Spoonacular complexSearch supports: diet (comma-separated, max 2), intolerances (comma-separated), excludeIngredients. For >2 diet types, need to use includeIngredients + manual filtering. Rate limit: 150 points/day on $30/mo plan.", createdAt: stepTs(33) },
+        { id: "mvp-step-6", kind: "text", content: "## MVP Feature Spec: Multi-Profile Dietary Matching\n\nCore flow: Photo → Claude Vision → Ingredient List → Spoonacular (filtered) → Ranked recipes\n\n### Key Finding\nSpoonacular has a 2-diet-type limit per query. For complex households (e.g., keto + dairy-free + pescatarian), we'll need client-side post-filtering.\n\n### 6-Week Timeline\nWeek 1-2: Photo detection pipeline\nWeek 3: Profile system\nWeek 4: Recipe matching\nWeek 5: UI\nWeek 6: Testing + launch", createdAt: stepTs(37) },
+      ],
+      createdAt: stepTs(25),
+      completedAt: stepTs(39),
+    },
+
+    // Agent 3: Domain availability check (BRAIN session)
+    {
+      id: "demo-agent-domains",
+      kind: "analysis",
+      taskId: BRAIN_TASK_IDS.domains,
+      sessionId: BRAIN_SESSION_ID,
+      task: "Check domain availability for AI recipe app name candidates",
+      taskContext: "Top name candidates are 'Mise' (mise en place) and 'Supper'. Need to check .app, .co, .com availability and pricing.",
+      status: "completed",
+      result: "## Domain Availability Report\n\n| Domain | Available | Price | Notes |\n|--------|-----------|-------|-------|\n| mise.app | ❌ Taken | — | Registered by a kitchen tools company |\n| supper.app | ✅ Available | $14/yr | Clean, matches the brand |\n| mise.co | ❌ Taken | — | Parked domain, asking $2,800 |\n| getsupper.com | ✅ Available | $12/yr | Good fallback |\n| supperapp.com | ✅ Available | $12/yr | Slightly redundant with .app |\n| usemise.com | ✅ Available | $12/yr | \"Use Mise\" — decent alternative |\n| miseapp.co | ✅ Available | $25/yr | Not ideal |\n\n### Recommendation\n**Primary: supper.app** ($14/yr) — clean, memorable, .app TLD signals mobile-first.\n**Backup: getsupper.com** ($12/yr) — classic .com for SEO and email.\n\nRegister both now — total $26/yr. mise.co is available for $2,800 if the team prefers 'Mise' but that's a lot for pre-revenue.\n\n### Social Media Handles\n- @supperapp — available on Twitter/X ✅\n- @supper.app — available on Instagram ✅\n- @supperapp — taken on TikTok ❌ (but @getsupperapp available)",
+      steps: [
+        { id: "dom-step-1", kind: "user", content: "Check domain availability for AI recipe app name candidates", createdAt: stepTs(42) },
+        { id: "dom-step-2", kind: "tool-call", content: "", toolName: "searchWeb", toolInput: "mise.app domain availability supper.app domain check", createdAt: stepTs(44) },
+        { id: "dom-step-3", kind: "tool-result", content: "mise.app: registered (kitchen tools company). supper.app: available $14/yr. mise.co: parked, $2,800. getsupper.com: available $12/yr.", createdAt: stepTs(46) },
+        { id: "dom-step-4", kind: "text", content: "## Recommendation: supper.app ($14/yr)\nClean, available, .app TLD signals mobile-first. Register getsupper.com as backup. Both together: $26/yr.", createdAt: stepTs(50) },
+      ],
+      createdAt: stepTs(42),
+      completedAt: stepTs(52),
+    },
+
+    // Agent 4: User interview guide (BRAIN session)
+    {
+      id: "demo-agent-interview-guide",
+      kind: "analysis",
+      taskId: BRAIN_TASK_IDS.interviews,
+      sessionId: BRAIN_SESSION_ID,
+      task: "Create user interview guide for meal planning pain point research",
+      taskContext: "Need to interview 10 target users (5 parents, 5 young professionals) about meal planning. Focus on: decision process, frustrations, multi-profile dietary matching, willingness to pay.",
+      status: "completed",
+      result: "## User Interview Guide: Meal Planning Pain Points\n\n### Screening Criteria\n- **Parents (5):** Household of 3+, cook at home 4+ nights/week, at least one dietary restriction in household\n- **Young Professionals (5):** Ages 25-35, cook at home 3+ nights/week, health or diet-conscious\n\n### Interview Script (30 minutes)\n\n**Opening (2 min)**\n> Thanks for joining. We're exploring how people decide what to cook. No right/wrong answers — we want to learn from your real experience.\n\n**Current Behavior (8 min)**\n1. Walk me through how you decided what to cook for dinner last night?\n2. How far ahead do you typically plan meals? (Same day / 2-3 days / weekly)\n3. What sources do you use for recipe ideas? (Apps, social media, cookbooks, memory)\n4. How much time do you spend deciding what to cook vs actually cooking?\n\n**Pain Points (8 min)**\n5. What's the most frustrating part of meal planning for your household?\n6. Tell me about a time dietary restrictions made cooking harder. What happened?\n7. How do you handle different preferences in your household? (Probe: compromises, separate meals)\n8. What do you do when you open the fridge and don't know what to make?\n\n**Concept Validation (8 min)**\n9. *Show concept:* Imagine you take a photo of your fridge and an app suggests meals that work for everyone in your household — even with different diets. What's your first reaction?\n10. What would make you trust AI-suggested recipes? What would make you NOT trust them?\n11. How many dietary profiles would you need? (Self, partner, kids, guests)\n12. Would you use this daily, weekly, or only when stuck?\n\n**Willingness to Pay (4 min)**\n13. Do you currently pay for any food/recipe apps? Which ones and how much?\n14. If this app saved you 20 minutes of daily meal decisions, what would you pay monthly?\n15. What feature would make it a must-have vs nice-to-have?\n\n### Key Metrics to Track\n- Average time spent on meal decisions per day\n- Number of dietary restrictions per household\n- Current app usage and spending\n- Unprompted mentions of specific pain points\n- Reaction intensity to multi-profile concept (1-5 scale)",
+      steps: [
+        { id: "intv-step-1", kind: "user", content: "Create user interview guide for meal planning pain point research", createdAt: stepTs(55) },
+        { id: "intv-step-2", kind: "thinking", content: "Need to design a structured interview that validates the core assumptions: (1) meal planning is a real pain point, (2) dietary restrictions compound the problem, (3) multi-profile matching would be valuable, (4) users would pay for it.", createdAt: stepTs(57) },
+        { id: "intv-step-3", kind: "text", content: "## User Interview Guide\n\n30-minute structured interview covering current behavior, pain points, concept validation, and willingness to pay. Includes screening criteria for 5 parents + 5 young professionals.", createdAt: stepTs(61) },
+      ],
+      createdAt: stepTs(55),
+      completedAt: stepTs(63),
+    },
+  ];
+}
+
+// ===========================================================================
+// AGENTS (STUDY session)
+// ===========================================================================
+function buildStudyAgents(baseTs: number): AgentSeed[] {
+  const stepTs = (offset: number) => baseTs + offset * 1000;
+
+  return [
+    {
+      id: "demo-agent-study-guide",
+      kind: "analysis",
+      taskId: STUDY_TASK_IDS.comparison,
+      sessionId: STUDY_SESSION_ID,
+      task: "Create study guide comparing Raft vs Paxos consensus protocols",
+      taskContext: "Distributed systems exam prep. Need detailed comparison of Raft and Paxos covering: leader model, fault tolerance, message complexity, liveness, real-world implementations. Also include ZAB for completeness.",
+      status: "completed",
+      result: "## Consensus Protocols Study Guide: Raft vs Paxos vs ZAB\n\n### Quick Reference Table\n\n| Property | Raft | Paxos (Multi) | ZAB (ZooKeeper) |\n|----------|------|---------------|------------------|\n| **Leader model** | Strong leader (all writes) | Proposer (any node) | Primary (all writes) |\n| **Election** | Randomized timeout | Prepare/promise phase | Prospective leader discovery |\n| **Log ordering** | Sequential, no gaps | Can have gaps | Sequential, no gaps |\n| **Fault tolerance** | 2f+1 nodes for f failures | 2f+1 nodes for f failures | 2f+1 nodes for f failures |\n| **Safety** | Always safe | Always safe | Always safe |\n| **Liveness** | Guaranteed (leader exists) | Not guaranteed (dueling proposers) | Guaranteed (primary exists) |\n| **Message complexity** | O(n) per operation | O(n) per operation (amortized) | O(n) per operation |\n| **Understandability** | Designed for it | Notoriously difficult | Moderate |\n| **Real implementations** | etcd, CockroachDB, TiKV | Chubby, Spanner (variant) | ZooKeeper, Kafka (KRaft replacing) |\n\n### Raft Deep Dive\n\n**Leader Election:**\n- Nodes start as followers with randomized election timeouts (150-300ms)\n- On timeout, node becomes candidate, increments term, votes for self\n- Sends RequestVote to all peers; wins with majority\n- **Key insight**: randomized timeouts prevent split votes in practice\n\n**Log Replication:**\n- Leader receives client request → appends to own log → sends AppendEntries to followers\n- Commits entry when majority acknowledges (including self)\n- **Election restriction**: candidate's log must be at least as up-to-date as voter's log\n- This ensures new leader always has all committed entries\n\n**Safety Proof Intuition:**\n- Leader Completeness: committed entries survive elections because majority overlap\n- State Machine Safety: all nodes apply same entries in same order\n\n### Paxos Deep Dive\n\n**Roles:** Proposer, Acceptor, Learner (nodes can play multiple roles)\n\n**Two Phases:**\n1. **Prepare (Phase 1a/1b):** Proposer sends prepare(n) → Acceptors promise not to accept proposals < n, return any previously accepted values\n2. **Accept (Phase 2a/2b):** Proposer sends accept(n, v) where v is the highest-numbered previously accepted value (or proposer's own value if none) → Acceptors accept if no higher prepare received\n\n**Why Paxos is Hard:**\n- Single-decree Paxos decides ONE value — need Multi-Paxos for a log\n- Multi-Paxos uses a stable leader to skip Phase 1 (optimization)\n- Gap handling: slots can be decided out of order → need gap-filling protocol\n- **Dueling proposers** can cause livelock (not safety violation)\n\n### ZAB Deep Dive\n\n**Phases:**\n1. **Discovery:** Nodes exchange epoch numbers, elect prospective leader\n2. **Synchronization:** Leader brings followers up to date\n3. **Broadcast:** Normal operation, leader proposes + 2-phase commit\n\n**Key Differences from Raft:**\n- ZAB separates recovery from normal operation more explicitly\n- Uses epoch-based protocol (similar to Raft terms)\n- Transaction ordering uses zxid (epoch + counter) vs Raft's (term + index)\n\n### Exam-Relevant Comparisons\n\n**Q: Why is Raft easier to understand than Paxos?**\nA: Raft decomposes consensus into leader election + log replication + safety. Paxos combines these into a single protocol. Raft's strong leader simplifies reasoning.\n\n**Q: When would you choose Paxos over Raft?**\nA: When you need leaderless operation (multi-datacenter with no single leader) or when the proposer role can rotate without election overhead.\n\n**Q: How does 2PC differ from consensus?**\nA: 2PC is a blocking protocol — coordinator crash blocks all participants. Consensus (Raft/Paxos) handles leader crash via re-election. 2PC guarantees agreement but not availability; consensus sacrifices availability only during partition.\n\n**Q: What's the FLP impossibility result?**\nA: No deterministic consensus protocol can guarantee termination in an asynchronous system with even one crash failure. Raft/Paxos work in practice because they use timeouts (partial synchrony assumption).",
+      steps: [
+        { id: "sg-step-1", kind: "user", content: "Create study guide comparing Raft vs Paxos consensus protocols", createdAt: stepTs(10) },
+        { id: "sg-step-2", kind: "thinking", content: "I need to create a comprehensive study guide comparing Raft, Paxos, and ZAB. The student is prepping for a distributed systems exam, so I should focus on exam-relevant comparisons and include the kind of questions a professor would ask.", createdAt: stepTs(12) },
+        { id: "sg-step-3", kind: "tool-call", content: "", toolName: "searchTranscriptHistory", toolInput: "Raft Paxos consensus leader election log replication", createdAt: stepTs(14) },
+        { id: "sg-step-4", kind: "tool-result", content: "Found relevant transcript excerpts:\n- \"Raft uses a strong leader model — all writes go through the leader\"\n- \"Paxos has three roles: proposer, acceptor, learner with prepare/accept phases\"\n- \"The key difference is Raft guarantees no log gaps while Paxos can have them\"\n- \"ZAB is similar to Raft but uses explicit recovery and synchronization phases\"", createdAt: stepTs(16) },
+        { id: "sg-step-5", kind: "tool-call", content: "", toolName: "searchWeb", toolInput: "Raft vs Paxos vs ZAB comparison distributed consensus exam study guide", createdAt: stepTs(18) },
+        { id: "sg-step-6", kind: "tool-result", content: "Key comparison points:\n- All require 2f+1 nodes for f crash failures\n- Raft: strong leader, randomized election, no log gaps\n- Paxos: any-proposer, prepare/accept, gaps allowed\n- ZAB: primary-based, epoch ordering, explicit recovery phase\n- FLP impossibility applies to all (overcome via partial synchrony)", createdAt: stepTs(20) },
+        { id: "sg-step-7", kind: "todo", content: "Study guide checklist", todoItems: [
+          { id: "sg-todo-1", content: "Create comparison table (leader model, fault tolerance, complexity)", status: "completed" },
+          { id: "sg-todo-2", content: "Write Raft deep dive (election, replication, safety)", status: "completed" },
+          { id: "sg-todo-3", content: "Write Paxos deep dive (phases, Multi-Paxos, dueling proposers)", status: "completed" },
+          { id: "sg-todo-4", content: "Add ZAB comparison", status: "completed" },
+          { id: "sg-todo-5", content: "Include exam-style Q&A section", status: "completed" },
+        ], createdAt: stepTs(22) },
+        { id: "sg-step-8", kind: "text", content: "## Consensus Protocols Study Guide: Raft vs Paxos vs ZAB\n\nComprehensive comparison table, deep dives on each protocol, and exam-relevant Q&A section included above.\n\n### Key Exam Tips:\n1. Raft is designed for understandability — decompose into subproblems\n2. Paxos is more general but harder to implement correctly\n3. 2PC ≠ consensus (blocking vs fault-tolerant)\n4. FLP impossibility is overcome by partial synchrony assumption (timeouts)", createdAt: stepTs(26) },
+      ],
+      createdAt: stepTs(10),
+      completedAt: stepTs(28),
+    },
+
+    // Agent 2: BFT review (STUDY session)
+    {
+      id: "demo-agent-bft-review",
+      kind: "analysis",
+      taskId: STUDY_TASK_IDS.bft,
+      sessionId: STUDY_SESSION_ID,
+      task: "Create Byzantine fault tolerance review with exam-style problems",
+      taskContext: "Professor hinted BFT will be on the exam. Cover BFT vs CFT, 3f+1 requirement, PBFT basics, why most systems avoid BFT.",
+      status: "completed",
+      result: "## Byzantine Fault Tolerance Review\n\n### BFT vs CFT (Crash Fault Tolerance)\n\n| Property | CFT | BFT |\n|----------|-----|-----|\n| Failure model | Node stops responding | Node sends arbitrary/malicious messages |\n| Nodes needed | 2f+1 for f failures | 3f+1 for f failures |\n| Examples | Raft, Paxos, ZAB | PBFT, Tendermint, HotStuff |\n| Performance | Fast (2 message delays) | Slow (3+ message delays) |\n| Use case | Trusted datacenter | Blockchain, untrusted environments |\n\n### Why 3f+1? (Intuition)\n- With Byzantine faults, faulty nodes can **lie** — send different values to different nodes\n- Need enough honest nodes to outvote liars AND detect contradictions\n- 2f+1 fails because f liars + f honest = 2f nodes could appear to agree on wrong value\n- 3f+1 ensures honest majority (2f+1) even when f nodes send conflicting messages\n\n### PBFT Protocol (Practical Byzantine Fault Tolerance)\n1. **Pre-prepare:** Primary broadcasts request with sequence number\n2. **Prepare:** Each replica broadcasts prepare message; wait for 2f+1 matching prepares\n3. **Commit:** Each replica broadcasts commit; wait for 2f+1 matching commits\n4. **Reply:** Execute and reply to client\n\nTotal messages per operation: O(n²) — this is why BFT is expensive!\n\n### Why Most Systems Avoid BFT\n1. **Performance:** O(n²) messages vs O(n) for Raft\n2. **Trust assumption:** If you control the datacenter, crash faults suffice\n3. **Complexity:** Much harder to implement correctly\n4. **Cost:** Need 3f+1 nodes instead of 2f+1 (50% more hardware)\n\n### Exam Practice Problems\n\n**Q1:** A system has 7 nodes. How many Byzantine faults can it tolerate?\n**A:** f = (7-1)/3 = 2 faults. (3f+1 = 7, so f = 2)\n\n**Q2:** Why can't we use 2PC in a Byzantine setting?\n**A:** 2PC assumes crash faults only. A Byzantine coordinator could send \"commit\" to some and \"abort\" to others, violating agreement.\n\n**Q3:** A blockchain network has 100 validators. 30 are compromised. Is the network safe?\n**A:** Need 3f+1 ≤ 100, so max f = 33. With 30 compromised: 30 < 33, so yes, the network is safe.",
+      steps: [
+        { id: "bft-step-1", kind: "user", content: "Create Byzantine fault tolerance review with exam-style problems", createdAt: stepTs(32) },
+        { id: "bft-step-2", kind: "tool-call", content: "", toolName: "searchWeb", toolInput: "PBFT protocol explained Byzantine fault tolerance 3f+1 proof intuition", createdAt: stepTs(34) },
+        { id: "bft-step-3", kind: "tool-result", content: "PBFT uses 3 phases: pre-prepare, prepare, commit. Requires 3f+1 nodes. O(n²) message complexity. Practical for small networks (< 20 nodes). Used in Hyperledger Fabric.", createdAt: stepTs(36) },
+        { id: "bft-step-4", kind: "text", content: "## BFT Review Complete\nCovers BFT vs CFT comparison, 3f+1 proof intuition, PBFT protocol walkthrough, and 3 exam practice problems with solutions.", createdAt: stepTs(40) },
+      ],
+      createdAt: stepTs(32),
+      completedAt: stepTs(42),
+    },
+
+    // Agent 3: Uncommitted log entry walkthrough (STUDY session)
+    {
+      id: "demo-agent-uncommitted",
+      kind: "analysis",
+      taskId: STUDY_TASK_IDS.uncommitted,
+      sessionId: STUDY_SESSION_ID,
+      task: "Solve the uncommitted log entry problem with step-by-step trace",
+      taskContext: "Homework problem: leader crashes after replicating to minority. Trace through re-election and how new leader handles uncommitted entries in Raft.",
+      status: "completed",
+      result: "## Uncommitted Log Entry Problem: Step-by-Step Trace\n\n### Setup\n- 5-node Raft cluster: S1 (leader, term 2), S2, S3, S4, S5\n- S1 receives client write \"X=5\"\n- S1 appends to own log: `[term=2, index=3, X=5]`\n- S1 sends AppendEntries to S2, S3, S4, S5\n- **S2 receives and acks** ✅\n- S3, S4, S5 have NOT received it yet\n- **S1 crashes** 💥\n\n### State After Crash\n| Server | Log at index 3 | Status |\n|--------|----------------|--------|\n| S1 | `[t2, X=5]` | 💀 Crashed |\n| S2 | `[t2, X=5]` | Has entry (not committed) |\n| S3 | (empty) | No entry |\n| S4 | (empty) | No entry |\n| S5 | (empty) | No entry |\n\nThe entry is on 2 of 5 servers — **NOT committed** (needs majority = 3).\n\n### Re-election\n1. Election timeout fires on S3 (randomized timeout)\n2. S3 increments term to 3, votes for self\n3. S3 sends RequestVote to S2, S4, S5\n4. **Can S3 win?** Check election restriction:\n   - S3's log: last entry at index 2, term 1\n   - S2's log: last entry at index 3, term 2\n   - S2 will **reject** S3's vote (S3's log is less up-to-date)\n   - S4, S5 will **grant** votes (their logs ≤ S3's)\n   - S3 gets 3 votes (self + S4 + S5) → **S3 wins** ✅\n\n### What Happens to the Uncommitted Entry?\n5. S3 becomes leader (term 3)\n6. S3 sends AppendEntries to all — its log does NOT have `X=5`\n7. **S2's entry `[t2, X=5]` gets overwritten** by S3's new entries\n8. The uncommitted write is **lost forever**\n\n### Key Insight\nThis is **correct behavior** in Raft:\n- The client never received a commit confirmation\n- The entry was only on a minority (2/5)\n- Raft only guarantees committed entries survive elections\n- The client should retry the write with the new leader\n\n### Alternative Scenario: What if S2 Wins?\nIf S2 wins election instead (it has the most up-to-date log):\n- S2 becomes leader, keeps `[t2, X=5]` in its log\n- S2 replicates it to S3, S4, S5 as part of new term\n- Once replicated to majority → entry becomes committed\n- **The write survives** — but only because the new leader happened to have it\n\n### Exam Answer Template\n> An uncommitted entry (replicated to minority) may or may not survive leader failure. It depends on whether the new leader has the entry. This is safe because: (1) the client never got confirmation, (2) Raft's election restriction ensures committed entries always survive, and (3) uncommitted entries are explicitly not guaranteed.",
+      steps: [
+        { id: "uc-step-1", kind: "user", content: "Solve the uncommitted log entry problem with step-by-step trace", createdAt: stepTs(45) },
+        { id: "uc-step-2", kind: "thinking", content: "This is a classic Raft safety question. I need to trace through exactly what happens when a leader crashes after replicating to only one follower. Key concepts: election restriction, commitment rule, and why uncommitted entries can be safely lost.", createdAt: stepTs(47) },
+        { id: "uc-step-3", kind: "text", content: "## Complete Trace\n5-node cluster, leader crashes after replicating to 1 follower. Entry is uncommitted (2/5). New leader may or may not have it. Either outcome is safe because client never got confirmation.", createdAt: stepTs(51) },
+      ],
+      createdAt: stepTs(45),
+      completedAt: stepTs(53),
+    },
+
+    // Agent 4: Practice problem solutions (STUDY session)
+    {
+      id: "demo-agent-practice",
+      kind: "analysis",
+      taskId: STUDY_TASK_IDS.practice,
+      sessionId: STUDY_SESSION_ID,
+      task: "Work through vector clock practice problems from week 8",
+      taskContext: "Week 8 problem set focuses on vector clocks and consensus scenarios. Need to solve exercises and explain reasoning for exam prep.",
+      status: "completed",
+      result: "## Vector Clock Practice Problems — Solutions\n\n### Problem 1: Determine Causal Ordering\nThree processes P1, P2, P3. Events:\n- P1: a(1,0,0) → send to P2 → b(2,0,0)\n- P2: receive from P1 → c(2,1,0) → send to P3 → d(2,2,0)\n- P3: e(0,0,1) → receive from P2 → f(2,2,2)\n\n**Which pairs are causally related?**\n- a → c ✅ (a happened before c via message)\n- a → f ✅ (transitively: a → c → d → f)\n- e ∥ a ❌ (concurrent — neither dominates)\n- e → f ✅ (same process, e before f)\n- b ∥ e ❌ (concurrent)\n\n**Rule:** Compare element-wise. If V1[i] ≤ V2[i] for all i AND V1 ≠ V2, then V1 → V2.\n\n### Problem 2: Detect Conflicting Writes\nTwo replicas R1 and R2 both write to key K:\n- R1 writes K=7 at VC=(3,1)\n- R2 writes K=9 at VC=(2,2)\n\n**Are these conflicting?** Yes! Neither (3,1) ≤ (2,2) nor (2,2) ≤ (3,1). The writes are **concurrent** → conflict detected.\n\n**Resolution options:**\n1. Last-writer-wins (use physical timestamp as tiebreaker)\n2. Application-level merge (CRDTs)\n3. Return both to client (Amazon Dynamo approach)\n\n### Problem 3: Why Not Lamport Clocks?\nSame scenario as Problem 1. Using Lamport clocks:\n- a=1, b=2, c=3, d=4, e=1, f=5\n\nL(e)=1 < L(b)=2, but e ∥ b (concurrent). Lamport clocks say e < b, which is **wrong** — they provide a total order that's consistent with causality but can't detect concurrency. Vector clocks can.\n\n### Problem 4: Consensus Scenario\n3-node Raft cluster. Node A is leader (term 1). Sequence:\n1. Client sends write W1 → A appends, sends to B and C\n2. B acknowledges → A commits W1 (majority: A+B)\n3. Network partition: {A, B} | {C}\n4. C times out, starts election (term 2)\n5. C can't win (only 1 vote — needs 2)\n6. A sends heartbeats to B → cluster continues operating\n7. Partition heals → C receives A's heartbeats, reverts to follower\n\n**Key insight:** The majority partition {A, B} keeps operating. The minority {C} can't elect a leader. W1 is safe because it was committed before the partition.",
+      steps: [
+        { id: "pr-step-1", kind: "user", content: "Work through vector clock practice problems from week 8", createdAt: stepTs(56) },
+        { id: "pr-step-2", kind: "tool-call", content: "", toolName: "searchTranscriptHistory", toolInput: "vector clock practice problems causal ordering consensus scenario", createdAt: stepTs(58) },
+        { id: "pr-step-3", kind: "tool-result", content: "Found references to: vector clock exercises, comparing element-wise for concurrency, Lamport vs vector clock distinction, consensus partition scenarios.", createdAt: stepTs(60) },
+        { id: "pr-step-4", kind: "text", content: "## 4 Practice Problems Solved\n\n1. Causal ordering with 3 processes — identifying concurrent vs causally related events\n2. Conflicting writes detection using vector clock comparison\n3. Why Lamport clocks can't detect concurrency (vs vector clocks)\n4. Raft consensus during network partition — majority partition keeps operating", createdAt: stepTs(64) },
+      ],
+      createdAt: stepTs(56),
+      completedAt: stepTs(66),
+    },
+  ];
+}
+
+// ===========================================================================
+// AGENTS (PM session — Linear MCP + Codex)
+// ===========================================================================
+function buildPmAgents(baseTs: number): AgentSeed[] {
+  const stepTs = (offset: number) => baseTs + offset * 1000;
+
+  return [
+    // Agent 1: Create Linear issues for the sprint
+    {
+      id: "demo-agent-linear-sprint",
+      kind: "analysis",
+      taskId: PM_TASK_IDS.linearIssues,
+      sessionId: PM_SESSION_ID,
+      task: "Create Linear issues for the notifications sprint",
+      taskContext: "Team agreed on 4 stories: preferences API (5pt, Dev), batching engine (8pt, Dev), preferences UI (5pt, Amir), digest email (5pt, Amir). Two-week sprint starting Monday.",
+      status: "completed",
+      result: "## Linear Sprint Board — Smart Notifications\n\nI've created all 4 sprint stories in Linear with estimates, assignments, dependencies, and labels.\n\n### Issues Created\n\n| Issue | Points | Assignee | Priority | Status |\n|-------|--------|----------|----------|--------|\n| NOTIF-101: Notification Preferences API | 5 | Dev | High | Ready |\n| NOTIF-102: Notification Batching Engine | 8 | Dev | Urgent | Ready |\n| NOTIF-103: Notification Preferences UI | 5 | Amir | High | Blocked |\n| NOTIF-104: Digest Email Template + SendGrid | 5 | Amir | Medium | Ready |\n\n**Sprint total:** 23 points across 2 engineers (March 16-30)\n\n### Dependencies & Subtasks\n- NOTIF-103 (UI) is **blocked by** Kai's designs — linked as dependency, due Tuesday March 18\n- NOTIF-102 (Batching) **depends on** NOTIF-101 (API) — the batching service reads from the preferences table\n- NOTIF-104 has a subtask: \"SendGrid IP warmup + email authentication setup\" — flagged by the team as a deliverability risk\n\n### Labels Applied\n- `smart-notifications` — feature label for filtering\n- `q1-retention` — ties to the Q1 OKR on engagement recovery\n\n### Sprint Board Setup\n- Sprint dates: March 16-30\n- Dev's critical path: API (days 1-3) → Batching Engine (days 4-10)\n- Amir's critical path: Digest Email (days 1-5) → UI (days 5-10, after designs land)\n- 23 points is tight for 2 engineers — no slack for scope creep",
+      steps: [
+        { id: "lin-step-1", kind: "user", content: "Create Linear issues for the notifications sprint", createdAt: stepTs(10) },
+        { id: "lin-step-2", kind: "thinking", content: "The team agreed on 4 stories with specific point estimates and assignments. Let me pull the exact specs from the conversation — Dev gets the API (5pt) and batching engine (8pt), Amir gets the UI (5pt, blocked on Kai's designs due Tuesday) and digest email (5pt). I also need to capture the dependencies they mentioned: the batching engine reads from the preferences table, and the UI is blocked on designs.", createdAt: stepTs(12) },
+        { id: "lin-step-3", kind: "tool-call", content: "", toolName: "searchTranscriptHistory", toolInput: "sprint stories preferences API batching engine sizing assignment", createdAt: stepTs(14) },
+        { id: "lin-step-4", kind: "tool-result", content: "Found relevant transcript excerpts:\n- \"I see four main stories. Story one: notification preferences API. Story two: notification batching engine. Story three: preferences UI page. Story four: digest email template and sending.\"\n- \"Preferences API is a 5 — it's well-scoped REST endpoints with tests. Batching engine is an 8 — lots of edge cases with quiet hours, timezone handling, priority scoring.\"\n- \"I'll take the API and the batching engine since they're tightly coupled.\"\n- \"The other engineer — probably Amir — can take the UI and digest email in parallel once Kai's designs land.\"", createdAt: stepTs(16) },
+        { id: "lin-step-5", kind: "tool-call", content: "", toolName: "searchMcpTools", toolInput: "linear create issue", createdAt: stepTs(18) },
+        { id: "lin-step-6", kind: "tool-result", content: "Available MCP tools:\n- linear:createIssue - Create a new issue in a Linear team\n- linear:updateIssue - Update an existing Linear issue\n- linear:searchIssues - Search for issues in Linear\n- linear:createLabel - Create a new label\n\nLinear MCP integration is available and authenticated.", createdAt: stepTs(20) },
+        { id: "lin-step-7", kind: "todo", content: "Sprint issue tracker", todoItems: [
+          { id: "lin-todo-1", content: "Create NOTIF-101: Preferences API (5pt, Dev)", status: "in_progress" },
+          { id: "lin-todo-2", content: "Create NOTIF-102: Batching Engine (8pt, Dev)", status: "pending" },
+          { id: "lin-todo-3", content: "Create NOTIF-103: Preferences UI (5pt, Amir)", status: "pending" },
+          { id: "lin-todo-4", content: "Create NOTIF-104: Digest Email (5pt, Amir)", status: "pending" },
+        ], createdAt: stepTs(22) },
+        { id: "lin-step-8", kind: "tool-call", content: "", toolName: "callMcpTool", toolInput: JSON.stringify({ provider: "linear", tool: "createIssue", input: { title: "Notification Preferences API", description: "REST API with 6-8 endpoints for notification settings. Separate NotificationPreferences table with user_id FK, quiet_hours_start/end, batch_frequency enum, digest_enabled, per_category_overrides JSONB. Zod validation on all inputs. Dev estimates 3-4 days.", estimate: 5, assignee: "Dev", priority: "high", labels: ["smart-notifications", "q1-retention"] } }), createdAt: stepTs(24) },
+        { id: "lin-step-9", kind: "tool-result", content: "Issue created: NOTIF-101 — Notification Preferences API\nAssigned to: Dev | Priority: High | Estimate: 5 points\nURL: https://linear.app/team/NOTIF-101", createdAt: stepTs(26) },
+        { id: "lin-step-10", kind: "tool-call", content: "", toolName: "callMcpTool", toolInput: JSON.stringify({ provider: "linear", tool: "createIssue", input: { title: "Notification Batching Engine", description: "Cron service on BullMQ running every 15 minutes. Redis sorted set queue with priority scoring (5 signals: sender importance, category weight, recency decay, time sensitivity, engagement history). Groups by user and category. Quiet hours with timezone support via Intl.DateTimeFormat. Urgent notifications (score > 80) bypass batching. Dev estimates 1 week.", estimate: 8, assignee: "Dev", priority: "urgent", labels: ["smart-notifications", "q1-retention"] } }), createdAt: stepTs(28) },
+        { id: "lin-step-11", kind: "tool-result", content: "Issue created: NOTIF-102 — Notification Batching Engine\nAssigned to: Dev | Priority: Urgent | Estimate: 8 points\nURL: https://linear.app/team/NOTIF-102", createdAt: stepTs(30) },
+        { id: "lin-step-12", kind: "thinking", content: "Two down, two to go. NOTIF-103 (UI) is blocked on Kai's designs landing Tuesday. I should note that dependency in the issue description. NOTIF-104 (digest email) needs a subtask for SendGrid IP warmup — the team flagged email deliverability as a risk.", createdAt: stepTs(32) },
+        { id: "lin-step-13", kind: "tool-call", content: "", toolName: "callMcpTool", toolInput: JSON.stringify({ provider: "linear", tool: "createIssue", input: { title: "Notification Preferences UI", description: "Preferences page with: (1) quiet hours time range picker, (2) batch frequency selector (Immediately / Every hour / 3x daily / Once daily), (3) per-category toggles (messages, comments, mentions, task updates, team activity). Progressive disclosure — most users just set quiet hours and frequency. BLOCKED: Kai's designs due Tuesday March 18.", estimate: 5, assignee: "Amir", priority: "high", labels: ["smart-notifications", "q1-retention"] } }), createdAt: stepTs(34) },
+        { id: "lin-step-14", kind: "tool-result", content: "Issue created: NOTIF-103 — Notification Preferences UI\nAssigned to: Amir | Priority: High | Estimate: 5 points\nURL: https://linear.app/team/NOTIF-103", createdAt: stepTs(36) },
+        { id: "lin-step-15", kind: "tool-call", content: "", toolName: "callMcpTool", toolInput: JSON.stringify({ provider: "linear", tool: "createIssue", input: { title: "Digest Email Template + SendGrid Integration", description: "HTML email digest with: summary header (key stats), category-grouped sections (messages, tasks, team), top 3 items shown by default with '+N more' collapse, deep links for every item (app://notifications/{id} with UTM params). Linear-style clean typography. MJML for cross-client rendering. Subtask: SendGrid IP warmup and email authentication (SPF/DKIM/DMARC).", estimate: 5, assignee: "Amir", priority: "medium", labels: ["smart-notifications", "q1-retention"] } }), createdAt: stepTs(38) },
+        { id: "lin-step-16", kind: "tool-result", content: "Issue created: NOTIF-104 — Digest Email Template + SendGrid Integration\nAssigned to: Amir | Priority: Medium | Estimate: 5 points\nURL: https://linear.app/team/NOTIF-104", createdAt: stepTs(40) },
+        { id: "lin-step-17", kind: "todo", content: "Sprint issue tracker", todoItems: [
+          { id: "lin-todo-1", content: "Create NOTIF-101: Preferences API (5pt, Dev)", status: "completed" },
+          { id: "lin-todo-2", content: "Create NOTIF-102: Batching Engine (8pt, Dev)", status: "completed" },
+          { id: "lin-todo-3", content: "Create NOTIF-103: Preferences UI (5pt, Amir)", status: "completed" },
+          { id: "lin-todo-4", content: "Create NOTIF-104: Digest Email (5pt, Amir)", status: "completed" },
+        ], createdAt: stepTs(42) },
+        { id: "lin-step-18", kind: "text", content: "## Sprint Board Created\n\nAll 4 stories are live in Linear:\n\n- **NOTIF-101** Preferences API (5pt, Dev, High) — ready to start Monday\n- **NOTIF-102** Batching Engine (8pt, Dev, Urgent) — starts after API\n- **NOTIF-103** Preferences UI (5pt, Amir, High) — blocked on Kai's designs (Tuesday)\n- **NOTIF-104** Digest Email + SendGrid (5pt, Amir, Medium) — includes IP warmup subtask\n\nSprint total: 23 points, March 16-30. Dependencies and labels configured.", createdAt: stepTs(44) },
+      ],
+      createdAt: stepTs(10),
+      completedAt: stepTs(46),
+    },
+
+    // Agent 2: Implement notification preferences API via Codex
+    {
+      id: "demo-agent-codex-api",
+      kind: "analysis",
+      taskId: PM_TASK_IDS.preferencesApi,
+      sessionId: PM_SESSION_ID,
+      task: "Implement notification preferences API",
+      taskContext: "REST API with 6-8 endpoints for notification settings. Separate NotificationPreferences table with quiet_hours_start, quiet_hours_end, batch_frequency, digest_enabled, digest_time, JSONB per-category overrides. Standard CRUD plus validation.",
+      status: "completed",
+      result: "## Notification Preferences API — Implemented\n\nCodex generated a production-ready preferences API. All files follow the existing project conventions (Drizzle ORM, Zod validation, Express routing).\n\n### Files Created (5 files, ~620 lines)\n\n**`src/db/models/notification-preferences.ts`** — Drizzle schema\n```ts\nexport const notificationPreferences = pgTable('notification_preferences', {\n  id: uuid('id').primaryKey().defaultRandom(),\n  userId: uuid('user_id').notNull().references(() => users.id),\n  quietHoursStart: time('quiet_hours_start'),  // e.g. \"22:00\"\n  quietHoursEnd: time('quiet_hours_end'),        // e.g. \"08:00\"\n  quietHoursTimezone: varchar('quiet_hours_timezone', { length: 64 }).default('UTC'),\n  batchFrequency: varchar('batch_frequency', { enum: ['immediate','hourly','thrice_daily','daily'] }).default('thrice_daily'),\n  digestEnabled: boolean('digest_enabled').default(true),\n  digestTime: time('digest_time').default('09:00'),\n  perCategoryOverrides: jsonb('per_category_overrides').default('{}'),\n  createdAt: timestamp('created_at').defaultNow(),\n  updatedAt: timestamp('updated_at').defaultNow(),\n});\n```\n\n**`src/api/routes/notification-preferences.ts`** — 6 REST endpoints\n| Method | Path | Description |\n|--------|------|-------------|\n| `GET` | `/api/notifications/preferences` | Get current user's preferences (lazy-creates defaults) |\n| `PUT` | `/api/notifications/preferences` | Partial update (merge semantics) |\n| `GET` | `/api/notifications/preferences/categories` | List categories with per-user overrides |\n| `PUT` | `/api/notifications/preferences/categories/:id` | Update single category settings |\n| `PUT` | `/api/notifications/preferences/quiet-hours` | Set quiet hours with timezone |\n| `POST` | `/api/notifications/preferences/reset` | Reset to platform defaults |\n\n**`src/api/validators/notification-preferences.ts`** — Zod schemas for all inputs\n- `UpdatePreferencesSchema` — partial update with enum validation for batch_frequency\n- `QuietHoursSchema` — validates time format (HH:MM), timezone via `Intl.supportedValuesOf('timeZone')`\n- `CategoryOverrideSchema` — validates channel enum (push/email/in_app) and enabled boolean\n\n**`src/db/migrations/20260316_notification_preferences.ts`** — Migration\n- Creates table with indexes on user_id (unique) and batch_frequency\n- Adds GIN index on per_category_overrides for JSONB queries\n\n**`src/api/__tests__/notification-preferences.test.ts`** — 18 test cases\n- 6 happy-path tests (one per endpoint)\n- 4 validation error tests (bad timezone, invalid batch_frequency, malformed time)\n- 3 edge cases (first-time user lazy creation, concurrent updates, empty JSONB merge)\n- 3 auth tests (unauthenticated, wrong user, missing session)\n- 2 category override tests (merge vs replace semantics)\n\nAll 18 tests passing. No lint errors.",
+      steps: [
+        { id: "api-step-1", kind: "user", content: "Implement notification preferences API", createdAt: stepTs(50) },
+        { id: "api-step-2", kind: "thinking", content: "This is a well-scoped backend task — REST endpoints, database schema, validation. I need to pull the exact schema spec from the conversation first. Dev mentioned: separate NotificationPreferences table with user_id FK, quiet_hours_start/end, batch_frequency (enum), digest_enabled, digest_time, and JSONB for per-category overrides. He estimated 3-4 days but Codex should be able to generate the entire thing.", createdAt: stepTs(52) },
+        { id: "api-step-3", kind: "tool-call", content: "", toolName: "searchTranscriptHistory", toolInput: "NotificationPreferences table schema quiet_hours batch_frequency JSONB per-category overrides endpoints", createdAt: stepTs(54) },
+        { id: "api-step-4", kind: "tool-result", content: "Found relevant transcript excerpts:\n- \"Separate table. NotificationPreferences with a user_id foreign key. Columns for quiet_hours_start, quiet_hours_end, batch_frequency, digest_enabled, digest_time, and then a JSONB column for per-category overrides.\"\n- \"Standard REST, maybe 6-8 endpoints. I'd estimate 3-4 days for that.\"\n- \"What about the data model? Are we bolting this onto the existing user settings or is it its own thing? — Separate table.\"", createdAt: stepTs(56) },
+        { id: "api-step-5", kind: "plan", content: "Preferences API plan", planTitle: "Implement Notification Preferences API", planContent: "1. Extract exact schema from transcript: table structure, column types, constraints\n2. Send to Codex with full spec: Drizzle schema, Express routes, Zod validation, migration\n3. Include edge cases: lazy creation on first GET, JSONB merge semantics for category overrides, timezone validation\n4. Request comprehensive tests: happy path, validation errors, auth, edge cases\n5. Review generated code for correctness", planApprovalState: "approved", createdAt: stepTs(58) },
+        { id: "api-step-6", kind: "todo", content: "API implementation checklist", todoItems: [
+          { id: "api-todo-1", content: "Extract schema spec from transcript", status: "completed" },
+          { id: "api-todo-2", content: "Send to Codex with full spec", status: "in_progress" },
+          { id: "api-todo-3", content: "Review generated code", status: "pending" },
+          { id: "api-todo-4", content: "Verify all tests pass", status: "pending" },
+        ], createdAt: stepTs(60) },
+        { id: "api-step-7", kind: "tool-call", content: "", toolName: "codex", toolInput: JSON.stringify({ prompt: "Create a notification preferences REST API following the project's existing patterns (Express router, Drizzle ORM, Zod validation). Schema: NotificationPreferences table with user_id (uuid FK to users, unique), quiet_hours_start (time, nullable), quiet_hours_end (time, nullable), quiet_hours_timezone (varchar 64, default 'UTC'), batch_frequency (enum: immediate/hourly/thrice_daily/daily, default 'thrice_daily'), digest_enabled (boolean, default true), digest_time (time, default '09:00'), per_category_overrides (JSONB, default {}), timestamps. Endpoints: GET /api/notifications/preferences (lazy-create defaults on first access), PUT /api/notifications/preferences (partial update with merge), GET /api/notifications/preferences/categories (list with overrides), PUT /api/notifications/preferences/categories/:id (update single category), PUT /api/notifications/preferences/quiet-hours (set with timezone validation via Intl.supportedValuesOf), POST /api/notifications/preferences/reset (restore defaults). Write Zod validators for all inputs. Write 18+ tests covering happy path, validation errors, auth, and edge cases (lazy creation, concurrent updates, JSONB merge)." }), createdAt: stepTs(62) },
+        { id: "api-step-8", kind: "tool-result", content: "Codex task started.\ntaskId: cdx_notif_api_01\nthreadId: thread_notif_api\nstatus: running", createdAt: stepTs(64) },
+        { id: "api-step-9", kind: "text", content: "Codex is generating the preferences API — schema, routes, validators, migration, and tests. This covers the full NOTIF-101 story scope.", createdAt: stepTs(66) },
+        { id: "api-step-10", kind: "tool-call", content: "", toolName: "codexResult", toolInput: JSON.stringify({ taskId: "cdx_notif_api_01" }), createdAt: stepTs(72) },
+        { id: "api-step-11", kind: "tool-result", content: "Codex task completed.\nstatus: completed\n\nFiles created:\n- src/db/models/notification-preferences.ts (Drizzle schema with indexes)\n- src/db/migrations/20260316_notification_preferences.ts (table + GIN index)\n- src/api/routes/notification-preferences.ts (6 REST endpoints, 180 lines)\n- src/api/validators/notification-preferences.ts (3 Zod schemas)\n- src/api/__tests__/notification-preferences.test.ts (18 tests)\n\nTest results: 18/18 passing\nLint: 0 errors, 0 warnings\n\nKey implementation notes:\n- GET /preferences lazy-creates default row on first access\n- PUT /preferences uses JSONB merge (not replace) for per_category_overrides\n- Timezone validation uses Intl.supportedValuesOf('timeZone')\n- Unique constraint on user_id prevents duplicate preference rows", createdAt: stepTs(76) },
+        { id: "api-step-12", kind: "thinking", content: "Codex generated all 5 files with 18 passing tests. Let me verify the key implementation details match what the team discussed: lazy creation on first GET, JSONB merge semantics for category overrides, timezone validation. The Intl.supportedValuesOf approach is clean — no external dependency needed. The GIN index on per_category_overrides is a nice touch for future JSONB queries.", createdAt: stepTs(78) },
+        { id: "api-step-13", kind: "todo", content: "API implementation checklist", todoItems: [
+          { id: "api-todo-1", content: "Extract schema spec from transcript", status: "completed" },
+          { id: "api-todo-2", content: "Send to Codex with full spec", status: "completed" },
+          { id: "api-todo-3", content: "Review generated code", status: "completed" },
+          { id: "api-todo-4", content: "Verify all tests pass", status: "completed" },
+        ], createdAt: stepTs(80) },
+        { id: "api-step-14", kind: "text", content: "## Notification Preferences API — Complete\n\nCodex generated 5 files (~620 lines) implementing the full NOTIF-101 story:\n\n- **Drizzle schema** with user_id unique constraint and GIN index on JSONB\n- **6 REST endpoints** with lazy creation, merge semantics, and timezone validation\n- **3 Zod validators** covering all input shapes\n- **18 tests passing** — happy path, validation, auth, edge cases\n\nReady for code review. Dev can focus on the batching engine (NOTIF-102) instead of spending 3-4 days on this.", createdAt: stepTs(82) },
+      ],
+      createdAt: stepTs(50),
+      completedAt: stepTs(84),
+    },
+
+    // Agent 3: Build notification batching service via Codex
+    {
+      id: "demo-agent-codex-batcher",
+      kind: "analysis",
+      taskId: PM_TASK_IDS.batchingEngine,
+      sessionId: PM_SESSION_ID,
+      task: "Build notification batching service",
+      taskContext: "Cron service on BullMQ running every 15 minutes. Redis sorted set queue with priority scoring. Groups by user and category. Handles quiet hours with timezone support. Five priority signals: sender importance, category weight, recency decay, time sensitivity, engagement history.",
+      status: "completed",
+      result: "## Notification Batching Service — Implemented\n\nCodex generated the complete batching pipeline across 6 files (~890 lines). This is the most complex piece of the sprint — the 8-point story that Dev estimated would take a full week.\n\n### Architecture\n```\n                           ┌─────────────────┐\n  Notification arrives ──▶ │  Redis Sorted    │\n  (from app event bus)     │  Set Queue       │\n                           │  score = priority│\n                           └────────┬────────┘\n                                    │\n                           ┌────────▼────────┐\n                           │  BullMQ Cron     │\n                           │  (every 15 min)  │\n                           └────────┬────────┘\n                                    │\n                    ┌───────────────┼───────────────┐\n                    ▼               ▼               ▼\n             ┌──────────┐   ┌──────────┐   ┌──────────┐\n             │ Group by  │   │ Check    │   │ Score    │\n             │ user +    │   │ quiet    │   │ > 80?    │\n             │ category  │   │ hours    │   │ URGENT   │\n             └─────┬────┘   └─────┬────┘   └─────┬────┘\n                   │              │              │\n                   ▼              ▼              ▼\n             Batch Window    Hold for       Deliver\n             (2-3 digests)   next window    Immediately\n```\n\n### Files Created\n\n**`src/services/notification-batcher.ts`** — Core orchestrator (210 lines)\n- BullMQ repeatable job registered at startup: `every: '15 minutes'`\n- On each tick: pull pending notifications from Redis, group by user_id + category\n- For each group: check quiet hours → score notifications → deliver or hold\n- Graceful degradation: if Redis is unreachable, falls back to immediate delivery with a warning log\n\n**`src/services/priority-scorer.ts`** — 5-signal scoring engine (150 lines)\n| Signal | Weight | Source | Calculation |\n|--------|--------|--------|-------------|\n| Sender importance | 0-25 | User interaction frequency table | `log2(interactions + 1) / log2(maxInteractions + 1) * 25` |\n| Category weight | 0-20 | User's per-category preferences | Direct from preferences JSONB |\n| Recency decay | 0-20 | Notification created_at | `20 * exp(-age_hours / 12)` — half-life of ~8 hours |\n| Time sensitivity | 0-20 | User's active hours pattern | Higher during historically active hours |\n| Engagement history | 0-15 | Click-through rate on similar types | `min(ctr * 100, 15)` |\n\nUrgent threshold: **score > 80** bypasses batching entirely.\n\n**`src/services/notification-queue.ts`** — Redis sorted set adapter (80 lines)\n- `enqueue(notification)`: `ZADD notifications:{userId} {score} {payload}`\n- `dequeueForUser(userId, count)`: `ZPOPMAX notifications:{userId} {count}`\n- `pendingCount(userId)`: `ZCARD notifications:{userId}`\n\n**`src/services/quiet-hours.ts`** — Timezone-aware checker (70 lines)\n- Uses `Intl.DateTimeFormat` with user's timezone to get local hour\n- Handles overnight ranges (e.g., 22:00 → 08:00 crossing midnight)\n- Returns `{ isQuiet: boolean; resumesAt: Date }` so batching knows when to retry\n\n**`src/services/__tests__/notification-batcher.test.ts`** — 24 tests\n- Grouping: groups by user, groups by category, handles mixed\n- Quiet hours: respects quiet hours, handles midnight crossing, handles missing timezone\n- Batching: delivers urgent (>80) immediately, holds low-priority for batch window\n- Fallback: continues working when Redis is down\n- Edge cases: empty queue, single notification, max batch size\n\n**`src/services/__tests__/priority-scorer.test.ts`** — 12 tests\n- Each signal tested independently with known inputs\n- Combined scoring with boundary cases (all max, all min, mixed)\n- Urgency threshold: verifies score > 80 triggers immediate delivery\n\n### All 36 tests passing. No lint errors.",
+      steps: [
+        { id: "batch-step-1", kind: "user", content: "Build notification batching service", createdAt: stepTs(88) },
+        { id: "batch-step-2", kind: "thinking", content: "This is the 8-point story — the most complex piece of the sprint. Dev estimated a full week. Let me break down what we need from the conversation: BullMQ cron every 15 minutes, Redis sorted set queue, 5-signal priority scoring, quiet hours with timezone support, and urgent bypass for score > 80. I should also grab the exact scoring signals Dev described.", createdAt: stepTs(90) },
+        { id: "batch-step-3", kind: "tool-call", content: "", toolName: "searchTranscriptHistory", toolInput: "priority scoring five signals sender importance category weight recency decay time sensitivity engagement", createdAt: stepTs(92) },
+        { id: "batch-step-4", kind: "tool-result", content: "Found relevant transcript excerpts:\n- \"I'm thinking five signals: sender importance based on the user's interaction history, notification category weight which we can configure per-user, recency decay so older notifications score lower, time-of-day sensitivity, and engagement history — has the user tapped similar notifications before.\"\n- \"we can use last_active_at from the sessions table. If they're active, immediate delivery. If they're away, batch it.\"\n- \"Redis sorted sets would work perfectly here. Score is the priority, we just ZRANGEBYSCORE to pull the top items.\"", createdAt: stepTs(94) },
+        { id: "batch-step-5", kind: "plan", content: "Batching service plan", planTitle: "Build Notification Batching Service", planContent: "1. Core orchestrator: BullMQ repeatable job (every 15 min), pull from Redis, group by user+category\n2. Priority scorer: 5 signals with configurable weights, score 0-100, urgent threshold > 80\n3. Redis queue adapter: sorted set per user, ZADD/ZPOPMAX operations\n4. Quiet hours checker: Intl.DateTimeFormat for timezone, handle midnight crossing\n5. Comprehensive tests: 24 for batcher + 12 for scorer\n6. Graceful degradation: fallback to immediate delivery if Redis is down", planApprovalState: "approved", createdAt: stepTs(96) },
+        { id: "batch-step-6", kind: "todo", content: "Batching service checklist", todoItems: [
+          { id: "batch-todo-1", content: "Gather exact requirements from transcript", status: "completed" },
+          { id: "batch-todo-2", content: "Send architecture spec to Codex", status: "in_progress" },
+          { id: "batch-todo-3", content: "Review generated code for correctness", status: "pending" },
+          { id: "batch-todo-4", content: "Verify all 36 tests pass", status: "pending" },
+        ], createdAt: stepTs(98) },
+        { id: "batch-step-7", kind: "tool-call", content: "", toolName: "codex", toolInput: JSON.stringify({ prompt: "Build a notification batching service with the following architecture:\n\n1. notification-batcher.ts: BullMQ repeatable job every 15 minutes. On tick: pull pending notifications from Redis sorted set, group by user_id + category, check quiet hours, score, deliver or hold. Graceful degradation if Redis is down (fall back to immediate delivery).\n\n2. priority-scorer.ts: 5-signal scoring engine (0-100). Signals: sender importance (0-25, based on interaction frequency, use log2 scaling), category weight (0-20, from user preferences JSONB), recency decay (0-20, exponential decay with 8-hour half-life), time sensitivity (0-20, based on user's active hours), engagement history (0-15, CTR on similar notification types). Urgent threshold: score > 80 bypasses batching.\n\n3. notification-queue.ts: Redis sorted set adapter. ZADD for enqueue (score = priority), ZPOPMAX for dequeue, ZCARD for count. Key pattern: notifications:{userId}.\n\n4. quiet-hours.ts: Timezone-aware using Intl.DateTimeFormat. Handle overnight ranges crossing midnight. Return { isQuiet, resumesAt }.\n\n5. Tests: 24 for batcher (grouping, quiet hours, batching logic, fallback, edge cases) + 12 for scorer (individual signals, combined scoring, urgency threshold).\n\nUse the project's existing patterns (TypeScript, Vitest, ioredis)." }), createdAt: stepTs(100) },
+        { id: "batch-step-8", kind: "tool-result", content: "Codex task started.\ntaskId: cdx_batcher_01\nthreadId: thread_batcher\nstatus: running", createdAt: stepTs(102) },
+        { id: "batch-step-9", kind: "text", content: "Codex is building the batching service — this is the largest piece of the sprint. Generating 4 source files + 2 test files with the priority scoring engine, Redis queue adapter, quiet hours checker, and BullMQ orchestrator.", createdAt: stepTs(104) },
+        { id: "batch-step-10", kind: "tool-call", content: "", toolName: "codexResult", toolInput: JSON.stringify({ taskId: "cdx_batcher_01" }), createdAt: stepTs(112) },
+        { id: "batch-step-11", kind: "tool-result", content: "Codex task completed.\nstatus: completed\n\nFiles created:\n- src/services/notification-batcher.ts (BullMQ cron + grouping + delivery logic, 210 lines)\n- src/services/priority-scorer.ts (5-signal scoring engine, 150 lines)\n- src/services/notification-queue.ts (Redis sorted set adapter, 80 lines)\n- src/services/quiet-hours.ts (timezone-aware quiet hours checker, 70 lines)\n- src/services/__tests__/notification-batcher.test.ts (24 tests)\n- src/services/__tests__/priority-scorer.test.ts (12 tests)\n\nTest results: 36/36 passing\nLint: 0 errors, 0 warnings\n\nImplementation notes:\n- Priority scorer uses log2 scaling for sender importance to avoid linear skew\n- Recency decay uses exp(-age_hours / 12) giving ~8-hour half-life\n- Quiet hours handles overnight ranges (22:00 → 08:00) correctly\n- Redis fallback logs warning but doesn't crash — degrades to immediate delivery", createdAt: stepTs(116) },
+        { id: "batch-step-12", kind: "thinking", content: "All 36 tests passing. Let me verify the key implementation details: the log2 scaling for sender importance is smart — prevents power users from dominating the score. The 8-hour half-life on recency decay means a notification loses ~63% of its recency score after 8 hours, which seems reasonable. The Redis fallback behavior is exactly what Dev suggested — degrade gracefully, don't crash.", createdAt: stepTs(118) },
+        { id: "batch-step-13", kind: "todo", content: "Batching service checklist", todoItems: [
+          { id: "batch-todo-1", content: "Gather exact requirements from transcript", status: "completed" },
+          { id: "batch-todo-2", content: "Send architecture spec to Codex", status: "completed" },
+          { id: "batch-todo-3", content: "Review generated code for correctness", status: "completed" },
+          { id: "batch-todo-4", content: "Verify all 36 tests pass", status: "completed" },
+        ], createdAt: stepTs(120) },
+        { id: "batch-step-14", kind: "text", content: "## Notification Batching Service — Complete\n\nCodex generated 6 files (~890 lines) implementing the full NOTIF-102 story:\n\n- **BullMQ orchestrator** — 15-minute cron, group-by-user-and-category, deliver-or-hold logic\n- **5-signal priority scorer** — log2-scaled sender importance, exponential recency decay (8h half-life), engagement CTR\n- **Redis sorted set queue** — ZADD/ZPOPMAX per user, graceful fallback if Redis is down\n- **Quiet hours checker** — Intl.DateTimeFormat timezone resolution, handles midnight crossing\n- **36 tests all passing** — grouping, quiet hours, scoring, urgency bypass, edge cases\n\nThis was the 8-point story Dev estimated at 1 week. Ready for code review.", createdAt: stepTs(122) },
+      ],
+      createdAt: stepTs(88),
+      completedAt: stepTs(124),
+    },
+
+    // Agent 4: Design digest email template
+    {
+      id: "demo-agent-digest-design",
+      kind: "analysis",
+      taskId: PM_TASK_IDS.digestDesign,
+      sessionId: PM_SESSION_ID,
+      task: "Design digest email template",
+      taskContext: "HTML email template for daily notification digest. Should look like Linear's emails — clean typography, good hierarchy, renders well on mobile. Summary header with stats, category-grouped sections, collapsible items, deep links for re-engagement. Track which items get tapped.",
+      status: "completed",
+      result: "## Digest Email Template — Complete Spec\n\nDesigned a production-ready email template following Kai's direction: Linear-style clean typography, minimal HTML, fast mobile rendering. Based on best practices from Notion, Linear, and GitHub digest emails.\n\n### Template Structure\n```\n┌──────────────────────────────────────────┐\n│  Your Daily Digest                       │\n│  Wednesday, March 16                     │\n│                                          │\n│  12 new · 3 mentions · 2 completed       │\n├──────────────────────────────────────────┤\n│                                          │\n│  Messages (5 new)                        │\n│  ├ Sarah commented on NOTIF-101          │\n│  ├ Dev mentioned you in #backend         │\n│  ├ Amir replied to your PR review        │\n│  └ +2 more →                             │\n│                                          │\n│  Task Updates (4)                        │\n│  ├ NOTIF-102 moved to In Progress        │\n│  ├ Code review requested: PR #847        │\n│  └ +2 more →                             │\n│                                          │\n│  Team Activity (3)                       │\n│  ├ Sprint velocity: 18/23 pts done       │\n│  └ Kai shared design specs in #design    │\n│                                          │\n├──────────────────────────────────────────┤\n│  Manage preferences · Unsubscribe        │\n└──────────────────────────────────────────┘\n```\n\n### Design System\n- **Framework:** MJML compiled to responsive HTML — 85% email client compatibility (Gmail, Outlook, Apple Mail, Yahoo)\n- **Typography:** `-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif` — 16px body, 24px headers, 13px meta\n- **Colors:** `#1a1a1a` text, `#f8f8f8` background, `#2563eb` links, `#e5e7eb` borders\n- **Layout:** single column, 600px max-width, 16px horizontal padding, scales to 320px mobile\n- **Spacing:** 24px between sections, 12px between items, 8px icon-to-text gap\n\n### Deep Linking Strategy\nEvery item is tappable with attribution tracking:\n```\nhttps://app.example.com/notifications/{id}\n  ?utm_source=digest\n  &utm_medium=email\n  &utm_campaign=daily_digest\n  &utm_content={category}_{position}\n```\n- Position tracking reveals which items in the digest get the most engagement\n- Category tracking feeds back into the priority scoring model\n- Open tracking via 1x1 transparent pixel at bottom of email\n\n### Subject Line Strategy\n- **Format:** `{count} updates you missed` — personalized count drives 26% higher open rates\n- **Preheader:** first 3 notification summaries, truncated to 90 chars\n- **Send time:** user's configured `digest_time` from preferences API (default 9:00 AM local)\n- **From:** `Notifications <notifications@example.com>` — consistent, recognizable sender\n\n### Re-engagement Metrics\n| Metric | Target | Measurement |\n|--------|--------|-------------|\n| Open rate | 35%+ | 1x1 pixel |\n| Click-through rate | 15%+ | UTM tracking per item |\n| Re-engagement | 20%+ | App session within 30 min of open |\n| Unsubscribe rate | < 0.5% | Alert if threshold exceeded |\n\n### Compliance\n- CAN-SPAM: physical address in footer, one-click unsubscribe, honest subject line\n- GDPR: unsubscribe link, no tracking without consent, data retention policy link\n- Apple MPP: don't rely solely on open rates — use click-through as primary signal\n\n### SendGrid Integration Notes\n- Use dynamic templates with Handlebars for category sections\n- IP warmup plan: start with 100 emails/day, ramp 2x weekly over 4 weeks\n- SPF, DKIM, DMARC authentication required before first send\n- Set up click tracking domain (`email.example.com`) for branded links",
+      steps: [
+        { id: "dig-step-1", kind: "user", content: "Design digest email template", createdAt: stepTs(128) },
+        { id: "dig-step-2", kind: "thinking", content: "Kai described a very specific vision: Linear-style clean emails with summary header, category-grouped sections, collapsible items, and deep links for re-engagement tracking. I need to research best practices for digest email design and then combine that with the exact requirements from the discussion. Let me also look at what Notion and GitHub do — they were mentioned as reference points.", createdAt: stepTs(130) },
+        { id: "dig-step-3", kind: "tool-call", content: "", toolName: "searchWeb", toolInput: "email digest design best practices 2026 MJML responsive template re-engagement metrics", createdAt: stepTs(132) },
+        { id: "dig-step-4", kind: "tool-result", content: "Key findings:\n- MJML is the industry standard for responsive email templates — compiles to HTML compatible with 85%+ email clients\n- Single column layout performs best on mobile (72% of email opens are on mobile)\n- Personalized subject lines with dynamic counts increase open rates by 26% vs generic subjects\n- Deep links with UTM params enable per-item click attribution\n- CAN-SPAM requires physical address and one-click unsubscribe; GDPR adds consent requirements\n- Notion achieves 38% open rate with minimal HTML design — key is clean typography and scannable layout\n- Apple Mail Privacy Protection (MPP) makes open tracking unreliable — use click-through as primary signal", createdAt: stepTs(134) },
+        { id: "dig-step-5", kind: "tool-call", content: "", toolName: "searchWeb", toolInput: "Linear email design system typography colors notification digest template examples", createdAt: stepTs(136) },
+        { id: "dig-step-6", kind: "tool-result", content: "Linear email design characteristics:\n- System font stack: -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif\n- Muted color palette: dark text on light background, blue links (#2563eb), subtle gray borders\n- Minimal decoration: no images, no heavy styling, pure typography hierarchy\n- Single CTA per section, clear visual separation between content groups\n- GitHub digest emails: similar approach, 3-5 sections max, position-based click tracking", createdAt: stepTs(138) },
+        { id: "dig-step-7", kind: "tool-call", content: "", toolName: "searchTranscriptHistory", toolInput: "digest email design template linear clean typography deep links tracking categories", createdAt: stepTs(140) },
+        { id: "dig-step-8", kind: "tool-result", content: "Found relevant transcript excerpts:\n- \"HTML but minimal. Think Linear's emails — clean typography, good hierarchy, renders great on mobile. Nothing fancy with images or heavy styling.\"\n- \"Summary header with key stats, then sections grouped by category — 'You had 12 new comments, 3 mentions, and 2 task completions.' Each section is collapsible with the top 3 most important items shown by default.\"\n- \"Every item in the digest should be tappable and deep-link to the exact notification in the app. That's the re-engagement mechanism.\"\n- \"Track which items in the digest get tapped. That feeds back into the priority scoring model.\"\n- \"email deliverability. If we're sending digests to everyone we need to make sure our SendGrid sender reputation stays clean.\"", createdAt: stepTs(142) },
+        { id: "dig-step-9", kind: "thinking", content: "Now I have the full picture. The team wants: Linear-style typography (system fonts, muted colors), category-grouped sections (messages, tasks, team activity), top 3 items per section with '+N more' links, deep links with UTM tracking that feeds back into priority scoring, and SendGrid IP warmup for deliverability. Let me also add Apple MPP guidance since it affects open rate tracking — they should use click-through as the primary signal, not open rate.", createdAt: stepTs(144) },
+        { id: "dig-step-10", kind: "todo", content: "Digest email checklist", todoItems: [
+          { id: "dig-todo-1", content: "Research email design best practices (MJML, responsive)", status: "completed" },
+          { id: "dig-todo-2", content: "Analyze Linear/Notion email design patterns", status: "completed" },
+          { id: "dig-todo-3", content: "Extract exact requirements from transcript", status: "completed" },
+          { id: "dig-todo-4", content: "Define template structure and design system", status: "completed" },
+          { id: "dig-todo-5", content: "Specify deep linking and tracking strategy", status: "completed" },
+          { id: "dig-todo-6", content: "Add compliance and deliverability notes", status: "completed" },
+        ], createdAt: stepTs(146) },
+        { id: "dig-step-11", kind: "text", content: "## Digest Email Template — Complete\n\nFull spec covering:\n- **Template structure:** summary header → 3 category sections (messages, tasks, team) → top 3 items + overflow → footer\n- **Design system:** system fonts, muted palette, 600px single column, MJML for 85% client compatibility\n- **Deep linking:** every item links to `app://notifications/{id}` with UTM params for position + category tracking\n- **Re-engagement metrics:** open rate (35%+), CTR (15%+), app session within 30 min (20%+)\n- **Compliance:** CAN-SPAM, GDPR, Apple MPP guidance\n- **SendGrid:** IP warmup plan, SPF/DKIM/DMARC authentication, branded click tracking domain\n\nReady for Kai to implement in MJML. Click tracking feeds directly into the priority scoring model from NOTIF-102.", createdAt: stepTs(148) },
+      ],
+      createdAt: stepTs(128),
+      completedAt: stepTs(150),
+    },
+  ];
+}
+
+// ===========================================================================
+// FINAL SUMMARY (PM session)
+// ===========================================================================
+function buildPmFinalSummary(baseTs: number) {
+  return {
+    narrative: "The team designed a Smart Notifications system to combat notification fatigue driving a 15% engagement drop and 3x support ticket increase. The solution has three pillars: intelligent batching (grouping 47 daily notifications into 2-3 digest windows), priority scoring (5-signal weighted model: sender importance, category weight, recency decay, time sensitivity, engagement history), and digest emails for re-engagement. A two-week sprint was planned with 4 stories totaling 23 points across 2 engineers. Dev takes the preferences API (3-4 days) and batching engine (1 week), Amir handles the UI and digest email. Phase one uses a rules-based scoring engine; ML model deferred to Q3.",
+    agreements: [
+      "Build intelligent notification batching — group into 2-3 daily windows unless truly urgent (score > 80)",
+      "Priority scoring with 5 signals: sender importance, category weight, recency decay, time sensitivity, engagement history",
+      "Quiet hours with timezone support — default 10 PM to 8 AM",
+      "Daily digest emails as re-engagement mechanism — Linear-style clean design with deep links",
+      "Two-week sprint: 23 points across Dev (API + batching) and Amir (UI + digest)",
+      "Phase one: rules engine. Phase two (Q3): proper ML model trained on interaction data",
+    ],
+    missedItems: [
+      "No A/B testing plan for the rollout — mentioned but explicitly deferred as follow-up",
+      "Email deliverability and SendGrid IP warmup not scoped in detail — flagged as subtask only",
+      "Priority scoring data sources need validation — where does 'sender importance' data actually come from?",
+    ],
+    unansweredQuestions: [
+      "What happens to notifications during quiet hours — queued until morning or dropped entirely?",
+      "How does the system handle notification permissions on iOS vs Android?",
+      "What's the fallback if the batching service goes down — immediate delivery or silent failure?",
+    ],
+    agreementTodos: [
+      { text: "Create Linear issues for all 4 sprint stories with sizing and assignments", doer: "agent" as const },
+      { text: "Implement notification preferences API with Drizzle schema and Zod validation", doer: "agent" as const },
+      { text: "Build notification batching service with BullMQ cron and priority scoring", doer: "agent" as const },
+      { text: "Design digest email template following Linear-style guidelines", doer: "agent" as const },
+    ],
+    missedItemTodos: [
+      { text: "Design A/B testing plan for smart notifications rollout — 10% cohort, 1-week measurement", doer: "human" as const },
+      { text: "Research SendGrid IP warmup requirements and timeline for digest email volume", doer: "agent" as const },
+    ],
+    unansweredQuestionTodos: [
+      { text: "Define quiet hours notification handling policy — queue vs drop vs summary", doer: "human" as const },
+      { text: "Document platform-specific notification permission flows for iOS and Android", doer: "agent" as const },
+    ],
+    actionItems: [
+      { text: "Kai: deliver preferences UI designs by Tuesday", doer: "human" as const },
+      { text: "Dev: start preferences API implementation Monday", doer: "human" as const },
+      { text: "Lena: set up engagement metrics dashboard to measure notification fatigue improvement", doer: "human" as const },
+    ],
+    generatedAt: baseTs + 90_000,
+  };
+}
+
+// ===========================================================================
+// AGENTS FLEET SUMMARY (PM session)
+// ===========================================================================
+function buildPmAgentsSummary(baseTs: number) {
+  return {
+    overallNarrative: "Four agents executed the smart notifications sprint kickoff. The Linear agent created all 4 sprint stories with sizing, assignments, and dependencies. Two Codex agents generated production-ready code — the preferences API (6 endpoints, 18 tests) and the batching service (priority scoring, quiet hours, 36 tests). The design agent produced a comprehensive digest email template spec based on industry best practices. This is the first session where agents both managed project tooling (Linear) and generated code (Codex), demonstrating the full PM-to-code pipeline.",
+    agentHighlights: [
+      {
+        agentId: "demo-agent-linear-sprint",
+        task: "Create Linear issues for sprint",
+        status: "completed" as const,
+        keyFinding: "4 issues created in Linear with estimates, assignments, labels, and dependencies. Sprint total: 23 points across Dev and Amir for a 2-week sprint.",
+      },
+      {
+        agentId: "demo-agent-codex-api",
+        task: "Implement notification preferences API",
+        status: "completed" as const,
+        keyFinding: "Codex generated 5 files: Express router with 6 endpoints, Drizzle schema, migration, Zod validators, and 18 passing tests. Full REST API for notification settings.",
+      },
+      {
+        agentId: "demo-agent-codex-batcher",
+        task: "Build notification batching service",
+        status: "completed" as const,
+        keyFinding: "Codex built the complete batching pipeline: BullMQ cron, Redis sorted set queue, 5-signal priority scorer, timezone-aware quiet hours. 36 tests all passing.",
+      },
+      {
+        agentId: "demo-agent-digest-design",
+        task: "Design digest email template",
+        status: "completed" as const,
+        keyFinding: "MJML-based responsive template with Linear-style typography, category-grouped sections, deep links for re-engagement tracking. CAN-SPAM compliant.",
+      },
+    ],
+    coverageGaps: [
+      "Priority scoring ML model (phase 2) wasn't prototyped — the rules engine is a placeholder",
+      "Mobile push notification specifics (iOS APNs vs Android FCM) weren't addressed",
+      "No load testing or performance benchmarks for the batching service at scale",
+    ],
+    nextSteps: [
+      "Review and merge Codex-generated code — start with the preferences API PR",
+      "Kai: finalize designs by Tuesday so Amir can start the preferences UI",
+      "Set up engagement metrics dashboard to track notification fatigue improvement post-launch",
+      "Plan A/B testing cohort for smart notifications rollout (10% of users, 1-week measurement)",
+    ],
+    generatedAt: baseTs + 95_000,
+    totalAgents: 4,
+    succeededAgents: 4,
+    failedAgents: 0,
+    totalDurationSecs: 280,
+  };
+}
+
+// ===========================================================================
 // Main seed function
 // ===========================================================================
 export function seedDemoData(db: Database.Database): void {
@@ -816,6 +1721,7 @@ export function seedDemoData(db: Database.Database): void {
   const BRAIN_START = BASE_TS - 40 * 60_000;
   const STUDY_START = BASE_TS - 35 * 60_000;
   const MEETING_START = BASE_TS - 30 * 60_000;
+  const PM_START = BASE_TS - 25 * 60_000;
 
   const insertAll = db.transaction(() => {
     // Create sessions
@@ -823,6 +1729,7 @@ export function seedDemoData(db: Database.Database): void {
     insertSession(db, BRAIN_SESSION_ID, "AI Recipe App Brainstorm", BRAIN_START, BRAIN_START, 0, "en", "");
     insertSession(db, STUDY_SESSION_ID, "Distributed Systems Exam Prep", STUDY_START, STUDY_START, 0, "en", "");
     insertSession(db, MEETING_SESSION_ID, "Sprint Review & Planning", MEETING_START, MEETING_START, 0, "en", "");
+    insertSession(db, PM_SESSION_ID, "Smart Notifications Sprint", PM_START, PM_START, 0, "en", "");
 
     // Insert blocks, insights, tasks
     const tripEnd = insertBlocks(db, TRIP_SESSION_ID, TRIP_BLOCKS, TRIP_START, [5000, 10000], "English", "Japanese");
@@ -847,8 +1754,18 @@ export function seedDemoData(db: Database.Database): void {
     insertTasks(db, MEETING_SESSION_ID, MEETING_TASKS, meetingTaskStart, 100_000);
     updateSession(db, MEETING_SESSION_ID, meetingEnd, MEETING_BLOCKS.length);
 
+    const pmEnd = insertBlocks(db, PM_SESSION_ID, PM_BLOCKS, PM_START, [5000, 10000], "English", "");
+    insertInsights(db, PM_SESSION_ID, PM_INSIGHTS, PM_START + 3 * 60_000, 90_000);
+    insertTasks(db, PM_SESSION_ID, PM_TASKS, PM_START + 4 * 60_000, 100_000);
+    updateSession(db, PM_SESSION_ID, pmEnd, PM_BLOCKS.length);
+
     // Insert agents
-    const demoAgents = buildAgents(MEETING_START);
+    const demoAgents = [
+      ...buildAgents(MEETING_START),
+      ...buildBrainAgents(BRAIN_START),
+      ...buildStudyAgents(STUDY_START),
+      ...buildPmAgents(PM_START),
+    ];
     for (const agent of demoAgents) {
       insertAgent(db, agent);
     }
@@ -874,14 +1791,54 @@ export function seedDemoData(db: Database.Database): void {
       tripSummary.generatedAt,
     );
 
-    // Insert agents fleet summary for MEETING
-    const agentsSummary = buildMeetingAgentsSummary(MEETING_START);
-    updateSessionAgentsSummary(
+    // Insert BRAIN summary + agents
+    const brainSummary = buildBrainFinalSummary(BRAIN_START);
+    updateSessionSummary(
       db,
-      MEETING_SESSION_ID,
-      JSON.stringify(agentsSummary),
-      agentsSummary.generatedAt,
+      BRAIN_SESSION_ID,
+      JSON.stringify(brainSummary),
+      brainSummary.narrative,
+      JSON.stringify(brainSummary.actionItems),
+      brainSummary.generatedAt,
     );
+
+    // Insert STUDY summary + agents
+    const studySummary = buildStudyFinalSummary(STUDY_START);
+    updateSessionSummary(
+      db,
+      STUDY_SESSION_ID,
+      JSON.stringify(studySummary),
+      studySummary.narrative,
+      JSON.stringify(studySummary.actionItems),
+      studySummary.generatedAt,
+    );
+
+    // Insert PM summary
+    const pmSummary = buildPmFinalSummary(PM_START);
+    updateSessionSummary(
+      db,
+      PM_SESSION_ID,
+      JSON.stringify(pmSummary),
+      pmSummary.narrative,
+      JSON.stringify(pmSummary.actionItems),
+      pmSummary.generatedAt,
+    );
+
+    // Insert agents fleet summaries
+    const meetingAgentsSummary = buildMeetingAgentsSummary(MEETING_START);
+    updateSessionAgentsSummary(db, MEETING_SESSION_ID, JSON.stringify(meetingAgentsSummary), meetingAgentsSummary.generatedAt);
+
+    const tripAgentsSummary = buildTripAgentsSummary(TRIP_START);
+    updateSessionAgentsSummary(db, TRIP_SESSION_ID, JSON.stringify(tripAgentsSummary), tripAgentsSummary.generatedAt);
+
+    const brainAgentsSummary = buildBrainAgentsSummary(BRAIN_START);
+    updateSessionAgentsSummary(db, BRAIN_SESSION_ID, JSON.stringify(brainAgentsSummary), brainAgentsSummary.generatedAt);
+
+    const studyAgentsSummary = buildStudyAgentsSummary(STUDY_START);
+    updateSessionAgentsSummary(db, STUDY_SESSION_ID, JSON.stringify(studyAgentsSummary), studyAgentsSummary.generatedAt);
+
+    const pmAgentsSummary = buildPmAgentsSummary(PM_START);
+    updateSessionAgentsSummary(db, PM_SESSION_ID, JSON.stringify(pmAgentsSummary), pmAgentsSummary.generatedAt);
   });
 
   insertAll();
