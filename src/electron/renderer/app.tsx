@@ -168,6 +168,7 @@ export function App() {
     selectAgent: _selectAgent,
     closeAgent,
     seedAgents,
+    setAgentSteps,
   } = useAgents();
 
   const selectAgent = (id: string | null) => {
@@ -308,6 +309,8 @@ export function App() {
     transcriptRef,
     selectAgent,
     selectedSessionId: selectedSessionId ?? null,
+    agents,
+    setAgentSteps,
   });
 
   useEffect(() => {

@@ -23,6 +23,7 @@ type AgentsAction =
   | { kind: "agent-titled"; agentId: string; title: string }
   | { kind: "select-agent"; agentId: string | null }
   | { kind: "close-agent"; agentId: string }
+  | { kind: "set-agent-steps"; agentId: string; steps: AgentStep[]; status?: Agent["status"] }
   | { kind: "load-agents"; sessionId: string | null; agents: Agent[] }
   | { kind: "reset" };
 
@@ -68,7 +69,6 @@ function mergeSessionAgentTitles(
 function agentsReducer(state: AgentsState, action: AgentsAction): AgentsState {
   switch (action.kind) {
     case "agent-started": {
-      // Only surface live agent updates for the currently viewed session.
       if (state.currentSessionId && action.agent.sessionId !== state.currentSessionId) {
         return state;
       }
@@ -168,6 +168,15 @@ function agentsReducer(state: AgentsState, action: AgentsAction): AgentsState {
         agentSelectionNonce: state.agentSelectionNonce + 1,
       };
     }
+    case "set-agent-steps":
+      return {
+        ...state,
+        agents: state.agents.map((a) =>
+          a.id === action.agentId
+            ? { ...a, steps: action.steps, ...(action.status ? { status: action.status } : {}) }
+            : a,
+        ),
+      };
     case "load-agents": {
       const restoredSessionUI = getSessionAgentUI(state, action.sessionId);
       const isPlaceholderLoad = action.agents.length === 0;
@@ -234,6 +243,10 @@ export function useAgents() {
     dispatch({ kind: "load-agents", sessionId, agents });
   };
 
+  const setAgentSteps = (agentId: string, steps: AgentStep[], status?: Agent["status"]) => {
+    dispatch({ kind: "set-agent-steps", agentId, steps, status });
+  };
+
   const currentSessionUI = getSessionAgentUI(state, state.currentSessionId);
   const currentSessionAgentTitles = state.currentSessionId
     ? (state.sessionAgentTitles[state.currentSessionId] ?? {})
@@ -252,5 +265,6 @@ export function useAgents() {
     selectAgent,
     closeAgent,
     seedAgents,
+    setAgentSteps,
   };
 }

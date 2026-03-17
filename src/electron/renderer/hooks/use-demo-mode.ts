@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useUIStore } from "../stores/ui-store";
 import { useTaskStore } from "../stores/task-store";
-import type { TaskSuggestion } from "@core/types";
+import type { Agent, AgentStep, TaskSuggestion } from "@core/types";
 
 // Hardcoded to avoid importing seed-demo.ts (which pulls in node:crypto + better-sqlite3)
 const TRIP_SESSION_ID = "demo-trip-session";
@@ -10,7 +10,8 @@ const STUDY_SESSION_ID = "demo-study-session";
 const MEETING_SESSION_ID = "demo-meeting-session";
 const PM_SESSION_ID = "demo-pm-session";
 
-const DEFAULT_STEP_MS = 3000;
+const DEFAULT_STEP_MS = 4500;
+const STEP_REVEAL_MS = 400;
 
 type DemoStep = {
   action: () => void | Promise<void>;
@@ -245,10 +246,10 @@ function buildSessionSteps(sessionId: string, ctx: DemoContext): DemoStep[] {
         { action: () => ctx.scrollTranscript(0.3) },
         { action: () => ctx.scrollTranscript(0.6) },
         { action: () => { ctx.injectSuggestions(PM_SESSION_ID); ctx.forceWorkTab(); } },
-        { action: () => ctx.selectAgent("demo-agent-linear-sprint") },
-        { action: () => ctx.selectAgent("demo-agent-codex-api") },
-        { action: () => ctx.selectAgent("demo-agent-codex-batcher") },
-        { action: () => ctx.selectAgent("demo-agent-digest-design") },
+        { action: () => ctx.selectAgent("demo-agent-linear-sprint"), durationMs: 8000 }, // 18 steps
+        { action: () => ctx.selectAgent("demo-agent-codex-api"), durationMs: 6500 }, // 14 steps
+        { action: () => ctx.selectAgent("demo-agent-codex-batcher"), durationMs: 6500 }, // 14 steps
+        { action: () => ctx.selectAgent("demo-agent-digest-design"), durationMs: 5500 }, // 11 steps
         { action: () => ctx.loadSummary(PM_SESSION_ID) },
         { action: () => ctx.selectAgent("demo-agent-codex-api") }, // back to agents tab
         { action: () => {} }, // hold
@@ -264,6 +265,8 @@ type UseDemoModeOptions = {
   transcriptRef: React.RefObject<HTMLDivElement | null>;
   selectAgent: (id: string | null) => void;
   selectedSessionId: string | null;
+  agents: Agent[];
+  setAgentSteps: (agentId: string, steps: AgentStep[], status?: Agent["status"]) => void;
 };
 
 export function useDemoMode({
@@ -271,6 +274,8 @@ export function useDemoMode({
   transcriptRef,
   selectAgent,
   selectedSessionId,
+  agents,
+  setAgentSteps,
 }: UseDemoModeOptions) {
   const demoMode = useUIStore((s) => s.demoMode);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -286,20 +291,46 @@ export function useDemoMode({
   transcriptRefRef.current = transcriptRef;
   const selectedSessionIdRef = useRef(selectedSessionId);
   selectedSessionIdRef.current = selectedSessionId;
+  const agentsRef = useRef(agents);
+  agentsRef.current = agents;
+  const setAgentStepsRef = useRef(setAgentSteps);
+  setAgentStepsRef.current = setAgentSteps;
+
+  // Stores full steps for agents currently being animated so we can restore them
+  const savedStepsRef = useRef<Map<string, AgentStep[]>>(new Map());
+  const revealTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Tracks agents that have already been animated — skip re-animation on return visits
+  const animatedAgentsRef = useRef<Set<string>>(new Set());
 
   const ui = useUIStore.getState;
   const ts = useTaskStore.getState;
 
+  const stopReveal = useCallback(() => {
+    if (revealTimerRef.current) {
+      clearInterval(revealTimerRef.current);
+      revealTimerRef.current = null;
+    }
+    // Restore full steps + completed status for any agent that was mid-animation
+    for (const [agentId, steps] of savedStepsRef.current) {
+      setAgentStepsRef.current(agentId, steps, "completed");
+      animatedAgentsRef.current.add(agentId);
+    }
+    savedStepsRef.current.clear();
+  }, []);
+
   const clearTimer = useCallback(() => {
+    stopReveal();
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-  }, []);
+  }, [stopReveal]);
 
   const ctxRef = useRef<DemoContext>(null!);
   ctxRef.current = {
     loadSession: async (id: string) => {
+      stopReveal();
+      animatedAgentsRef.current.clear();
       selectAgentRef.current(null);
       ui().setFinalSummaryState({ kind: "idle" });
       await loadDemoSessionRef.current(id);
@@ -312,7 +343,50 @@ export function useDemoMode({
       el.scrollTo({ top: el.scrollHeight * pct, behavior: "smooth" });
     },
     selectAgent: (id: string | null) => {
+      stopReveal();
+
+      if (!id) {
+        selectAgentRef.current(null);
+        return;
+      }
+
+      const agent = agentsRef.current.find((a) => a.id === id);
+      if (!agent || agent.steps.length === 0 || animatedAgentsRef.current.has(id)) {
+        selectAgentRef.current(id);
+        return;
+      }
+
+      // Save full steps, start with first step visible + "running" status so
+      // the activity chain-of-thought renders expanded (not collapsed).
+      // Rebase createdAt to now so the duration display doesn't show
+      // thousands of seconds (seed timestamps are from minutes ago).
+      const fullSteps = [...agent.steps];
+      savedStepsRef.current.set(id, fullSteps);
+      const revealStart = Date.now();
+      const rebase = (step: AgentStep, i: number): AgentStep => ({
+        ...step,
+        createdAt: revealStart + i * STEP_REVEAL_MS,
+      });
+      setAgentStepsRef.current(id, [rebase(fullSteps[0], 0)], "running");
       selectAgentRef.current(id);
+
+      let idx = 1;
+      revealTimerRef.current = setInterval(() => {
+        if (idx >= fullSteps.length) {
+          // All steps revealed — restore original timestamps + completed status
+          setAgentStepsRef.current(id, fullSteps, "completed");
+          savedStepsRef.current.delete(id);
+          animatedAgentsRef.current.add(id);
+          if (revealTimerRef.current) {
+            clearInterval(revealTimerRef.current);
+            revealTimerRef.current = null;
+          }
+          return;
+        }
+        const revealed = fullSteps.slice(0, idx + 1).map(rebase);
+        setAgentStepsRef.current(id, revealed, "running");
+        idx++;
+      }, STEP_REVEAL_MS);
     },
     forceWorkTab: () => {
       // Deselect agent so sidebar doesn't auto-switch to agents tab,
