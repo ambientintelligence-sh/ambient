@@ -8,6 +8,7 @@ const TRIP_SESSION_ID = "demo-trip-session";
 const BRAIN_SESSION_ID = "demo-brain-session";
 const STUDY_SESSION_ID = "demo-study-session";
 const MEETING_SESSION_ID = "demo-meeting-session";
+const PM_SESSION_ID = "demo-pm-session";
 
 const DEFAULT_STEP_MS = 3000;
 
@@ -30,6 +31,7 @@ const SESSION_ORDER = [
   BRAIN_SESSION_ID,
   STUDY_SESSION_ID,
   MEETING_SESSION_ID,
+  PM_SESSION_ID,
 ];
 
 function buildSuggestionsForSession(sessionId: string, now: number): TaskSuggestion[] {
@@ -143,6 +145,34 @@ function buildSuggestionsForSession(sessionId: string, now: number): TaskSuggest
         },
       ];
 
+    case PM_SESSION_ID:
+      return [
+        {
+          id: "demo-sug-pm-1",
+          text: "Want me to design an A/B testing plan for the smart notifications rollout?",
+          kind: "research",
+          details: "Team mentioned A/B testing but explicitly deferred it. Worth scoping now.",
+          sessionId,
+          createdAt: now,
+        },
+        {
+          id: "demo-sug-pm-2",
+          text: "I can research SendGrid IP warmup requirements for your expected digest email volume.",
+          kind: "action",
+          details: "Email deliverability was flagged but not scoped — could delay digest launch.",
+          sessionId,
+          createdAt: now,
+        },
+        {
+          id: "demo-sug-pm-3",
+          text: "The priority scoring model needs training data. Where does 'sender importance' come from? Flag for Dev.",
+          kind: "flag",
+          details: "5-signal priority scoring was agreed on but data sources weren't validated.",
+          sessionId,
+          createdAt: now,
+        },
+      ];
+
     default:
       return [];
   }
@@ -161,7 +191,8 @@ function buildSessionSteps(sessionId: string, ctx: DemoContext): DemoStep[] {
         { action: () => ctx.selectAgent("demo-agent-ryokan") },
         { action: () => ctx.selectAgent("demo-agent-visa") },
         { action: () => ctx.loadSummary(TRIP_SESSION_ID) },
-        { action: () => {} }, // hold on summary
+        { action: () => ctx.selectAgent("demo-agent-itinerary") }, // back to agents tab
+        { action: () => {} }, // hold
       ];
 
     case BRAIN_SESSION_ID:
@@ -175,7 +206,8 @@ function buildSessionSteps(sessionId: string, ctx: DemoContext): DemoStep[] {
         { action: () => ctx.selectAgent("demo-agent-domains") },
         { action: () => ctx.selectAgent("demo-agent-interview-guide") },
         { action: () => ctx.loadSummary(BRAIN_SESSION_ID) },
-        { action: () => {} }, // hold on summary
+        { action: () => ctx.selectAgent("demo-agent-competitive") }, // back to agents tab
+        { action: () => {} }, // hold
       ];
 
     case STUDY_SESSION_ID:
@@ -188,7 +220,8 @@ function buildSessionSteps(sessionId: string, ctx: DemoContext): DemoStep[] {
         { action: () => ctx.selectAgent("demo-agent-uncommitted") },
         { action: () => ctx.selectAgent("demo-agent-practice") },
         { action: () => ctx.loadSummary(STUDY_SESSION_ID) },
-        { action: () => {} }, // hold on summary
+        { action: () => ctx.selectAgent("demo-agent-study-guide") }, // back to agents tab
+        { action: () => {} }, // hold
       ];
 
     case MEETING_SESSION_ID:
@@ -202,7 +235,23 @@ function buildSessionSteps(sessionId: string, ctx: DemoContext): DemoStep[] {
         { action: () => ctx.selectAgent("demo-agent-monitoring") },
         { action: () => ctx.selectAgent("demo-agent-migration") },
         { action: () => ctx.loadSummary(MEETING_SESSION_ID) },
-        { action: () => {} }, // hold on summary
+        { action: () => ctx.selectAgent("demo-agent-matviews") }, // back to agents tab
+        { action: () => {} }, // hold
+      ];
+
+    case PM_SESSION_ID:
+      return [
+        { action: () => ctx.loadSession(PM_SESSION_ID) },
+        { action: () => ctx.scrollTranscript(0.3) },
+        { action: () => ctx.scrollTranscript(0.6) },
+        { action: () => { ctx.injectSuggestions(PM_SESSION_ID); ctx.forceWorkTab(); } },
+        { action: () => ctx.selectAgent("demo-agent-linear-sprint") },
+        { action: () => ctx.selectAgent("demo-agent-codex-api") },
+        { action: () => ctx.selectAgent("demo-agent-codex-batcher") },
+        { action: () => ctx.selectAgent("demo-agent-digest-design") },
+        { action: () => ctx.loadSummary(PM_SESSION_ID) },
+        { action: () => ctx.selectAgent("demo-agent-codex-api") }, // back to agents tab
+        { action: () => {} }, // hold
       ];
 
     default:
