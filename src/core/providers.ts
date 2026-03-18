@@ -3,7 +3,6 @@ import { createVertex } from "@ai-sdk/google-vertex";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
-import { createFireworks } from "@ai-sdk/fireworks";
 import type { SessionConfig } from "./types";
 
 export function createTranscriptionModel(config: SessionConfig): LanguageModel {
@@ -28,16 +27,6 @@ export function createTranscriptionModel(config: SessionConfig): LanguageModel {
         apiKey: process.env.GEMINI_API_KEY,
       });
       return google(config.transcriptionModelId);
-    }
-    case "elevenlabs": {
-      throw new Error(
-        "ElevenLabs transcription does not use an AI SDK language model."
-      );
-    }
-    case "fireworks": {
-      throw new Error(
-        "Fireworks transcription uses a REST API, not an AI SDK language model."
-      );
     }
   }
   throw new Error(
@@ -83,12 +72,6 @@ export function createAnalysisModel(config: SessionConfig): LanguageModel {
       });
       return bedrock(config.analysisModelId);
     }
-    case "fireworks": {
-      const fireworks = createFireworks({
-        apiKey: process.env.FIREWORKS_API_KEY,
-      });
-      return fireworks(config.analysisModelId);
-    }
   }
   throw new Error(
     `Unsupported analysis provider: ${String(config.analysisProvider)}`
@@ -103,12 +86,6 @@ function createModelForProvider(
     case "bedrock": {
       const bedrock = createAmazonBedrock({ region: config.bedrockRegion });
       return bedrock(modelId);
-    }
-    case "fireworks": {
-      const fireworks = createFireworks({
-        apiKey: process.env.FIREWORKS_API_KEY,
-      });
-      return fireworks(modelId);
     }
     default: {
       const openrouter = createOpenRouter({
@@ -131,12 +108,6 @@ export function createTaskModel(config: SessionConfig): LanguageModel {
   if (config.analysisProvider === "bedrock") {
     const bedrock = createAmazonBedrock({ region: config.bedrockRegion });
     return bedrock(config.taskModelId);
-  }
-  if (config.analysisProvider === "fireworks") {
-    const fireworks = createFireworks({
-      apiKey: process.env.FIREWORKS_API_KEY,
-    });
-    return fireworks(config.taskModelId);
   }
   const openrouter = createOpenRouter({
     apiKey: process.env.OPENROUTER_API_KEY,

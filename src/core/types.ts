@@ -48,10 +48,8 @@ export type DarkVariant = "charcoal" | "steel" | "pitch-black" | "abyss";
 export type TranscriptionProvider =
   | "openrouter"
   | "vertex"
-  | "google"
-  | "elevenlabs"
-  | "fireworks";
-export type AnalysisProvider = "openrouter" | "google" | "vertex" | "bedrock" | "fireworks";
+  | "google";
+export type AnalysisProvider = "openrouter" | "google" | "vertex" | "bedrock";
 export type { AnalysisModelPreset } from "./models";
 
 export type TranscriptBlock = {
@@ -432,17 +430,14 @@ export function normalizeAppConfig(
   const transcriptionProvider: TranscriptionProvider =
     merged.transcriptionProvider === "openrouter" ||
     merged.transcriptionProvider === "vertex" ||
-    merged.transcriptionProvider === "google" ||
-    merged.transcriptionProvider === "elevenlabs" ||
-    merged.transcriptionProvider === "fireworks"
+    merged.transcriptionProvider === "google"
       ? merged.transcriptionProvider
       : DEFAULT_APP_CONFIG.transcriptionProvider;
   const analysisProvider: AnalysisProvider =
     merged.analysisProvider === "openrouter" ||
     merged.analysisProvider === "google" ||
     merged.analysisProvider === "vertex" ||
-    merged.analysisProvider === "bedrock" ||
-    merged.analysisProvider === "fireworks"
+    merged.analysisProvider === "bedrock"
       ? merged.analysisProvider
       : DEFAULT_APP_CONFIG.analysisProvider;
   const intervalMs =

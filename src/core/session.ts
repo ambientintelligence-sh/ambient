@@ -86,13 +86,6 @@ import {
 import { createAgentManager, type AgentManager } from "./agents/agent-manager";
 import type { AgentExternalToolSet } from "./agents/external-tools";
 import {
-  connectElevenLabsRealtime,
-  normalizeElevenLabsLanguageCode,
-  RealtimeEvents,
-  type RealtimeConnection,
-} from "./transcription/elevenlabs";
-import { transcribeWithFireworks } from "./transcription/fireworks";
-import {
   getTranscriptPostProcessPromptTemplate,
   getTranscriptPolishPromptTemplate,
   renderPromptTemplate,
@@ -201,7 +194,7 @@ export class Session {
   readonly config: SessionConfig;
   readonly sessionId: string;
 
-  private transcriptionModel: LanguageModel | null;
+  private transcriptionModel: LanguageModel;
   private analysisModel: LanguageModel;
   private taskModel: LanguageModel;
   private utilitiesModel: LanguageModel;
@@ -240,11 +233,6 @@ export class Session {
     overlap: Buffer.alloc(0),
   };
 
-  // ElevenLabs realtime — one connection per active audio source
-  private systemConnection: RealtimeConnection | null = null;
-  private micConnection: RealtimeConnection | null = null;
-  private systemReconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private micReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingParagraphs = new Map<AudioSource, PendingParagraph>();
   private paragraphPolishInFlight = false;
   private readonly paragraphCommitIntervalMs = 6_000;
@@ -292,13 +280,10 @@ export class Session {
     this.getExternalTools = externalDeps?.getExternalTools;
     this.getCodexClient = externalDeps?.getCodexClient;
     this.dataDir = externalDeps?.dataDir;
-    this._translationEnabled = config.translationEnabled && (config.transcriptionProvider === "vertex" || config.transcriptionProvider === "google" || config.transcriptionProvider === "openrouter");
+    this._translationEnabled = config.translationEnabled;
     this.userContext = this.loadProjectContext();
 
-    this.transcriptionModel =
-      config.transcriptionProvider === "elevenlabs" || config.transcriptionProvider === "fireworks"
-        ? null
-        : createTranscriptionModel(config);
+    this.transcriptionModel = createTranscriptionModel(config);
     this.analysisModel = createAnalysisModel(config);
     this.taskModel = createTaskModel(config);
     this.utilitiesModel = createUtilitiesModel(config);
@@ -599,10 +584,6 @@ export class Session {
 
     this.startAnalysisTimer();
 
-    if (this.config.transcriptionProvider === "elevenlabs") {
-      void this.openElevenLabsConnection("system");
-    }
-
   }
 
   stopRecording(flushRemaining = true): void {
@@ -614,16 +595,10 @@ export class Session {
       this.stopAnalysisTimer();
     }
 
-    // Close ElevenLabs WS before killing audio capture
-    if (this.config.transcriptionProvider === "elevenlabs") {
-      this.closeElevenLabsConnection("system");
-    }
-
     if (this.audioRecorder) { this.audioRecorder.stop(); this.audioRecorder = null; }
     if (this.ffmpegProcess) { this.ffmpegProcess.kill("SIGTERM"); this.ffmpegProcess = null; }
 
-    // VAD flush only needed for Google/Vertex
-    if (flushRemaining && this.config.transcriptionProvider !== "elevenlabs") {
+    if (flushRemaining) {
       const remaining = flushVad(this.systemPipeline.vadState);
       if (remaining) {
         this.enqueueChunk(this.systemPipeline, remaining);
@@ -657,10 +632,6 @@ export class Session {
       this._micEnabled = true;
       resetVadState(this.micPipeline.vadState);
       this.micPipeline.overlap = Buffer.alloc(0);
-
-      if (this.config.transcriptionProvider === "elevenlabs") {
-        void this.openElevenLabsConnection("microphone");
-      }
 
       let micDataReceived = false;
       let micTotalBytes = 0;
@@ -738,10 +709,6 @@ export class Session {
     this.micPipeline.overlap = Buffer.alloc(0);
     this.micDebugWindowCount = 0;
 
-    if (this.config.transcriptionProvider === "elevenlabs") {
-      void this.openElevenLabsConnection("microphone");
-    }
-
     // Start analysis timer if system audio isn't already driving it
     if (!this.isRecording) {
       this.startAnalysisTimer();
@@ -761,17 +728,13 @@ export class Session {
   stopMic(): void {
     if (!this._micEnabled) return;
 
-    if (this.config.transcriptionProvider === "elevenlabs") {
-      this.closeElevenLabsConnection("microphone");
-    } else {
-      const remaining = flushVad(this.micPipeline.vadState);
-      if (remaining) {
-        this.enqueueChunk(this.micPipeline, remaining);
-        void this.processQueue("microphone");
-      }
-      if (this.usesParagraphBuffering) {
-        void this.commitPendingParagraphs(["microphone"]);
-      }
+    const remaining = flushVad(this.micPipeline.vadState);
+    if (remaining) {
+      this.enqueueChunk(this.micPipeline, remaining);
+      void this.processQueue("microphone");
+    }
+    if (this.usesParagraphBuffering) {
+      void this.commitPendingParagraphs(["microphone"]);
     }
 
     if (this.micProcess) {
@@ -1102,9 +1065,7 @@ export class Session {
     log("INFO", "Session shutdown");
     if (this._micEnabled) this.stopMic();
     if (this.isRecording) this.stopRecording(true);
-    if (this.config.transcriptionProvider !== "elevenlabs") {
-      await this.waitForTranscriptionDrain();
-    }
+    await this.waitForTranscriptionDrain();
     if (this.pendingParagraphs.size > 0) {
       await this.commitPendingParagraphs();
       this.pendingParagraphs.clear();
@@ -1249,28 +1210,6 @@ export class Session {
   private micDebugWindowCount = 0;
 
   private handleAudioData(pipeline: AudioPipeline, data: Buffer) {
-    if (this.config.transcriptionProvider === "elevenlabs") {
-      // Update mic-priority timestamp from audio energy (VAD path is skipped for ElevenLabs)
-      if (pipeline.source === "microphone") {
-        const rms = computeRms(data);
-        if (rms > pipeline.vadState.silenceThreshold) {
-  
-        }
-      }
-      // Realtime path: stream raw PCM directly, no local VAD or queue
-      const connection = pipeline.source === "system"
-        ? this.systemConnection
-        : this.micConnection;
-      if (connection) {
-        try {
-          connection.send({ audioBase64: data.toString("base64") });
-        } catch (err) {
-          log("WARN", `ElevenLabs send failed (${pipeline.source}): ${toReadableError(err)}`);
-        }
-      }
-      return;
-    }
-
     const chunks = processAudioData(pipeline.vadState, data);
 
     // Periodic mic level reporting (~every 2s of audio = 20 × 100ms windows)
@@ -1302,81 +1241,7 @@ export class Session {
     }
   }
 
-  private async openElevenLabsConnection(source: AudioSource): Promise<void> {
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    if (!apiKey) {
-      this.events.emit("error", "Missing ELEVENLABS_API_KEY");
-      return;
-    }
-    const languageCode = this.config.sourceLang;
-
-    let connection: RealtimeConnection;
-    try {
-      connection = await connectElevenLabsRealtime({
-        apiKey,
-        modelId: this.config.transcriptionModelId,
-        languageCode,
-      });
-    } catch (err) {
-      log("ERROR", `ElevenLabs WS connect failed (${source}): ${toReadableError(err)}`);
-      this.events.emit("status", `⚠ ElevenLabs connection failed`);
-      this.scheduleElevenLabsReconnect(source, 2000);
-      return;
-    }
-
-    // Guard: stop() may have been called while we were awaiting connect()
-    if (!this.shouldKeepElevenLabsConnection(source)) {
-      connection.close();
-      return;
-    }
-
-    if (source === "system") this.systemConnection = connection;
-    else this.micConnection = connection;
-
-    this.attachElevenLabsHandlers(connection, source);
-    log("INFO", `ElevenLabs WS connected (${source})`);
-  }
-
-  private attachElevenLabsHandlers(connection: RealtimeConnection, source: AudioSource): void {
-    connection.on(RealtimeEvents.PARTIAL_TRANSCRIPT, (msg) => {
-      if (msg.text) this.events.emit("partial", { source, text: `${msg.text}` });
-    });
-
-    connection.on(RealtimeEvents.COMMITTED_TRANSCRIPT_WITH_TIMESTAMPS, (msg) => {
-      const text = msg.text?.trim();
-      if (!text) return;
-      const langHint = normalizeElevenLabsLanguageCode(msg.language_code)
-        ?? detectSourceLanguage(text, this.config.sourceLang, this.config.targetLang);
-      void this.handleElevenLabsCommit(text, langHint, source, Date.now());
-    });
-
-    connection.on(RealtimeEvents.SESSION_TIME_LIMIT_EXCEEDED, () => {
-      log("WARN", `ElevenLabs session limit hit (${source}), reconnecting`);
-      connection.close();
-      if (source === "system") this.systemConnection = null;
-      else this.micConnection = null;
-      if (this.shouldKeepElevenLabsConnection(source)) this.scheduleElevenLabsReconnect(source, 500);
-    });
-
-    connection.on(RealtimeEvents.CLOSE, () => {
-      const current = source === "system" ? this.systemConnection : this.micConnection;
-      if (current !== connection) return; // already replaced (e.g. by reconnect)
-      if (source === "system") this.systemConnection = null;
-      else this.micConnection = null;
-      if (this.shouldKeepElevenLabsConnection(source)) {
-        log("WARN", `ElevenLabs WS closed unexpectedly (${source}), reconnecting`);
-        this.scheduleElevenLabsReconnect(source, 1000);
-      }
-    });
-
-    connection.on(RealtimeEvents.ERROR, (err) => {
-      const msg = "error" in err ? (err as { error: string }).error : (err as Error).message;
-      log("ERROR", `ElevenLabs WS error (${source}): ${msg}`);
-      this.events.emit("status", `⚠ STT error: ${msg}`);
-    });
-  }
-
-  private async handleElevenLabsCommit(
+  private async commitTranscript(
     transcript: string,
     detectedLangHint: LanguageCode,
     audioSource: AudioSource,
@@ -1522,7 +1387,7 @@ export class Session {
         }
         this.updateParagraphPreview();
 
-        await this.handleElevenLabsCommit(
+        await this.commitTranscript(
           polished,
           pending.detectedLangHint,
           pending.audioSource,
@@ -1566,51 +1431,6 @@ export class Session {
     if (now - pending.capturedAt >= this.paragraphCommitIntervalMs) {
       void this.commitPendingParagraphs([audioSource]);
     }
-  }
-
-  private closeElevenLabsConnection(source: AudioSource): void {
-    const timerField = source === "system" ? "systemReconnectTimer" : "micReconnectTimer";
-    const connField = source === "system" ? "systemConnection" : "micConnection";
-    if (this[timerField]) {
-      clearTimeout(this[timerField]!);
-      this[timerField] = null;
-    }
-    if (this[connField]) {
-      this[connField]!.close();
-      this[connField] = null;
-    }
-  }
-
-  private shouldKeepElevenLabsConnection(source: AudioSource): boolean {
-    return source === "system" ? this.isRecording : this._micEnabled;
-  }
-
-  private refreshElevenLabsConnections(): void {
-    const activeSources: AudioSource[] = [];
-    if (this.isRecording) {
-      activeSources.push("system");
-    }
-    if (this._micEnabled) {
-      activeSources.push("microphone");
-    }
-    if (activeSources.length === 0) {
-      return;
-    }
-
-    for (const source of activeSources) {
-      this.closeElevenLabsConnection(source);
-      void this.openElevenLabsConnection(source);
-    }
-  }
-
-  private scheduleElevenLabsReconnect(source: AudioSource, delayMs: number): void {
-    const timerField = source === "system" ? "systemReconnectTimer" : "micReconnectTimer";
-    if (this[timerField]) return; // already scheduled
-    this[timerField] = setTimeout(() => {
-      this[timerField] = null;
-      if (!this.shouldKeepElevenLabsConnection(source)) return;
-      void this.openElevenLabsConnection(source);
-    }, delayMs);
   }
 
   private enqueueChunk(pipeline: AudioPipeline, chunk: Buffer) {
@@ -1664,8 +1484,6 @@ export class Session {
 
 
   private async processQueue(source: AudioSource): Promise<void> {
-    // ElevenLabs uses persistent WS; this queue is for Google/Vertex.
-    if (this.config.transcriptionProvider === "elevenlabs") return;
     const queue = this.chunkQueues.get(source)!;
     if (this.inFlight.get(source)! >= this.maxConcurrency || queue.length === 0) return;
     const item = queue.shift();
@@ -1691,82 +1509,66 @@ export class Session {
         log("INFO", `Transcription request [${this.config.transcriptionProvider}]: src=${audioSource} chunk=${chunkDurationMs.toFixed(0)}ms, queue=${queue.length}, inflight=${this.inFlight.get(source)}`);
       }
 
-      if (this.config.transcriptionProvider === "fireworks") {
-        const wavBuffer = pcmToWavBuffer(chunk, 16000);
-        const apiKey = process.env.FIREWORKS_API_KEY;
-        if (!apiKey) throw new Error("FIREWORKS_API_KEY is not set.");
+      const schema = useTranslation ? this.audioTranscriptionSchema : this.transcriptionOnlySchema;
+      const wavBuffer = pcmToWavBuffer(chunk, 16000);
 
-        transcript = await transcribeWithFireworks(wavBuffer, apiKey);
-        isPartial = this.isTranscriptLikelyPartial(transcript);
-
-        if (this.config.debug) {
-          log("INFO", `Fireworks transcription response: ${Date.now() - startTime}ms, queue: ${queue.length}`);
-        }
-      } else {
-        const schema = useTranslation ? this.audioTranscriptionSchema : this.transcriptionOnlySchema;
-        const wavBuffer = pcmToWavBuffer(chunk, 16000);
-
-        if (this.config.debug) {
-          log("INFO", `Audio buffer: ${(wavBuffer.byteLength / 1024).toFixed(0)}KB`);
-        }
-
-        const prompt = useTranslation
-          ? buildAudioPromptForStructured(
-              this.config.direction,
-              this.config.sourceLang,
-              this.config.targetLang,
-            )
-          : buildAudioTranscriptionOnlyPrompt(
-              this.config.sourceLang,
-              this.config.targetLang,
-            );
-        if (!this.transcriptionModel) {
-          throw new Error("Transcription model is not initialized.");
-        }
-
-        const transcriptionProviderOptions =
-          this.config.transcriptionProvider === "google" || this.config.transcriptionProvider === "vertex"
-            ? { google: { thinkingConfig: { includeThoughts: false, thinkingBudget: 0 } } }
-            : undefined;
-
-        const { object: result, usage: finalUsage } = await generateStructuredObject({
-          model: this.transcriptionModel,
-          schema,
-          system: this.userContext || undefined,
-          temperature: 0,
-          maxRetries: 2,
-          providerOptions: transcriptionProviderOptions,
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: prompt },
-                {
-                  type: "file",
-                  mediaType: "audio/wav",
-                  data: wavBuffer,
-                },
-              ],
-            },
-          ],
-        });
-
-        const inTok = finalUsage?.inputTokens ?? 0;
-        const outTok = finalUsage?.outputTokens ?? 0;
-        const totalCost = addCostToAcc(this.costAccumulator, inTok, outTok, "audio", this.config.transcriptionProvider);
-        this.events.emit("cost-updated", totalCost);
-
-        if (this.config.debug) {
-          log("INFO", `Transcription response [${this.config.transcriptionProvider}]: ${Date.now() - startTime}ms, tokens: ${inTok}→${outTok}, queue: ${queue.length}`);
-          this.events.emit("status", `Response: ${Date.now() - startTime}ms | T: ${inTok}→${outTok}`);
-        }
-
-        transcript = (result as { transcript?: string }).transcript?.trim() ?? "";
-        translation = useTranslation
-          ? ((result as { translation?: string }).translation?.trim() ?? "")
-          : "";
-        detectedLang = (result as { sourceLanguage: string }).sourceLanguage as LanguageCode;
+      if (this.config.debug) {
+        log("INFO", `Audio buffer: ${(wavBuffer.byteLength / 1024).toFixed(0)}KB`);
       }
+
+      const prompt = useTranslation
+        ? buildAudioPromptForStructured(
+            this.config.direction,
+            this.config.sourceLang,
+            this.config.targetLang,
+          )
+        : buildAudioTranscriptionOnlyPrompt(
+            this.config.sourceLang,
+            this.config.targetLang,
+          );
+
+      const transcriptionProviderOptions =
+        this.config.transcriptionProvider === "google" || this.config.transcriptionProvider === "vertex"
+          ? { google: { thinkingConfig: { includeThoughts: false, thinkingBudget: 0 } } }
+          : undefined;
+
+      const { object: result, usage: finalUsage } = await generateStructuredObject({
+        model: this.transcriptionModel,
+        schema,
+        system: this.userContext || undefined,
+        temperature: 0,
+        maxRetries: 2,
+        providerOptions: transcriptionProviderOptions,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              {
+                type: "file",
+                mediaType: "audio/wav",
+                data: wavBuffer,
+              },
+            ],
+          },
+        ],
+      });
+
+      const inTok = finalUsage?.inputTokens ?? 0;
+      const outTok = finalUsage?.outputTokens ?? 0;
+      const totalCost = addCostToAcc(this.costAccumulator, inTok, outTok, "audio", this.config.transcriptionProvider);
+      this.events.emit("cost-updated", totalCost);
+
+      if (this.config.debug) {
+        log("INFO", `Transcription response [${this.config.transcriptionProvider}]: ${Date.now() - startTime}ms, tokens: ${inTok}→${outTok}, queue: ${queue.length}`);
+        this.events.emit("status", `Response: ${Date.now() - startTime}ms | T: ${inTok}→${outTok}`);
+      }
+
+      transcript = (result as { transcript?: string }).transcript?.trim() ?? "";
+      translation = useTranslation
+        ? ((result as { translation?: string }).translation?.trim() ?? "")
+        : "";
+      detectedLang = (result as { sourceLanguage: string }).sourceLanguage as LanguageCode;
 
       if (!translation && !transcript) {
         return;

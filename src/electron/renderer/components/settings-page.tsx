@@ -53,7 +53,6 @@ import { resolveProviderIcon, OpenAIIcon } from "./integration-icons";
 import {
   SiOpenrouter,
   SiGooglegemini,
-  SiElevenlabs,
 } from "@icons-pack/react-simple-icons";
 import { useIntegrationStore } from "../stores/integration-store";
 
@@ -211,47 +210,11 @@ const TRANSCRIPTION_PROVIDER_OPTIONS: TranscriptionProviderOption[] = [
       },
     ],
   },
-  {
-    value: "elevenlabs",
-    label: "ElevenLabs",
-    description: "Native speech-to-text",
-    supportsTranslation: false,
-    models: [
-      {
-        modelId: "scribe_v2_realtime",
-        label: "Scribe v2 Realtime",
-        description: "Fastest live transcription",
-        defaultIntervalMs: 2000,
-      },
-      {
-        modelId: "scribe_v2",
-        label: "Scribe v2",
-        description: "Fast transcription",
-        defaultIntervalMs: 2000,
-      },
-    ],
-  },
-  {
-    value: "fireworks",
-    label: "Fireworks AI",
-    description: "Whisper transcription API",
-    supportsTranslation: false,
-    models: [
-      {
-        modelId: "whisper-v3-turbo",
-        label: "Whisper v3 Turbo",
-        description: "Server-side VAD, transcription only",
-        defaultIntervalMs: 8000,
-      },
-    ],
-  },
 ];
 
 const TRANSCRIPTION_PROVIDER_LABELS: Partial<Record<TranscriptionProvider, string>> = {
   google: "Google AI Studio",
   openrouter: "OpenRouter",
-  elevenlabs: "ElevenLabs",
-  fireworks: "Fireworks AI",
 };
 
 function getTranscriptionProviderOption(
@@ -277,14 +240,11 @@ function getTranscriptionModelOption(
 const ANALYSIS_PROVIDERS: Array<{ value: AppConfig["analysisProvider"]; label: string }> = [
   { value: "openrouter", label: "OpenRouter" },
   { value: "bedrock", label: "AWS Bedrock" },
-  { value: "fireworks", label: "Fireworks AI" },
 ];
 
 const PROVIDER_REQUIRED_KEYS: Record<string, string[]> = {
   openrouter: ["OPENROUTER_API_KEY"],
   google: ["GEMINI_API_KEY"],
-  elevenlabs: ["ELEVENLABS_API_KEY"],
-  fireworks: ["FIREWORKS_API_KEY"],
   bedrock: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
 };
 
@@ -338,7 +298,6 @@ function isKeyNeeded(def: ApiKeyDefinition, config: AppConfig): boolean {
 const API_KEY_ICONS: Record<string, ComponentType<{ size?: number; className?: string }>> = {
   OPENROUTER_API_KEY: SiOpenrouter,
   GEMINI_API_KEY: SiGooglegemini,
-  ELEVENLABS_API_KEY: SiElevenlabs,
 };
 
 function renderApiKeyIcon(envVar: string) {
@@ -1069,7 +1028,7 @@ export function SettingsPage({
             <Separator className="my-3" />
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {(() => {
-                const providerKey = (config.analysisProvider === "openrouter" || config.analysisProvider === "bedrock" || config.analysisProvider === "fireworks")
+                const providerKey = (config.analysisProvider === "openrouter" || config.analysisProvider === "bedrock")
                   ? config.analysisProvider
                   : "openrouter" as const;
                 const providerConfig = MODEL_CONFIG[providerKey];
@@ -1084,7 +1043,7 @@ export function SettingsPage({
                         value={config.analysisProvider}
                         onValueChange={(v) => {
                           const provider = v as AppConfig["analysisProvider"];
-                          const nextConfig = (provider === "openrouter" || provider === "bedrock" || provider === "fireworks")
+                          const nextConfig = (provider === "openrouter" || provider === "bedrock")
                             ? MODEL_CONFIG[provider]
                             : null;
                           const defs = nextConfig?.defaults;

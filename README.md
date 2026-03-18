@@ -110,8 +110,6 @@ Only `OPENROUTER_API_KEY` is required to get started. API keys can be configured
 Optional keys for alternative providers or extra features:
 
 - `GEMINI_API_KEY` — Use Google AI (Gemini) directly instead of via OpenRouter
-- `ELEVENLABS_API_KEY` — ElevenLabs Scribe transcription
-- `FIREWORKS_API_KEY` — Fireworks AI provider
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` — Amazon Bedrock
 - `EXA_API_KEY` — Web search for AI agents
 - `MCP_INTEGRATIONS_ENABLED=false` — Disable Notion/Linear MCP connectors (enabled by default)

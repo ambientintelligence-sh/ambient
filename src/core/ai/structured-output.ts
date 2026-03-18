@@ -1,14 +1,9 @@
 import {
   generateObject,
-  generateText,
   type LanguageModel,
   type LanguageModelUsage,
 } from "ai";
 import { z } from "zod";
-
-const FIREWORKS_MODEL_PREFIX = "accounts/fireworks/models/";
-const JSON_ONLY_INSTRUCTION =
-  "Return only a valid JSON object. Do not include markdown, commentary, or code fences.";
 
 type StructuredGenerationOptions<T> = {
   model: LanguageModel;
@@ -22,18 +17,6 @@ type StructuredGenerationOptions<T> = {
   headers?: Record<string, string>;
   abortSignal?: AbortSignal;
 };
-
-export function isFireworksLanguageModel(model: LanguageModel): boolean {
-  if (typeof model === "string") {
-    return model.startsWith(FIREWORKS_MODEL_PREFIX);
-  }
-
-  const candidate = model as { provider?: unknown; modelId?: unknown };
-  if (typeof candidate.provider === "string" && candidate.provider.startsWith("fireworks")) {
-    return true;
-  }
-  return typeof candidate.modelId === "string" && candidate.modelId.startsWith(FIREWORKS_MODEL_PREFIX);
-}
 
 export function extractJsonObjectText(text: string): string {
   const trimmed = text.trim();
@@ -58,19 +41,6 @@ export function extractJsonObjectText(text: string): string {
   throw new Error("Model did not return valid JSON.");
 }
 
-function buildFireworksSchemaInstruction<T>(schema: z.ZodType<T>): string {
-  try {
-    const jsonSchema = z.toJSONSchema(schema);
-    return [
-      JSON_ONLY_INSTRUCTION,
-      "Use this JSON schema exactly:",
-      JSON.stringify(jsonSchema, null, 2),
-    ].join("\n\n");
-  } catch {
-    return JSON_ONLY_INSTRUCTION;
-  }
-}
-
 export async function generateStructuredObject<T>({
   model,
   schema,
@@ -83,9 +53,9 @@ export async function generateStructuredObject<T>({
   headers,
   abortSignal,
 }: StructuredGenerationOptions<T>): Promise<{ object: T; usage: LanguageModelUsage | undefined }> {
-  const fireworksInstruction = buildFireworksSchemaInstruction(schema);
-  const baseRequest = {
+  const result = await generateObject({
     model,
+    schema,
     ...(system !== undefined ? { system } : {}),
     ...(prompt !== undefined ? { prompt } : {}),
     ...(messages !== undefined ? { messages } : {}),
@@ -94,37 +64,9 @@ export async function generateStructuredObject<T>({
     ...(providerOptions !== undefined ? { providerOptions } : {}),
     ...(headers !== undefined ? { headers } : {}),
     ...(abortSignal !== undefined ? { abortSignal } : {}),
-  };
-
-  if (!isFireworksLanguageModel(model)) {
-    const result = await generateObject({
-      ...baseRequest,
-      schema,
-    } as never);
-    return {
-      object: result.object as T,
-      usage: result.usage,
-    };
-  }
-
-  const result = await generateText({
-    ...baseRequest,
-    prompt:
-      prompt !== undefined
-        ? `${prompt}\n\n${fireworksInstruction}`
-        : undefined,
-    messages:
-      prompt === undefined && messages !== undefined
-        ? [
-            ...messages,
-            { role: "user", content: fireworksInstruction },
-          ]
-        : messages,
   } as never);
-
-  const jsonText = extractJsonObjectText(result.text);
   return {
-    object: schema.parse(JSON.parse(jsonText)),
+    object: result.object as T,
     usage: result.usage,
   };
 }
