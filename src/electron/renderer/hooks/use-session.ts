@@ -42,11 +42,25 @@ type SessionAction =
 
 const MAX_ROLLING_KEY_POINTS = 160;
 
+function compareBlocks(a: TranscriptBlock, b: TranscriptBlock): number {
+  return a.createdAt !== b.createdAt ? a.createdAt - b.createdAt : a.id - b.id;
+}
+
 function sortBlocks(blocks: TranscriptBlock[]): TranscriptBlock[] {
-  return [...blocks].sort((a, b) => {
-    if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
-    return a.id - b.id;
-  });
+  return [...blocks].sort(compareBlocks);
+}
+
+function insertBlockSorted(blocks: readonly TranscriptBlock[], block: TranscriptBlock): TranscriptBlock[] {
+  const next = [...blocks];
+  let lo = 0;
+  let hi = next.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (compareBlocks(next[mid], block) <= 0) lo = mid + 1;
+    else hi = mid;
+  }
+  next.splice(lo, 0, block);
+  return next;
 }
 
 function normalizeKeyPointText(text: string): string {
@@ -61,12 +75,11 @@ function mergeRollingKeyPoints(existing: readonly string[], incoming: readonly s
   const seen = new Set<string>();
   const next: string[] = [];
   for (const raw of [...existing, ...incoming]) {
-    const text = raw.trim().replace(/\s+/g, " ");
-    if (!text) continue;
-    const key = normalizeKeyPointText(text);
+    const key = normalizeKeyPointText(raw);
+    if (!key) continue;
     if (seen.has(key)) continue;
     seen.add(key);
-    next.push(text);
+    next.push(raw.trim());
   }
   if (next.length <= MAX_ROLLING_KEY_POINTS) return next;
   return next.slice(-MAX_ROLLING_KEY_POINTS);
@@ -81,14 +94,14 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
         action.block.audioSource === "system" ? { systemPartial: "" } :
         action.block.audioSource === "microphone" ? { micPartial: "" } :
         {};
-      return { ...state, ...clearPartial, blocks: sortBlocks([...state.blocks, action.block]) };
+      return { ...state, ...clearPartial, blocks: insertBlockSorted(state.blocks, action.block) };
     }
     case "block-updated":
       return {
         ...state,
-        blocks: sortBlocks(state.blocks.map((b) =>
+        blocks: state.blocks.map((b) =>
           b.id === action.block.id ? action.block : b
-        )),
+        ),
       };
     case "blocks-cleared":
       return { ...state, blocks: [], summary: null, rollingKeyPoints: [], cost: 0, systemPartial: "", micPartial: "", statusText: "" };

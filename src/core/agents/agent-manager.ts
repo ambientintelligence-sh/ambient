@@ -183,25 +183,75 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
     }
   }
 
-  function rejectPendingQuestion(agentId: string, reason: string) {
-    const pending = pendingQuestions.get(agentId);
+  const MAX_STORED_HISTORIES = 20;
+
+  function evictOldestHistory() {
+    if (conversationHistory.size <= MAX_STORED_HISTORIES) return;
+    let oldestId: string | null = null;
+    let oldestTime = Infinity;
+    for (const [id] of conversationHistory) {
+      const a = agents.get(id);
+      if (!a || a.status === "running") continue;
+      const t = a.completedAt ?? a.createdAt;
+      if (t < oldestTime) {
+        oldestTime = t;
+        oldestId = id;
+      }
+    }
+    if (oldestId) conversationHistory.delete(oldestId);
+  }
+
+  function rejectPending<T extends { reject: (error: Error) => void }>(
+    map: Map<string, T>,
+    agentId: string,
+    reason: string,
+  ) {
+    const pending = map.get(agentId);
     if (!pending) return;
-    pendingQuestions.delete(agentId);
+    map.delete(agentId);
     pending.reject(new Error(reason));
   }
 
-  function rejectPendingApproval(agentId: string, reason: string) {
-    const pending = pendingApprovals.get(agentId);
-    if (!pending) return;
-    pendingApprovals.delete(agentId);
-    pending.reject(new Error(reason));
-  }
+  function createPendingRequest<TReq, TRes>(
+    map: Map<string, { toolCallId: string; request: TReq; resolve: (value: TRes) => void; reject: (error: Error) => void }>,
+    agentId: string,
+    request: TReq,
+    options: { toolCallId: string; abortSignal?: AbortSignal },
+    rejectReason: string,
+  ): Promise<TRes> {
+    const { toolCallId, abortSignal } = options;
+    rejectPending(map, agentId, rejectReason);
 
-  function rejectPendingPlanApproval(agentId: string, reason: string) {
-    const pending = pendingPlanApprovals.get(agentId);
-    if (!pending) return;
-    pendingPlanApprovals.delete(agentId);
-    pending.reject(new Error(reason));
+    return new Promise<TRes>((resolve, reject) => {
+      const onAbort = () => {
+        map.delete(agentId);
+        reject(new Error("Cancelled"));
+      };
+
+      if (abortSignal?.aborted) {
+        onAbort();
+        return;
+      }
+
+      if (abortSignal) {
+        abortSignal.addEventListener("abort", onAbort, { once: true });
+      }
+
+      map.set(agentId, {
+        toolCallId,
+        request,
+        resolve: (value) => {
+          if (abortSignal) abortSignal.removeEventListener("abort", onAbort);
+          map.delete(agentId);
+          resolve(value);
+        },
+        reject: (error) => {
+          if (abortSignal) abortSignal.removeEventListener("abort", onAbort);
+          map.delete(agentId);
+          reject(error);
+        },
+      });
+    });
   }
 
   function requestClarification(
@@ -209,43 +259,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
     request: AgentQuestionRequest,
     options: { toolCallId: string; abortSignal?: AbortSignal },
   ): Promise<AgentQuestionSelection[]> {
-    const { toolCallId, abortSignal } = options;
-    rejectPendingQuestion(agentId, "Clarification request replaced by a newer request.");
-
-    return new Promise<AgentQuestionSelection[]>((resolve, reject) => {
-      const onAbort = () => {
-        pendingQuestions.delete(agentId);
-        reject(new Error("Cancelled"));
-      };
-
-      if (abortSignal?.aborted) {
-        onAbort();
-        return;
-      }
-
-      if (abortSignal) {
-        abortSignal.addEventListener("abort", onAbort, { once: true });
-      }
-
-      pendingQuestions.set(agentId, {
-        toolCallId,
-        request,
-        resolve: (answers) => {
-          if (abortSignal) {
-            abortSignal.removeEventListener("abort", onAbort);
-          }
-          pendingQuestions.delete(agentId);
-          resolve(answers);
-        },
-        reject: (error) => {
-          if (abortSignal) {
-            abortSignal.removeEventListener("abort", onAbort);
-          }
-          pendingQuestions.delete(agentId);
-          reject(error);
-        },
-      });
-    });
+    return createPendingRequest(pendingQuestions, agentId, request, options, "Clarification request replaced by a newer request.");
   }
 
   function requestToolApproval(
@@ -253,43 +267,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
     request: AgentToolApprovalRequest,
     options: { toolCallId: string; abortSignal?: AbortSignal },
   ): Promise<AgentToolApprovalResponse> {
-    const { toolCallId, abortSignal } = options;
-    rejectPendingApproval(agentId, "Approval request replaced by a newer request.");
-
-    return new Promise<AgentToolApprovalResponse>((resolve, reject) => {
-      const onAbort = () => {
-        pendingApprovals.delete(agentId);
-        reject(new Error("Cancelled"));
-      };
-
-      if (abortSignal?.aborted) {
-        onAbort();
-        return;
-      }
-
-      if (abortSignal) {
-        abortSignal.addEventListener("abort", onAbort, { once: true });
-      }
-
-      pendingApprovals.set(agentId, {
-        toolCallId,
-        request,
-        resolve: (response) => {
-          if (abortSignal) {
-            abortSignal.removeEventListener("abort", onAbort);
-          }
-          pendingApprovals.delete(agentId);
-          resolve(response);
-        },
-        reject: (error) => {
-          if (abortSignal) {
-            abortSignal.removeEventListener("abort", onAbort);
-          }
-          pendingApprovals.delete(agentId);
-          reject(error);
-        },
-      });
-    });
+    return createPendingRequest(pendingApprovals, agentId, request, options, "Approval request replaced by a newer request.");
   }
 
   function requestPlanApproval(
@@ -297,43 +275,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
     request: AgentPlanApprovalRequest,
     options: { toolCallId: string; abortSignal?: AbortSignal },
   ): Promise<AgentPlanApprovalResponse> {
-    const { toolCallId, abortSignal } = options;
-    rejectPendingPlanApproval(agentId, "Plan approval replaced by a newer request.");
-
-    return new Promise<AgentPlanApprovalResponse>((resolve, reject) => {
-      const onAbort = () => {
-        pendingPlanApprovals.delete(agentId);
-        reject(new Error("Cancelled"));
-      };
-
-      if (abortSignal?.aborted) {
-        onAbort();
-        return;
-      }
-
-      if (abortSignal) {
-        abortSignal.addEventListener("abort", onAbort, { once: true });
-      }
-
-      pendingPlanApprovals.set(agentId, {
-        toolCallId,
-        request,
-        resolve: (response) => {
-          if (abortSignal) {
-            abortSignal.removeEventListener("abort", onAbort);
-          }
-          pendingPlanApprovals.delete(agentId);
-          resolve(response);
-        },
-        reject: (error) => {
-          if (abortSignal) {
-            abortSignal.removeEventListener("abort", onAbort);
-          }
-          pendingPlanApprovals.delete(agentId);
-          reject(error);
-        },
-      });
-    });
+    return createPendingRequest(pendingPlanApprovals, agentId, request, options, "Plan approval replaced by a newer request.");
   }
 
   function validateQuestionAnswers(
@@ -401,10 +343,11 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         agent.status = "completed" as const;
         agent.result = result;
         agent.completedAt = Date.now();
-        rejectPendingQuestion(agent.id, "Agent finished before clarification could be answered.");
-        rejectPendingApproval(agent.id, "Agent finished before tool approval could be answered.");
-        rejectPendingPlanApproval(agent.id, "Agent finished before plan approval could be answered.");
+        rejectPending(pendingQuestions, agent.id, "Agent finished before clarification could be answered.");
+        rejectPending(pendingApprovals, agent.id, "Agent finished before tool approval could be answered.");
+        rejectPending(pendingPlanApprovals, agent.id, "Agent finished before plan approval could be answered.");
         conversationHistory.set(agent.id, messages);
+        evictOldestHistory();
         abortControllers.delete(agent.id);
         cancelFlush(agent.id);
         deps.db?.updateAgent(agent.id, { status: "completed", result, steps: agent.steps, completedAt: agent.completedAt });
@@ -429,10 +372,11 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         agent.completedAt = Date.now();
         if (messages && messages.length > 0) {
           conversationHistory.set(agent.id, messages);
+          evictOldestHistory();
         }
-        rejectPendingQuestion(agent.id, error || "Agent failed before clarification could be answered.");
-        rejectPendingApproval(agent.id, error || "Agent failed before tool approval could be answered.");
-        rejectPendingPlanApproval(agent.id, error || "Agent failed before plan approval could be answered.");
+        rejectPending(pendingQuestions, agent.id, error || "Agent failed before clarification could be answered.");
+        rejectPending(pendingApprovals, agent.id, error || "Agent failed before tool approval could be answered.");
+        rejectPending(pendingPlanApprovals, agent.id, error || "Agent failed before plan approval could be answered.");
         abortControllers.delete(agent.id);
         cancelFlush(agent.id);
         deps.db?.updateAgent(agent.id, { status: "failed", result: error, steps: agent.steps, completedAt: agent.completedAt });
@@ -676,7 +620,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
     if (!pending) {
       return { ok: false, error: "No pending question for this agent" };
     }
-    rejectPendingQuestion(
+    rejectPending(pendingQuestions,
       agentId,
       "The user skipped these questions and wants to discuss further via free-form conversation instead. Continue without structured answers — the user will elaborate in follow-up messages.",
     );
@@ -740,9 +684,9 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
     const controller = abortControllers.get(id);
     if (!controller) return false;
     controller.abort();
-    rejectPendingApproval(id, "Cancelled");
-    rejectPendingQuestion(id, "Cancelled");
-    rejectPendingPlanApproval(id, "Cancelled");
+    rejectPending(pendingApprovals, id, "Cancelled");
+    rejectPending(pendingQuestions, id, "Cancelled");
+    rejectPending(pendingPlanApprovals, id, "Cancelled");
     return true;
   }
 
@@ -754,9 +698,9 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
     // Tear down any stale state from the previous run
     abortControllers.get(agentId)?.abort();
     abortControllers.delete(agentId);
-    rejectPendingQuestion(agentId, "Agent relaunched");
-    rejectPendingApproval(agentId, "Agent relaunched");
-    rejectPendingPlanApproval(agentId, "Agent relaunched");
+    rejectPending(pendingQuestions, agentId, "Agent relaunched");
+    rejectPending(pendingApprovals, agentId, "Agent relaunched");
+    rejectPending(pendingPlanApprovals, agentId, "Agent relaunched");
     cancelFlush(agentId);
     conversationHistory.delete(agentId);
 

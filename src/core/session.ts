@@ -268,10 +268,10 @@ export class Session {
   private getCodexClient?: SessionExternalDeps["getCodexClient"];
   private dataDir?: string;
 
-  private sourceLangLabel: string;
-  private targetLangLabel: string;
-  private sourceLangName: string;
-  private targetLangName: string;
+  private get sourceLangLabel(): string { return getLanguageLabel(this.config.sourceLang); }
+  private get targetLangLabel(): string { return getLanguageLabel(this.config.targetLang); }
+  private get sourceLangName(): string { return LANG_NAMES[this.config.sourceLang]; }
+  private get targetLangName(): string { return LANG_NAMES[this.config.targetLang]; }
 
   constructor(config: SessionConfig, db?: AppDatabase, sessionId?: string, externalDeps?: SessionExternalDeps) {
     this.config = config;
@@ -326,52 +326,7 @@ export class Session {
     }
     log("INFO", `AgentManager initialized${process.env.EXA_API_KEY ? " (web search enabled)" : " (web search disabled — no EXA_API_KEY)"}`);
 
-    this.refreshLanguageDerivedState();
-
-  }
-
-  getUIState(status: UIState["status"]): UIState {
-    const langPair = `${this.sourceLangName} → ${this.targetLangName}`;
-    const deviceName = this.config.legacyAudio && this.legacyDevice
-      ? this.legacyDevice.name
-      : "System Audio (ScreenCaptureKit)";
-    return {
-      deviceName,
-      modelId: `${langPair} | ${this.config.transcriptionModelId}`,
-      intervalMs: this.config.intervalMs,
-      status,
-      contextLoaded: !!this.userContext,
-      cost: this.costAccumulator.totalCost,
-      translationEnabled: this._translationEnabled,
-      canTranslate: this.canTranslate,
-      direction: this.config.direction,
-      micEnabled: this._micEnabled,
-    };
-  }
-
-  get recording(): boolean {
-    return this.isRecording;
-  }
-
-  private get isCapturing(): boolean {
-    return this.isRecording || this._micEnabled;
-  }
-
-  get allKeyPoints(): readonly string[] {
-    return this.contextState.allKeyPoints;
-  }
-
-  get canTranslate(): boolean {
-    return this.config.transcriptionProvider === "vertex" || this.config.transcriptionProvider === "google" || this.config.transcriptionProvider === "openrouter";
-  }
-
-  private refreshLanguageDerivedState(): void {
-    this.sourceLangLabel = getLanguageLabel(this.config.sourceLang);
-    this.targetLangLabel = getLanguageLabel(this.config.targetLang);
-    this.sourceLangName = LANG_NAMES[this.config.sourceLang];
-    this.targetLangName = LANG_NAMES[this.config.targetLang];
-
-    const englishIsConfigured = this.config.sourceLang === "en" || this.config.targetLang === "en";
+    const englishIsConfigured = config.sourceLang === "en" || config.targetLang === "en";
     const langEnumValues: [string, ...string[]] = englishIsConfigured
       ? [this.config.sourceLang, this.config.targetLang]
       : [this.config.sourceLang, this.config.targetLang, "en"];
@@ -415,6 +370,41 @@ export class Session {
         .boolean()
         .describe("True if the transcript shifts to a new topic compared with provided context."),
     });
+  }
+
+  getUIState(status: UIState["status"]): UIState {
+    const langPair = `${this.sourceLangName} → ${this.targetLangName}`;
+    const deviceName = this.config.legacyAudio && this.legacyDevice
+      ? this.legacyDevice.name
+      : "System Audio (ScreenCaptureKit)";
+    return {
+      deviceName,
+      modelId: `${langPair} | ${this.config.transcriptionModelId}`,
+      intervalMs: this.config.intervalMs,
+      status,
+      contextLoaded: !!this.userContext,
+      cost: this.costAccumulator.totalCost,
+      translationEnabled: this._translationEnabled,
+      canTranslate: this.canTranslate,
+      direction: this.config.direction,
+      micEnabled: this._micEnabled,
+    };
+  }
+
+  get recording(): boolean {
+    return this.isRecording;
+  }
+
+  private get isCapturing(): boolean {
+    return this.isRecording || this._micEnabled;
+  }
+
+  get allKeyPoints(): readonly string[] {
+    return this.contextState.allKeyPoints;
+  }
+
+  get canTranslate(): boolean {
+    return this.config.transcriptionProvider === "vertex" || this.config.transcriptionProvider === "google" || this.config.transcriptionProvider === "openrouter";
   }
 
   get translationEnabled(): boolean {

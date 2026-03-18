@@ -80,7 +80,8 @@ export function createAnalysisModel(config: SessionConfig): LanguageModel {
 
 function createModelForProvider(
   config: SessionConfig,
-  modelId: string
+  modelId: string,
+  openRouterOptions?: { reasoning?: { max_tokens: number; exclude: boolean }; provider?: Record<string, unknown> },
 ): LanguageModel {
   switch (config.analysisProvider) {
     case "bedrock": {
@@ -91,7 +92,10 @@ function createModelForProvider(
       const openrouter = createOpenRouter({
         apiKey: process.env.OPENROUTER_API_KEY,
       });
-      return openrouter(modelId, { provider: { sort: "throughput" as const } });
+      return openrouter(modelId, {
+        provider: { sort: "throughput" as const },
+        ...openRouterOptions,
+      });
     }
   }
 }
@@ -105,19 +109,11 @@ export function createSynthesisModel(config: SessionConfig): LanguageModel {
 }
 
 export function createTaskModel(config: SessionConfig): LanguageModel {
-  if (config.analysisProvider === "bedrock") {
-    const bedrock = createAmazonBedrock({ region: config.bedrockRegion });
-    return bedrock(config.taskModelId);
-  }
-  const openrouter = createOpenRouter({
-    apiKey: process.env.OPENROUTER_API_KEY,
-  });
-  const provider = {
-    sort: "throughput" as const,
-    ...(config.taskProviders?.length ? { only: config.taskProviders } : {}),
-  };
-  return openrouter(config.taskModelId, {
+  return createModelForProvider(config, config.taskModelId, {
     reasoning: { max_tokens: 1024, exclude: false },
-    provider,
+    provider: {
+      sort: "throughput" as const,
+      ...(config.taskProviders?.length ? { only: config.taskProviders } : {}),
+    },
   });
 }
