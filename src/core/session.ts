@@ -21,6 +21,8 @@ import type {
   LanguageCode,
   TaskSuggestion,
   Insight,
+  TranscriptionProvider,
+  AnalysisProvider,
 } from "./types";
 import { createTranscriptionModel, createAnalysisModel, createTaskModel, createUtilitiesModel, createSynthesisModel } from "./providers";
 import { log } from "./logger";
@@ -272,6 +274,15 @@ export class Session {
   private get targetLangLabel(): string { return getLanguageLabel(this.config.targetLang); }
   private get sourceLangName(): string { return LANG_NAMES[this.config.sourceLang]; }
   private get targetLangName(): string { return LANG_NAMES[this.config.targetLang]; }
+
+  private trackCost(inputTokens: number, outputTokens: number, inputType: "audio" | "text", provider: TranscriptionProvider | AnalysisProvider): void {
+    const total = addCostToAcc(this.costAccumulator, inputTokens, outputTokens, inputType, provider);
+    this.events.emit("cost-updated", total);
+  }
+
+  private ensureTranscriptContext(): void {
+    this.ensureTranscriptContext();
+  }
 
   constructor(config: SessionConfig, db?: AppDatabase, sessionId?: string, externalDeps?: SessionExternalDeps) {
     this.config = config;
@@ -820,9 +831,7 @@ export class Session {
     suggestions: TaskSuggestion[];
     error?: string;
   }> {
-    if (this.contextState.transcriptBlocks.size === 0) {
-      this.hydrateTranscriptContextFromDb();
-    }
+    this.ensureTranscriptContext();
     if (this.contextState.transcriptBlocks.size === 0) {
       this.events.emit("status", "Task scan: no transcript available yet.");
       setTimeout(() => this.events.emit("status", ""), 3000);
@@ -891,9 +900,7 @@ export class Session {
   }
 
   generateFinalSummary(): void {
-    if (this.contextState.transcriptBlocks.size === 0) {
-      this.hydrateTranscriptContextFromDb();
-    }
+    this.ensureTranscriptContext();
     if (this.contextState.transcriptBlocks.size === 0) {
       this.events.emit("final-summary-error", "No transcript available to summarise");
       return;
@@ -912,14 +919,7 @@ export class Session {
           temperature: 0,
         });
 
-        const totalCost = addCostToAcc(
-          this.costAccumulator,
-          usage?.inputTokens ?? 0,
-          usage?.outputTokens ?? 0,
-          "text",
-          "openrouter",
-        );
-        this.events.emit("cost-updated", totalCost);
+        this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", "openrouter");
 
         const summary: FinalSummary = {
           narrative: object.narrative.trim(),
@@ -964,9 +964,7 @@ export class Session {
       return;
     }
 
-    if (this.contextState.transcriptBlocks.size === 0) {
-      this.hydrateTranscriptContextFromDb();
-    }
+    this.ensureTranscriptContext();
     const allBlocks = [...this.contextState.transcriptBlocks.values()];
     const prompt = buildAgentsSummaryPrompt(terminalAgents, allBlocks, this.contextState.allKeyPoints);
     this.events.emit("status", `Generating agents summary with ${this.config.synthesisModelId}...`);
@@ -980,14 +978,7 @@ export class Session {
           temperature: 0,
         });
 
-        const totalCost = addCostToAcc(
-          this.costAccumulator,
-          usage?.inputTokens ?? 0,
-          usage?.outputTokens ?? 0,
-          "text",
-          "openrouter",
-        );
-        this.events.emit("cost-updated", totalCost);
+        this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", "openrouter");
 
         const totalDurationSecs = terminalAgents.reduce((acc, a) => {
           return acc + (a.completedAt && a.createdAt
@@ -1110,14 +1101,7 @@ export class Session {
         temperature: 0,
       });
 
-      const totalWithTask = addCostToAcc(
-        this.costAccumulator,
-        usage?.inputTokens ?? 0,
-        usage?.outputTokens ?? 0,
-        "text",
-        "openrouter"
-      );
-      this.events.emit("cost-updated", totalWithTask);
+      this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", "openrouter");
 
       const taskTitle = object.taskTitle.trim();
       const taskDetails = object.taskDetails.trim();
@@ -1171,9 +1155,7 @@ export class Session {
   }
 
   private getTranscriptContextForAgent(): string {
-    if (this.contextState.transcriptBlocks.size === 0) {
-      this.hydrateTranscriptContextFromDb();
-    }
+    this.ensureTranscriptContext();
     const blocks = [...this.contextState.transcriptBlocks.values()].slice(-20);
     if (blocks.length === 0) return "(No transcript yet)";
     return blocks
@@ -1320,14 +1302,7 @@ export class Session {
         temperature: 0,
       });
 
-      const totalCost = addCostToAcc(
-        this.costAccumulator,
-        usage?.inputTokens ?? 0,
-        usage?.outputTokens ?? 0,
-        "text",
-        "openrouter",
-      );
-      this.events.emit("cost-updated", totalCost);
+      this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", "openrouter");
 
       const polished = (object as { polished: string }).polished.trim();
       return polished || trimmed;
@@ -1546,8 +1521,7 @@ export class Session {
 
       const inTok = finalUsage?.inputTokens ?? 0;
       const outTok = finalUsage?.outputTokens ?? 0;
-      const totalCost = addCostToAcc(this.costAccumulator, inTok, outTok, "audio", this.config.transcriptionProvider);
-      this.events.emit("cost-updated", totalCost);
+      this.trackCost(inTok, outTok, "audio", this.config.transcriptionProvider);
 
       if (this.config.debug) {
         log("INFO", `Transcription response [${this.config.transcriptionProvider}]: ${Date.now() - startTime}ms, tokens: ${inTok}→${outTok}, queue: ${queue.length}`);
@@ -1605,12 +1579,8 @@ export class Session {
       this.scheduleAnalysis();
     } catch (error) {
       const elapsed = Date.now() - startTime;
-      const isAbortError =
-        (error instanceof Error && error.name === "AbortError") ||
-        (error && typeof error === "object" && "name" in error && (error as { name: string }).name === "AbortError");
-      const isTimeout =
-        isAbortError ||
-        (error instanceof Error && error.name === "TimeoutError");
+      const errorName = error instanceof Error ? error.name : (error && typeof error === "object" && "name" in error ? (error as { name: string }).name : "");
+      const isTimeout = errorName === "AbortError" || errorName === "TimeoutError";
       const errorMsg = isTimeout ? `Timed out (${(elapsed / 1000).toFixed(1)}s)` : toReadableError(error);
       const fullError = error instanceof Error
         ? `${error.name}: ${error.message}${error.cause ? ` cause=${JSON.stringify(error.cause)}` : ""}`
@@ -1679,14 +1649,7 @@ export class Session {
         temperature: 0,
       });
 
-      const totalCost = addCostToAcc(
-        this.costAccumulator,
-        usage?.inputTokens ?? 0,
-        usage?.outputTokens ?? 0,
-        "text",
-        "openrouter"
-      );
-      this.events.emit("cost-updated", totalCost);
+      this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", "openrouter");
 
       return {
         sourceLanguage: (object as { sourceLanguage: LanguageCode }).sourceLanguage,
@@ -1837,14 +1800,7 @@ export class Session {
         });
 
         analysisElapsedMs = Date.now() - startTime;
-        const totalCost = addCostToAcc(
-          this.costAccumulator,
-          usage?.inputTokens ?? 0,
-          usage?.outputTokens ?? 0,
-          "text",
-          this.config.analysisProvider
-        );
-        this.events.emit("cost-updated", totalCost);
+        this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", this.config.analysisProvider);
         this.lastAnalysisBlockCount = analysisTargetBlockCount;
         analysisSucceeded = true;
 
@@ -1898,14 +1854,7 @@ export class Session {
             temperature: 0,
           });
 
-          const totalWithTask = addCostToAcc(
-            this.costAccumulator,
-            taskUsage?.inputTokens ?? 0,
-            taskUsage?.outputTokens ?? 0,
-            "text",
-            "openrouter"
-          );
-          this.events.emit("cost-updated", totalWithTask);
+          this.trackCost(taskUsage?.inputTokens ?? 0, taskUsage?.outputTokens ?? 0, "text", "openrouter");
           taskSuggestions = suggestionResult.suggestions
             .map((raw) => this.normalizeAgentSuggestion(raw))
             .filter((candidate): candidate is TaskSuggestionDraft => candidate !== null);

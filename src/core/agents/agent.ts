@@ -928,88 +928,52 @@ function summarizeToolCall(
   };
 }
 
-function summarizeToolResult(
-  toolName: string,
-  input: unknown,
-  output: unknown
-): {
-  content: string;
-  toolInput?: string;
-} {
-  if (toolName === "searchWeb") {
+type ToolSummary = { content: string; toolInput?: string };
+
+const TOOL_RESULT_SUMMARIZERS: Record<string, (input: unknown, output: unknown) => ToolSummary> = {
+  searchWeb: (input) => {
     const query = getSearchQuery(input);
-    if (query) {
-      return { content: `Searched: ${query}` };
-    }
-    return { content: "Search complete" };
-  }
-
-  if (toolName === "getTranscriptContext") {
-    return { content: "Loaded transcript context" };
-  }
-
-  if (toolName === "askQuestion") {
+    return { content: query ? `Searched: ${query}` : "Search complete" };
+  },
+  getTranscriptContext: () => ({ content: "Loaded transcript context" }),
+  askQuestion: (_input, output) => {
     const count = getAskQuestionAnswerCount(output);
-    return {
-      content:
-        count > 0
-          ? `Clarification received (${count} answered)`
-          : "Clarification received",
-      toolInput: safeJson(output),
-    };
-  }
-
-  if (toolName === "createPlan") {
-    return { content: "Plan created" };
-  }
-
-  if (toolName === "updateTodos") {
-    return { content: "Todos updated" };
-  }
-
-  if (toolName === "searchTranscriptHistory") {
+    return { content: count > 0 ? `Clarification received (${count} answered)` : "Clarification received", toolInput: safeJson(output) };
+  },
+  createPlan: () => ({ content: "Plan created" }),
+  updateTodos: () => ({ content: "Todos updated" }),
+  searchTranscriptHistory: (_input, output) => {
     const results = Array.isArray(output) ? output : [];
     return { content: `Found ${results.length} transcript${results.length === 1 ? "" : "s"}` };
-  }
-
-  if (toolName === "searchAgentHistory") {
+  },
+  searchAgentHistory: (_input, output) => {
     const results = Array.isArray(output) ? output : [];
     return { content: `Found ${results.length} agent result${results.length === 1 ? "" : "s"}` };
-  }
-
-  if (toolName === "getMcpToolSchema") {
+  },
+  getMcpToolSchema: (_input, output) => {
     const record = asObject(output);
     const name = record && typeof record.name === "string" ? record.name : null;
     return { content: name ? `Schema loaded: ${name}` : "Schema lookup complete" };
-  }
-
-  if (toolName === "searchMcpTools") {
+  },
+  searchMcpTools: (_input, output) => {
     const record = asObject(output);
     const results = Array.isArray(record?.results) ? record.results : [];
     return { content: `Found ${results.length} MCP tool${results.length === 1 ? "" : "s"}` };
-  }
-
-  if (toolName === "callMcpTool") {
+  },
+  callMcpTool: (input, output) => {
     const name = (input as Record<string, unknown>)?.name;
     const label = typeof name === "string" ? name : "MCP tool";
     const status = getMcpCallResultStatus(output);
-    if (status === "error") {
-      const errorText = getMcpCallResultErrorText(output);
-      return {
-        content: `${label} failed`,
-        toolInput: errorText || safeJson(output),
-      };
-    }
-    if (status === "denied") {
-      return { content: `${label} denied`, toolInput: safeJson(output) };
-    }
+    if (status === "error") return { content: `${label} failed`, toolInput: getMcpCallResultErrorText(output) || safeJson(output) };
+    if (status === "denied") return { content: `${label} denied`, toolInput: safeJson(output) };
     return { content: `${label} complete`, toolInput: safeJson(output) };
-  }
+  },
+};
 
-  return {
-    content: `${toolName} complete`,
-    toolInput: safeJson(output),
-  };
+function summarizeToolResult(toolName: string, input: unknown, output: unknown): ToolSummary {
+  const summarizer = TOOL_RESULT_SUMMARIZERS[toolName];
+  if (summarizer) return summarizer(input, output);
+  return { content: `${toolName} complete`, toolInput: safeJson(output) };
 }
 
 /**

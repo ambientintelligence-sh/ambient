@@ -131,15 +131,35 @@ const DARK_VARIANT_OPTIONS: Array<{
   { value: "pitch-black", label: "Pitch Black", swatch: "oklch(0 0 0)" },
 ];
 
-const SEGMENTED_GROUP_CLASS =
-  "inline-flex flex-wrap items-center justify-end gap-1 rounded-sm border border-border/70 bg-muted/35 p-1 max-w-[28rem]";
-
-function segmentedButtonClass(selected: boolean): string {
-  return `h-7 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 rounded-[6px] border transition-colors ${
-    selected
-      ? "border-border/85 bg-background text-foreground shadow-sm"
-      : "border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground"
-  }`;
+function SegmentedControl<O extends { readonly value: string; readonly label: string }>({
+  options,
+  value,
+  onChange,
+  renderOption,
+}: {
+  options: readonly O[];
+  value: O["value"];
+  onChange: (v: O["value"]) => void;
+  renderOption?: (option: O, selected: boolean) => ReactNode;
+}) {
+  return (
+    <div className="inline-flex flex-wrap items-center justify-end gap-1 rounded-sm border border-border/70 bg-muted/35 p-1 max-w-[28rem]">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          className={`h-7 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 rounded-[6px] border transition-colors ${
+            value === option.value
+              ? "border-border/85 bg-background text-foreground shadow-sm"
+              : "border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground"
+          }`}
+          onClick={() => onChange(option.value)}
+        >
+          {renderOption ? renderOption(option, value === option.value) : option.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 const FONT_SIZE_OPTIONS: Array<{ value: FontSize; label: string }> = [
@@ -257,6 +277,37 @@ function isProviderConfigured(
   return required.every((key) => apiKeyStatus[key]);
 }
 
+
+function SettingsSection({
+  icon: Icon,
+  title,
+  description,
+  className,
+  children,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  title: string;
+  description?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className={`relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md ${className ?? ""}`}>
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
+      <div className="flex items-center gap-2">
+        <Icon className="size-3.5 text-muted-foreground/70" />
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {title}
+        </h2>
+      </div>
+      {description && (
+        <p className="text-2xs text-muted-foreground mt-1 mb-3">{description}</p>
+      )}
+      <Separator className={description ? "mb-4" : "my-3"} />
+      {children}
+    </section>
+  );
+}
 
 function SettingRow({
   label,
@@ -428,18 +479,7 @@ function ApiKeysSection({
 
   return (
     <div className="space-y-5">
-      <section className="relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md">
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-        <div className="flex items-center gap-2">
-          <ShieldCheckIcon className="size-3.5 text-muted-foreground/70" />
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            API Keys
-          </h2>
-        </div>
-        <p className="text-2xs text-muted-foreground mt-1 mb-3">
-          Keys are encrypted and stored in your system keychain. They override .env values.
-        </p>
-        <Separator className="mb-4" />
+      <SettingsSection icon={ShieldCheckIcon} title="API Keys" description="Keys are encrypted and stored in your system keychain. They override .env values.">
 
         {needed.length > 0 && (
           <div className={other.length > 0 ? "mb-6" : ""}>
@@ -486,21 +526,10 @@ function ApiKeysSection({
             </div>
           </div>
         )}
-      </section>
+      </SettingsSection>
 
       {isProviderConfigured("bedrock", status) && (
-        <section className="relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-          <div className="flex items-center gap-2">
-            <ServerIcon className="size-3.5 text-muted-foreground/70" />
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              AWS Bedrock
-            </h2>
-          </div>
-          <p className="text-2xs text-muted-foreground mt-1 mb-3">
-            Configure the AWS region for Bedrock API calls.
-          </p>
-          <Separator className="mb-4" />
+        <SettingsSection icon={ServerIcon} title="AWS Bedrock" description="Configure the AWS region for Bedrock API calls.">
           <div className="space-y-1">
             <label className="text-2xs text-muted-foreground">
               Region
@@ -511,7 +540,7 @@ function ApiKeysSection({
               placeholder="us-east-1"
             />
           </div>
-        </section>
+        </SettingsSection>
       )}
     </div>
   );
@@ -658,34 +687,17 @@ export function SettingsPage({
           <TabsContent value="general">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* ── Row 1: Appearance + Session ── */}
-          <section className="relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-            <div className="flex items-center gap-2">
-              <PaletteIcon className="size-3.5 text-muted-foreground/70" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Appearance
-              </h2>
-            </div>
-            <Separator className="my-3" />
+          <SettingsSection icon={PaletteIcon} title="Appearance">
             <SettingRow
               label="Theme"
               description="Choose light, dark, or follow your system theme."
               control={
-                <div className={SEGMENTED_GROUP_CLASS}>
-                  {THEME_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className={segmentedButtonClass(
-                        config.themeMode === option.value
-                      )}
-                      onClick={() => set("themeMode", option.value)}
-                    >
-                      {option.icon}
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
+                <SegmentedControl
+                  options={THEME_OPTIONS}
+                  value={config.themeMode}
+                  onChange={(v) => set("themeMode", v)}
+                  renderOption={(o) => <>{o.icon}{o.label}</>}
+                />
               }
             />
             {showLightStyle && (
@@ -693,24 +705,15 @@ export function SettingsPage({
                 label="Light Style"
                 description="Color palette used in light mode."
                 control={
-                  <div className={SEGMENTED_GROUP_CLASS}>
-                    {LIGHT_VARIANT_OPTIONS.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={segmentedButtonClass(
-                          config.lightVariant === option.value
-                        )}
-                        onClick={() => set("lightVariant", option.value)}
-                      >
-                        <span
-                          className="size-3 rounded-sm border border-border/50 shrink-0"
-                          style={{ backgroundColor: option.swatch }}
-                        />
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
+                  <SegmentedControl
+                    options={LIGHT_VARIANT_OPTIONS}
+                    value={config.lightVariant}
+                    onChange={(v) => set("lightVariant", v)}
+                    renderOption={(o) => <>
+                      <span className="size-3 rounded-sm border border-border/50 shrink-0" style={{ backgroundColor: o.swatch }} />
+                      {o.label}
+                    </>}
+                  />
                 }
               />
             )}
@@ -719,24 +722,15 @@ export function SettingsPage({
                 label="Dark Style"
                 description="Color palette used in dark mode."
                 control={
-                  <div className={SEGMENTED_GROUP_CLASS}>
-                    {DARK_VARIANT_OPTIONS.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={segmentedButtonClass(
-                          config.darkVariant === option.value
-                        )}
-                        onClick={() => set("darkVariant", option.value)}
-                      >
-                        <span
-                          className="size-3 rounded-sm border border-border/50 shrink-0"
-                          style={{ backgroundColor: option.swatch }}
-                        />
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
+                  <SegmentedControl
+                    options={DARK_VARIANT_OPTIONS}
+                    value={config.darkVariant}
+                    onChange={(v) => set("darkVariant", v)}
+                    renderOption={(o) => <>
+                      <span className="size-3 rounded-sm border border-border/50 shrink-0" style={{ backgroundColor: o.swatch }} />
+                      {o.label}
+                    </>}
+                  />
                 }
               />
             )}
@@ -784,17 +778,9 @@ export function SettingsPage({
                 </div>
               }
             />
-          </section>
+          </SettingsSection>
 
-          <section className="relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-            <div className="flex items-center gap-2">
-              <SlidersHorizontalIcon className="size-3.5 text-muted-foreground/70" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Session
-              </h2>
-            </div>
-            <Separator className="my-3" />
+          <SettingsSection icon={SlidersHorizontalIcon} title="Session">
             <div className="space-y-1">
               <SettingRow
                 label="Response Length"
@@ -853,18 +839,10 @@ export function SettingsPage({
                 }
               />
             </div>
-          </section>
+          </SettingsSection>
 
           {/* ── Row 2: Transcription (full width) ── */}
-          <section className="relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md lg:col-span-2">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-            <div className="flex items-center gap-2">
-              <MicIcon className="size-3.5 text-muted-foreground/70" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Transcription
-              </h2>
-            </div>
-            <Separator className="my-3" />
+          <SettingsSection icon={MicIcon} title="Transcription" className="lg:col-span-2">
             {(() => {
               const providerOption = getTranscriptionProviderOption(
                 config.transcriptionProvider
@@ -1012,20 +990,12 @@ export function SettingsPage({
                 </div>
               );
             })()}
-          </section>
+          </SettingsSection>
 
           {/* Translation settings removed — use toolbar dropdown instead */}
 
           {/* ── Row 4: Agent Models (full width) ── */}
-          <section className="relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md lg:col-span-2">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-            <div className="flex items-center gap-2">
-              <CpuIcon className="size-3.5 text-muted-foreground/70" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Model Roles
-              </h2>
-            </div>
-            <Separator className="my-3" />
+          <SettingsSection icon={CpuIcon} title="Model Roles" className="lg:col-span-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {(() => {
                 const providerKey = (config.analysisProvider === "openrouter" || config.analysisProvider === "bedrock")
@@ -1202,18 +1172,10 @@ export function SettingsPage({
                 );
               })()}
             </div>
-          </section>
+          </SettingsSection>
 
           {/* ── Row 5: Advanced (full width) ── */}
-          <section className="relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md lg:col-span-2">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-            <div className="flex items-center gap-2">
-              <WrenchIcon className="size-3.5 text-muted-foreground/70" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Advanced
-              </h2>
-            </div>
-            <Separator className="my-3" />
+          <SettingsSection icon={WrenchIcon} title="Advanced" className="lg:col-span-2">
             <div className="space-y-1">
               <SettingRow
                 label="Debug Mode"
@@ -1236,18 +1198,10 @@ export function SettingsPage({
                 }
               />
             </div>
-          </section>
+          </SettingsSection>
 
           {/* ── Row 6: Integrations (full width) ── */}
-          <section className="relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md lg:col-span-2">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-            <div className="flex items-center gap-2">
-              <PlugIcon className="size-3.5 text-muted-foreground/70" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Integrations
-              </h2>
-            </div>
-            <Separator className="my-3" />
+          <SettingsSection icon={PlugIcon} title="Integrations" className="lg:col-span-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {mcpIntegrations.map((status) => {
                 const ProviderIcon = resolveProviderIcon(status.mcpUrl ?? "");
@@ -1483,7 +1437,7 @@ export function SettingsPage({
                 </div>
               )}
             </div>
-          </section>
+          </SettingsSection>
           </div>
           </TabsContent>
 
