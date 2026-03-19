@@ -19,8 +19,10 @@ type ToolbarHeaderProps = {
   languages: Language[];
   sourceLang: LanguageCode;
   targetLang: LanguageCode;
+  translateToSelection: LanguageCode | "off";
   onSourceLangChange: (lang: LanguageCode) => void;
   onTargetLangChange: (lang: LanguageCode) => void;
+  onTranslateToSelectionChange: (value: LanguageCode | "off") => void;
   sessionActive: boolean;
   onStart: () => void;
   onNewSession: () => void;
@@ -78,16 +80,6 @@ function renderLanguageOption(lang: Language) {
   );
 }
 
-function encodeTranslateValue(direction: Direction, lang: LanguageCode): string {
-  return `${direction}:${lang}`;
-}
-
-function decodeTranslateValue(value: string): { direction: Direction | "off"; lang?: LanguageCode } {
-  if (value === "off") return { direction: "off" };
-  const [dir, code] = value.split(":");
-  return { direction: dir as Direction, lang: code as LanguageCode };
-}
-
 function getTranslateDisplayLabel(lang: LanguageCode): string {
   const l = SUPPORTED_LANGUAGES.find((x) => x.code === lang);
   return l?.native ?? lang.toUpperCase();
@@ -97,8 +89,10 @@ export function ToolbarHeader({
   languages,
   sourceLang,
   targetLang,
+  translateToSelection,
   onSourceLangChange,
   onTargetLangChange,
+  onTranslateToSelectionChange,
   sessionActive,
   onStart,
   onNewSession,
@@ -119,13 +113,11 @@ export function ToolbarHeader({
   const loading = languages.length === 0;
   const canTranslate = uiState?.canTranslate ?? false;
   const translationEnabled = (uiState?.translationEnabled ?? false) && canTranslate;
-  const currentDirection = uiState?.direction ?? "auto";
+  const currentDirection: Direction = uiState?.direction ?? "auto";
   const micEnabled = uiState?.micEnabled ?? false;
   const logoUrl = new URL("../../../../assets/ambient-eclipse-filled.svg", import.meta.url).href;
 
-  const translateValue = translationEnabled
-    ? encodeTranslateValue(currentDirection, targetLang)
-    : "off";
+  const translateValue = translateToSelection;
 
   const languageOptions = languages.length > 0 ? languages : SUPPORTED_LANGUAGES;
   const availableTargetLanguages = SUPPORTED_LANGUAGES.filter((l) => l.code !== sourceLang);
@@ -174,7 +166,7 @@ export function ToolbarHeader({
             value={sourceLang}
             onValueChange={(v) => {
               onSourceLangChange(v as LanguageCode);
-              if (v === targetLang) {
+              if (translateToSelection !== "off" && v === targetLang) {
                 const alt = v === "en" ? "ko" : "en";
                 onTargetLangChange(alt as LanguageCode);
               }
@@ -186,7 +178,7 @@ export function ToolbarHeader({
                 {loading ? "..." : renderLabel(languages, sourceLang)}
               </SelectValue>
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent position="popper" align="start" sideOffset={4}>
               <SelectGroup>
                 <SelectLabel>Translate from</SelectLabel>
                 {languageOptions.map((lang) => (
@@ -202,14 +194,14 @@ export function ToolbarHeader({
             value={translateValue}
             onValueChange={(v) => {
               if (v === "off") {
+                onTranslateToSelectionChange("off");
                 onSetTranslationMode?.("off");
                 return;
               }
-              const { direction, lang: tl } = decodeTranslateValue(v);
-              if (direction !== "off" && tl) {
-                onTargetLangChange(tl);
-                onSetTranslationMode?.(direction, tl);
-              }
+              const nextTargetLang = v as LanguageCode;
+              onTranslateToSelectionChange(nextTargetLang);
+              onTargetLangChange(nextTargetLang);
+              onSetTranslationMode?.(currentDirection, nextTargetLang);
             }}
             disabled={loading || !sessionActive || !canTranslate}
           >
@@ -218,7 +210,7 @@ export function ToolbarHeader({
               className={`w-44 ${translationEnabled ? "border-primary/40" : ""}`}
             >
               <SelectValue>
-                {translationEnabled ? getTranslateDisplayLabel(targetLang) : "Translation off"}
+                {translateToSelection === "off" ? "Translation off" : getTranslateDisplayLabel(translateToSelection)}
               </SelectValue>
             </SelectTrigger>
             <SelectContent position="popper" align="start" sideOffset={4}>
@@ -227,7 +219,7 @@ export function ToolbarHeader({
               <SelectGroup>
                 <SelectLabel>Translate to</SelectLabel>
                 {availableTargetLanguages.map((lang) => (
-                  <SelectItem key={lang.code} value={encodeTranslateValue("auto", lang.code)}>
+                  <SelectItem key={lang.code} value={lang.code}>
                     {renderLanguageOption(lang)}
                   </SelectItem>
                 ))}

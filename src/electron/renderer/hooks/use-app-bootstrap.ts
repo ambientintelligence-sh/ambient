@@ -22,8 +22,12 @@ export function useAppBootstrap({
 
     if (!languageSeededRef.current) {
       const last = loaded[0];
-      if (last?.sourceLang) setSourceLang(last.sourceLang);
-      if (last?.targetLang) setTargetLang(last.targetLang);
+      const hasStoredSourceLang = localStorage.getItem("ambient-source-lang") !== null;
+      const hasStoredTargetLang =
+        localStorage.getItem("ambient-translate-to-lang") !== null ||
+        localStorage.getItem("ambient-target-lang") !== null;
+      if (last?.sourceLang && !hasStoredSourceLang) setSourceLang(last.sourceLang);
+      if (last?.targetLang && !hasStoredTargetLang) setTargetLang(last.targetLang);
       languageSeededRef.current = true;
     }
 

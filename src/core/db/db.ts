@@ -151,6 +151,17 @@ export function createDatabase(dbPath: string) {
       return this.getSession(sessionId);
     },
 
+    updateSessionLanguages(sessionId: string, sourceLang?: LanguageCode, targetLang?: LanguageCode): SessionMeta | null {
+      orm.update(sessions)
+        .set({
+          sourceLang: sourceLang ?? null,
+          targetLang: targetLang ?? null,
+        })
+        .where(eq(sessions.id, sessionId))
+        .run();
+      return this.getSession(sessionId);
+    },
+
     isSessionEmpty(id: string): boolean {
       const [blockRow] = orm
         .select({ n: count() })

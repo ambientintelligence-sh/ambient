@@ -85,7 +85,8 @@ export function App() {
   // --- Language & Config (local to app, used by session hook) ---
   const [languages, setLanguages] = useState<Language[]>([]);
   const [sourceLang, setSourceLang] = useLocalStorage<LanguageCode>("ambient-source-lang", "ko");
-  const [targetLang, setTargetLang] = useLocalStorage<LanguageCode>("ambient-target-lang", "en");
+  const [targetLang, setTargetLang] = useLocalStorage<LanguageCode>("ambient-translate-to-lang", "en");
+  const [translateToSelection, setTranslateToSelection] = useLocalStorage<LanguageCode | "off">("ambient-translate-to-selection", "en");
   const [storedAppConfig, setStoredAppConfig] = useLocalStorage<AppConfig>("ambient-app-config", DEFAULT_APP_CONFIG);
   const appConfig = normalizeAppConfig(storedAppConfig);
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -99,6 +100,18 @@ export function App() {
   const [leftPanelWidth, setLeftPanelWidth] = useLocalStorage<number>("ambient-left-panel-width", 280);
   const [rightPanelWidth, setRightPanelWidth] = useLocalStorage<number>("ambient-right-panel-width", 300);
   const pendingNewSessionRouteRef = useRef(false);
+
+  useEffect(() => {
+    const hasStoredSelection = localStorage.getItem("ambient-translate-to-selection") !== null;
+    if (hasStoredSelection) return;
+    const legacyTarget =
+      localStorage.getItem("ambient-translate-to-lang") ??
+      localStorage.getItem("ambient-target-lang");
+    if (legacyTarget) {
+      setTranslateToSelection(legacyTarget as LanguageCode);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // --- Zustand stores (select state reactively, access actions via getState) ---
   const splashDone = useUIStore((s) => s.splashDone);
@@ -172,6 +185,19 @@ export function App() {
   const selectAgent = (id: string | null) => {
     ui().setNewAgentMode(false);
     _selectAgent(id);
+  };
+
+  const applyTargetLang = (lang: LanguageCode) => {
+    setTargetLang(lang);
+    setTranslateToSelection(lang);
+  };
+
+  const handleSourceLangChange = async (lang: LanguageCode) => {
+    setSourceLang(lang);
+    ui().setLangError("");
+    if (session.sessionId) {
+      await window.electronAPI.setSourceLanguage(lang);
+    }
   };
 
   // --- Session hook ---
@@ -1047,7 +1073,7 @@ export function App() {
   };
 
   const handleSetTranslationMode = async (direction: "off" | "auto" | "source-target", targetLangCode?: LanguageCode) => {
-    if (targetLangCode) setTargetLang(targetLangCode);
+    if (targetLangCode) applyTargetLang(targetLangCode);
     await window.electronAPI.setTranslationMode(direction, targetLangCode);
   };
 
@@ -1246,8 +1272,10 @@ export function App() {
         languages={languages}
         sourceLang={sourceLang}
         targetLang={targetLang}
-        onSourceLangChange={(lang) => { setSourceLang(lang); ui().setLangError(""); }}
-        onTargetLangChange={(lang) => { setTargetLang(lang); ui().setLangError(""); }}
+        translateToSelection={translateToSelection}
+        onSourceLangChange={(lang) => { void handleSourceLangChange(lang); }}
+        onTargetLangChange={(lang) => { applyTargetLang(lang); ui().setLangError(""); }}
+        onTranslateToSelectionChange={setTranslateToSelection}
         sessionActive={sessionActive}
         onStart={handleStart}
         onNewSession={handleNewSession}
@@ -1276,8 +1304,8 @@ export function App() {
             languages={languages}
             sourceLang={sourceLang}
             targetLang={targetLang}
-            onSourceLangChange={(lang) => { setSourceLang(lang); ui().setLangError(""); }}
-            onTargetLangChange={(lang) => { setTargetLang(lang); ui().setLangError(""); }}
+            onSourceLangChange={(lang) => { void handleSourceLangChange(lang); }}
+            onTargetLangChange={(lang) => { applyTargetLang(lang); ui().setLangError(""); }}
             isRecording={session.uiState?.status === "recording" || session.uiState?.status === "connecting"}
             onConfigChange={handleAppConfigChange}
             onReset={() => setStoredAppConfig(DEFAULT_APP_CONFIG)}
