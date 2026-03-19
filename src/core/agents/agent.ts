@@ -43,7 +43,8 @@ type ExaClient = {
 export type AgentDeps = {
   model: Parameters<typeof streamText>[0]["model"];
   exa?: ExaClient | null;
-  getTranscriptContext: () => string;
+  getTranscriptSummary: () => string;
+  getTranscriptContext: (last?: number, offset?: number) => { blocks: string; returned: number; total: number; remaining: number };
   projectInstructions?: string;
   agentsMd?: string;
   responseLength?: import("../types").ResponseLength;
@@ -301,7 +302,7 @@ function getMcpCallResultErrorText(output: unknown): string {
 
 async function buildTools(
   exa: ExaClient | null | undefined,
-  getTranscriptContext: () => string,
+  getTranscriptContext: (last?: number, offset?: number) => { blocks: string; returned: number; total: number; remaining: number },
   requestClarification: AgentDeps["requestClarification"],
   requestToolApproval: AgentDeps["requestToolApproval"],
   requestPlanApproval: AgentDeps["requestPlanApproval"],
@@ -349,10 +350,13 @@ async function buildTools(
 
   baseTools["getTranscriptContext"] = tool({
     description:
-      "Get recent transcript blocks from the current conversation for more context.",
-    inputSchema: z.object({}),
-    execute: async () => {
-      return getTranscriptContext();
+      "Read transcript blocks from the current conversation. Returns blocks plus metadata (returned, total, remaining) for pagination.",
+    inputSchema: z.object({
+      last: z.number().optional().describe("Number of most recent blocks to return (default 10)"),
+      offset: z.number().optional().describe("Skip this many blocks from the end to page backwards (default 0)"),
+    }),
+    execute: async ({ last, offset }) => {
+      return getTranscriptContext(last, offset);
     },
   });
 
@@ -927,7 +931,13 @@ function summarizeToolCall(
   }
 
   if (toolName === "getTranscriptContext") {
-    return { content: "Reading transcript context" };
+    const record = asObject(input);
+    const last = record?.last;
+    const offset = record?.offset;
+    const detail = typeof last === "number" || typeof offset === "number"
+      ? ` (last=${last ?? 10}, offset=${offset ?? 0})`
+      : "";
+    return { content: `Reading transcript context${detail}` };
   }
 
   if (toolName === "getFleetStatus") {
@@ -1000,7 +1010,12 @@ const TOOL_RESULT_SUMMARIZERS: Record<string, (input: unknown, output: unknown) 
     const query = getSearchQuery(input);
     return { content: query ? `Searched: ${query}` : "Search complete" };
   },
-  getTranscriptContext: () => ({ content: "Loaded transcript context" }),
+  getTranscriptContext: (_input, output) => {
+    const record = asObject(output);
+    const returned = typeof record?.returned === "number" ? record.returned : "?";
+    const total = typeof record?.total === "number" ? record.total : "?";
+    return { content: `Loaded ${returned}/${total} transcript blocks` };
+  },
   getFleetStatus: (_input, output) => {
     const record = asObject(output);
     const agentCount = Array.isArray(record?.agents) ? record.agents.length : 0;
@@ -1088,6 +1103,7 @@ async function runAgentWithMessages(
   const {
     model,
     exa,
+    getTranscriptSummary,
     getTranscriptContext,
     projectInstructions,
     agentsMd,
@@ -1129,7 +1145,7 @@ async function runAgentWithMessages(
       enabledSkills,
     );
     const systemPrompt = buildSystemPrompt(
-      getTranscriptContext(),
+      getTranscriptSummary(),
       projectInstructions,
       agentsMd,
       responseLength,

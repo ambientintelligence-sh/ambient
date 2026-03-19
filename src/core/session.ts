@@ -312,7 +312,8 @@ export class Session {
       synthesisModel: this.synthesisModel,
       exaApiKey: process.env.EXA_API_KEY,
       events: this.events,
-      getTranscriptContext: () => this.getTranscriptContextForAgent(),
+      getTranscriptSummary: () => this.getTranscriptSummaryForAgent(),
+      getTranscriptContext: (last?: number, offset?: number) => this.getTranscriptBlocks(last, offset),
       getRecentBlocks: () => this.db ? this.db.getBlocksForSession(this.sessionId).slice(-20) : [],
       getProjectInstructions: () => {
         const projectId = this.getCurrentProjectId();
@@ -1098,17 +1099,34 @@ export class Session {
     return this.agentManager?.cancelAgent(agentId) ?? false;
   }
 
-  private getTranscriptContextForAgent(): string {
+  private getTranscriptSummaryForAgent(): string {
     this.ensureTranscriptContext();
-    const blocks = [...this.contextState.transcriptBlocks.values()].slice(-20);
-    if (blocks.length === 0) return "(No transcript yet)";
-    return blocks
-      .map((b) => {
-        const src = `[${b.audioSource}] ${b.sourceText}`;
-        const translation = b.translation ? ` → ${b.translation}` : "";
-        return src + translation;
-      })
-      .join("\n");
+    const totalBlocks = this.contextState.transcriptBlocks.size;
+    if (totalBlocks === 0) return "(No transcript yet)";
+
+    const keyPoints = this.contextState.allKeyPoints;
+    if (keyPoints.length > 0) {
+      return `Key points from the conversation so far (${totalBlocks} transcript blocks available — use getTranscriptContext to read them):\n${keyPoints.map((kp) => `- ${kp}`).join("\n")}`;
+    }
+
+    return `${totalBlocks} transcript blocks available — use getTranscriptContext to read them.`;
+  }
+
+  private getTranscriptBlocks(last = 10, offset = 0): { blocks: string; returned: number; total: number; remaining: number } {
+    this.ensureTranscriptContext();
+    const all = [...this.contextState.transcriptBlocks.values()];
+    const total = all.length;
+    const end = total - offset;
+    const start = Math.max(0, end - last);
+    const slice = all.slice(start, Math.max(0, end));
+    const formatted = slice.length === 0
+      ? "(No blocks in this range)"
+      : slice.map((b) => {
+          const src = `[${b.audioSource}] ${b.sourceText}`;
+          const translation = b.translation ? ` → ${b.translation}` : "";
+          return src + translation;
+        }).join("\n");
+    return { blocks: formatted, returned: slice.length, total, remaining: Math.max(0, start) };
   }
 
   private getCurrentProjectId(): string | undefined {

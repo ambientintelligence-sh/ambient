@@ -31,7 +31,8 @@ type AgentManagerDeps = {
   synthesisModel: Parameters<typeof runAgent>[1]["model"];
   exaApiKey?: string;
   events: TypedEmitter;
-  getTranscriptContext: () => string;
+  getTranscriptSummary: () => string;
+  getTranscriptContext: (last?: number, offset?: number) => { blocks: string; returned: number; total: number; remaining: number };
   getRecentBlocks?: () => import("../types").TranscriptBlock[];
   getProjectInstructions?: () => string | undefined;
   getProjectId?: () => string | undefined;
@@ -432,6 +433,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
       await runAgent(agent, {
         model: deps.model,
         exa,
+        getTranscriptSummary: deps.getTranscriptSummary,
         getTranscriptContext: deps.getTranscriptContext,
         projectInstructions: deps.getProjectInstructions?.(),
         agentsMd: agentsMd || undefined,
@@ -507,6 +509,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
       await continueAgent(agent, history, question, {
         model: deps.model,
         exa,
+        getTranscriptSummary: deps.getTranscriptSummary,
         getTranscriptContext: deps.getTranscriptContext,
         projectInstructions: deps.getProjectInstructions?.(),
         agentsMd: agentsMd || undefined,
@@ -747,7 +750,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
     agent.createdAt = now;
     // Refresh task context so the agent starts with current transcript, not the
     // stale snapshot captured when the task was originally created.
-    agent.taskContext = deps.getTranscriptContext();
+    agent.taskContext = deps.getTranscriptSummary();
 
     deps.db?.updateAgent(agentId, { status: "running", steps: agent.steps, result: undefined, completedAt: undefined });
     deps.events.emit("agent-started", agent);
@@ -764,6 +767,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
       await runAgent(agent, {
         model: deps.model,
         exa,
+        getTranscriptSummary: deps.getTranscriptSummary,
         getTranscriptContext: deps.getTranscriptContext,
         projectInstructions: deps.getProjectInstructions?.(),
         agentsMd: agentsMd || undefined,

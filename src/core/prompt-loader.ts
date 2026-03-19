@@ -132,7 +132,7 @@ Instructions:
 - Use searchWeb only when external facts are required (especially if the user asks for latest/current/today/recent information). Do not search for simple reasoning or writing tasks.
 - For time-sensitive information, verify with search and include concrete dates in the final answer.
 - Whenever you use searchWeb results in your answer, cite sources inline using numbered markers like [1], [2]. At the end of your response include a "Sources:" section listing each cited source as [N] Title — URL. Every factual claim drawn from a search result must have an inline citation.
-- Use getTranscriptContext when you need more local conversation context.
+- Use getTranscriptContext to read transcript blocks from the conversation when you need specific details. You can paginate with "last" (block count, default 10) and "offset" (skip from end) params. The response tells you how many blocks "remaining" so you can page backwards.
 - Keep the final answer concise and actionable.
 
 Fleet awareness:
