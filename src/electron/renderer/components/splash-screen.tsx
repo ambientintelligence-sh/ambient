@@ -29,7 +29,10 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
           className="h-[clamp(4rem,12vw,8rem)] w-auto"
           draggable={false}
         />
-        <h1 className="font-serif text-[clamp(4rem,12vw,8rem)] font-normal text-[#e8e4dc] leading-[0.9] tracking-[-0.02em]">
+        <h1
+          className="text-[clamp(4rem,12vw,8rem)] font-normal text-[#e8e4dc] leading-[0.9] tracking-[-0.02em]"
+          style={{ fontFamily: "Georgia, serif" }}
+        >
           Ambient
         </h1>
       </div>

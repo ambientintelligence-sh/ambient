@@ -191,7 +191,15 @@ export function OnboardingOverlay({
   };
 
   return (
-    <div className="fixed inset-0 z-50" style={{ pointerEvents: "none" }}>
+    <div
+      className="fixed inset-0 z-50"
+      onPointerDown={(event) => {
+        event.preventDefault();
+      }}
+      onClick={(event) => {
+        event.preventDefault();
+      }}
+    >
       <style>{`
         @keyframes onboarding-tooltip-in {
           from { opacity: 0; transform: translateY(10px); }
@@ -242,7 +250,12 @@ export function OnboardingOverlay({
         className="absolute z-10 w-[260px]"
         style={{
           ...getTooltipStyle(),
-          pointerEvents: "auto",
+        }}
+        onPointerDown={(event) => {
+          event.stopPropagation();
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
         }}
       >
         <div
