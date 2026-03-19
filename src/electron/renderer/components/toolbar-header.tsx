@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, CircleIcon, MicIcon, MicOffIcon, MonitorSpeakerIcon, PlusIcon, Settings2Icon, SquareIcon } from "lucide-react";
+import { ArrowLeftIcon, ArrowRightLeftIcon, CircleIcon, MicIcon, MicOffIcon, MonitorSpeakerIcon, PlusIcon, Settings2Icon, SquareIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -66,6 +66,18 @@ function renderLabel(languages: Language[], code: LanguageCode) {
   return lang ? lang.native : code.toUpperCase();
 }
 
+function renderLanguageOption(lang: Language) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="w-6 shrink-0 font-mono text-2xs text-muted-foreground/70">
+        {lang.code.toUpperCase()}
+      </span>
+      <span className="truncate">{lang.name}</span>
+      <span className="truncate text-muted-foreground">({lang.native})</span>
+    </span>
+  );
+}
+
 function encodeTranslateValue(direction: Direction, lang: LanguageCode): string {
   return `${direction}:${lang}`;
 }
@@ -115,7 +127,8 @@ export function ToolbarHeader({
     ? encodeTranslateValue(currentDirection, targetLang)
     : "off";
 
-  const availableFromLanguages = SUPPORTED_LANGUAGES.filter((l) => l.code !== sourceLang);
+  const languageOptions = languages.length > 0 ? languages : SUPPORTED_LANGUAGES;
+  const availableTargetLanguages = SUPPORTED_LANGUAGES.filter((l) => l.code !== sourceLang);
 
   if (settingsOpen) {
     return (
@@ -154,42 +167,9 @@ export function ToolbarHeader({
 
         <Separator orientation="vertical" className="h-4" />
 
-        {/* Translate + Language selector */}
-        <div className="flex items-center gap-1.5 titlebar-no-drag">
-          {canTranslate && sessionActive && (
-            <Select
-              value={translateValue}
-              onValueChange={(v) => {
-                if (v === "off") {
-                  onSetTranslationMode?.("off");
-                } else {
-                  const { direction, lang: tl } = decodeTranslateValue(v);
-                  if (direction !== "off" && tl) {
-                    onSetTranslationMode?.(direction, tl);
-                  }
-                }
-              }}
-            >
-              <SelectTrigger size="sm" className={`w-36 ${translationEnabled ? "border-primary/40" : ""}`}>
-                <SelectValue>
-                  {translationEnabled ? getTranslateDisplayLabel(targetLang) : "Translate"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent position="popper" align="start" sideOffset={4}>
-                <SelectItem value="off">Off</SelectItem>
-                <SelectSeparator />
-                <SelectGroup>
-                  <SelectLabel>Translate from</SelectLabel>
-                  {availableFromLanguages.map((lang) => (
-                    <SelectItem key={lang.code} value={encodeTranslateValue("auto", lang.code)}>
-                      {lang.native} ({lang.name})
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          )}
-          <span className="text-xs text-muted-foreground">Language</span>
+        {/* Language controls */}
+        <div className="flex items-center gap-2 titlebar-no-drag">
+          <span className="shrink-0 text-xs text-muted-foreground">Translate</span>
           <Select
             value={sourceLang}
             onValueChange={(v) => {
@@ -201,21 +181,57 @@ export function ToolbarHeader({
             }}
             disabled={loading || isRecordingOrConnecting}
           >
-            <SelectTrigger size="sm" className="w-32">
+            <SelectTrigger size="sm" className="w-40">
               <SelectValue>
                 {loading ? "..." : renderLabel(languages, sourceLang)}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {languages.map((lang) => (
-                <SelectItem key={lang.code} value={lang.code}>
-                  <span className="font-mono text-2xs opacity-60 mr-1.5">
-                    {lang.code.toUpperCase()}
-                  </span>
-                  {lang.name}
-                  <span className="text-muted-foreground ml-1.5">({lang.native})</span>
-                </SelectItem>
-              ))}
+              <SelectGroup>
+                <SelectLabel>Translate from</SelectLabel>
+                {languageOptions.map((lang) => (
+                  <SelectItem key={lang.code} value={lang.code}>
+                    {renderLanguageOption(lang)}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <ArrowRightLeftIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
+          <Select
+            value={translateValue}
+            onValueChange={(v) => {
+              if (v === "off") {
+                onSetTranslationMode?.("off");
+                return;
+              }
+              const { direction, lang: tl } = decodeTranslateValue(v);
+              if (direction !== "off" && tl) {
+                onTargetLangChange(tl);
+                onSetTranslationMode?.(direction, tl);
+              }
+            }}
+            disabled={loading || !sessionActive || !canTranslate}
+          >
+            <SelectTrigger
+              size="sm"
+              className={`w-44 ${translationEnabled ? "border-primary/40" : ""}`}
+            >
+              <SelectValue>
+                {translationEnabled ? getTranslateDisplayLabel(targetLang) : "Translation off"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent position="popper" align="start" sideOffset={4}>
+              <SelectItem value="off">Translation off</SelectItem>
+              <SelectSeparator />
+              <SelectGroup>
+                <SelectLabel>Translate to</SelectLabel>
+                {availableTargetLanguages.map((lang) => (
+                  <SelectItem key={lang.code} value={encodeTranslateValue("auto", lang.code)}>
+                    {renderLanguageOption(lang)}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             </SelectContent>
           </Select>
         </div>
