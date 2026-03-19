@@ -342,7 +342,11 @@ export class Session {
     }
     log("INFO", `AgentManager initialized${process.env.EXA_API_KEY ? " (web search enabled)" : " (web search disabled — no EXA_API_KEY)"}`);
 
-    const englishIsConfigured = config.sourceLang === "en" || config.targetLang === "en";
+    this.rebuildTranscriptionSchemas();
+  }
+
+  private rebuildTranscriptionSchemas(): void {
+    const englishIsConfigured = this.config.sourceLang === "en" || this.config.targetLang === "en";
     const langEnumValues: [string, ...string[]] = englishIsConfigured
       ? [this.config.sourceLang, this.config.targetLang]
       : [this.config.sourceLang, this.config.targetLang, "en"];
@@ -792,7 +796,7 @@ export class Session {
     if (targetLang) {
       this.config.targetLang = targetLang;
     }
-    this.refreshLanguageDerivedState();
+    this.rebuildTranscriptionSchemas();
     this.db?.updateSessionLanguages(this.sessionId, this.config.sourceLang, this.config.targetLang);
     if (wasBuffering) {
       void this.paragraphBuffer.commitPending();
@@ -802,13 +806,9 @@ export class Session {
   }
 
   setSourceLanguage(sourceLang: LanguageCode): void {
-    const previousSourceLang = this.config.sourceLang;
     this.config.sourceLang = sourceLang;
-    this.refreshLanguageDerivedState();
+    this.rebuildTranscriptionSchemas();
     this.db?.updateSessionLanguages(this.sessionId, this.config.sourceLang, this.config.targetLang);
-    if (this.config.transcriptionProvider === "elevenlabs" && previousSourceLang !== sourceLang) {
-      this.refreshElevenLabsConnections();
-    }
     this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
     log("INFO", `Source language updated: ${sourceLang}`);
   }
