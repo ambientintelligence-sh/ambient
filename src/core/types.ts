@@ -206,6 +206,7 @@ export type SessionConfig = {
   agentAutoApprove: boolean;
   codexEnabled: boolean;
   disabledSkillIds: string[];
+  learningEnabled: boolean;
   micDevice?: string;
 };
 
@@ -242,6 +243,7 @@ export type AppConfig = {
   autoDelegate: boolean;
   codexEnabled: boolean;
   disabledSkillIds: string[];
+  learningEnabled: boolean;
 };
 
 export type AppConfigOverrides = Partial<AppConfig>;
@@ -386,6 +388,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   autoDelegate: false,
   codexEnabled: false,
   disabledSkillIds: [],
+  learningEnabled: true,
 };
 
 export function normalizeAppConfig(
@@ -509,6 +512,7 @@ export function normalizeAppConfig(
     disabledSkillIds: Array.isArray(merged.disabledSkillIds)
       ? merged.disabledSkillIds
       : DEFAULT_APP_CONFIG.disabledSkillIds,
+    learningEnabled: merged.learningEnabled !== false,
   };
 }
 

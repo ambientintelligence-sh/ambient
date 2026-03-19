@@ -172,6 +172,10 @@ export type ElectronAPI = {
   onSessionTitleGenerated: (callback: (sessionId: string, title: string) => void) => () => void;
 
   discoverSkills: () => Promise<SkillMetadata[]>;
+
+  getLearnings: () => Promise<{ category: string; text: string }[]>;
+  deleteLearning: (category: string, text: string) => Promise<{ ok: boolean }>;
+  clearLearnings: () => Promise<{ ok: boolean }>;
 };
 
 function createListener<T>(channel: string) {
@@ -325,6 +329,10 @@ const api: ElectronAPI = {
   },
 
   discoverSkills: () => ipcRenderer.invoke("discover-skills"),
+
+  getLearnings: () => ipcRenderer.invoke("get-learnings"),
+  deleteLearning: (category, text) => ipcRenderer.invoke("delete-learning", category, text),
+  clearLearnings: () => ipcRenderer.invoke("clear-learnings"),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);

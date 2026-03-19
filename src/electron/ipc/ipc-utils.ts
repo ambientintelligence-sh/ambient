@@ -61,6 +61,7 @@ export function buildSessionConfig(
     agentAutoApprove: config.agentAutoApprove,
     codexEnabled: config.codexEnabled,
     disabledSkillIds: config.disabledSkillIds,
+    learningEnabled: config.learningEnabled,
   };
 }
 

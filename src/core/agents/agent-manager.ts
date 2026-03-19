@@ -35,10 +35,8 @@ type AgentManagerDeps = {
   getTranscriptContext: (last?: number, offset?: number) => { blocks: string; returned: number; total: number; remaining: number };
   getRecentBlocks?: () => import("../types").TranscriptBlock[];
   getProjectInstructions?: () => string | undefined;
-  getProjectId?: () => string | undefined;
-  dataDir?: string;
   getAgentsMd: () => string;
-  getProjectAgentsMd?: () => string | null;
+  learningEnabled?: boolean;
   responseLength?: import("../types").ResponseLength;
   searchTranscriptHistory?: (query: string, limit?: number) => unknown[];
   searchAgentHistory?: (query: string, limit?: number) => unknown[];
@@ -363,10 +361,11 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
             const message = error instanceof Error ? error.message : String(error);
             log("WARN", `Agent FTS indexing failed for ${agent.id}: ${message}`);
           }
-          const projectId = deps.getProjectId?.();
-          const recentBlocks = deps.getRecentBlocks?.() ?? [];
-          void extractAgentLearnings(deps.synthesisModel, agent, recentBlocks, projectId, deps.dataDir)
-            .catch((err) => log("WARN", `Learning extraction error: ${err}`));
+          if (deps.learningEnabled !== false) {
+            const recentBlocks = deps.getRecentBlocks?.() ?? [];
+            void extractAgentLearnings(deps.synthesisModel, agent, recentBlocks)
+              .catch((err) => log("WARN", `Learning extraction error: ${err}`));
+          }
         }
       },
       onFail: (error: string, messages?: ModelMessage[]) => {
@@ -428,7 +427,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
     const callbacks = makeAgentCallbacks(agent);
 
     void (async () => {
-      const agentsMd = deps.getProjectAgentsMd?.() ?? deps.getAgentsMd();
+      const agentsMd = deps.getAgentsMd();
 
       await runAgent(agent, {
         model: deps.model,
@@ -504,7 +503,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
     const callbacks = makeAgentCallbacks(agent);
 
     void (async () => {
-      const agentsMd = deps.getProjectAgentsMd?.() ?? deps.getAgentsMd();
+      const agentsMd = deps.getAgentsMd();
 
       await continueAgent(agent, history, question, {
         model: deps.model,
@@ -762,7 +761,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
     abortControllers.set(agentId, controller);
 
     void (async () => {
-      const agentsMd = deps.getProjectAgentsMd?.() ?? deps.getAgentsMd();
+      const agentsMd = deps.getAgentsMd();
 
       await runAgent(agent, {
         model: deps.model,

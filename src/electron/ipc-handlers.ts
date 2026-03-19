@@ -13,6 +13,7 @@ import { registerTaskInsightHandlers } from "./ipc/register-task-insight-handler
 import { registerIntegrationHandlers } from "./ipc/register-integration-handlers";
 import { registerApiKeyHandlers } from "./ipc/register-api-key-handlers";
 import { registerSkillHandlers } from "./ipc/register-skill-handlers";
+import { registerLearningHandlers } from "./ipc/register-learning-handlers";
 import { buildSessionConfig, shutdownCurrentSession, wireSessionEvents } from "./ipc/ipc-utils";
 import type { EnsureSession, SessionRef } from "./ipc/types";
 import { createIntegrationManager } from "./integrations";
@@ -150,4 +151,5 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null, db: A
   registerAgentHandlers({ db, getWindow, sessionRef, ensureSession });
   registerIntegrationHandlers(manager);
   registerSkillHandlers();
+  registerLearningHandlers();
 }

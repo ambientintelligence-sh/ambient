@@ -25,6 +25,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { WorkoutRunIcon } from "@hugeicons/core-free-icons";
 import {
   CheckCircleIcon,
   CpuIcon,
@@ -61,15 +63,20 @@ import {
   renderApiKeyIcon,
 } from "./settings-config";
 
-type SettingsTab = "general" | "transcription" | "models" | "api-keys" | "skills" | "integrations";
+type SettingsTab = "general" | "transcription" | "models" | "api-keys" | "skills" | "memory" | "integrations";
+
+function AgentsTabIcon({ className }: { className?: string }) {
+  return <HugeiconsIcon icon={WorkoutRunIcon} className={className} />;
+}
 
 const SETTINGS_TABS: readonly { id: SettingsTab; label: string; icon: ComponentType<{ className?: string }> }[] = [
   { id: "general", label: "General", icon: SlidersHorizontalIcon },
-  { id: "transcription", label: "Transcription", icon: MicIcon },
+  { id: "memory", label: "Agents", icon: AgentsTabIcon },
   { id: "models", label: "Models", icon: CpuIcon },
+  { id: "transcription", label: "Transcription", icon: MicIcon },
   { id: "api-keys", label: "API Keys", icon: KeyIcon },
-  { id: "skills", label: "Skills", icon: BookOpenIcon },
   { id: "integrations", label: "Integrations", icon: PlugIcon },
+  { id: "skills", label: "Skills", icon: BookOpenIcon },
 ];
 
 type SettingsPageProps = {
@@ -387,6 +394,130 @@ function ApiKeysSection({
   );
 }
 
+function AgentsTab({
+  config,
+  onConfigChange,
+}: {
+  config: AppConfig;
+  onConfigChange: (next: AppConfig) => void;
+}) {
+  const [learnings, setLearnings] = useState<{ category: string; text: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const set = <K extends keyof AppConfig>(key: K, value: AppConfig[K]) =>
+    onConfigChange({ ...config, [key]: value });
+
+  useEffect(() => {
+    void window.electronAPI.getLearnings()
+      .then(setLearnings)
+      .catch(() => setLearnings([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const refresh = () => void window.electronAPI.getLearnings().then(setLearnings);
+
+  const grouped = learnings.reduce<Record<string, string[]>>((acc, item) => {
+    (acc[item.category] ??= []).push(item.text);
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-5">
+      <SettingsSection icon={SlidersHorizontalIcon} title="Behavior">
+        <SettingRow
+          label="Response Length"
+          description="Control how verbose agent responses are."
+          control={
+            <div className="inline-flex items-center border border-border rounded-sm overflow-hidden">
+              {([
+                { value: "concise", label: "Concise" },
+                { value: "standard", label: "Standard" },
+                { value: "detailed", label: "Detailed" },
+              ] as const).map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`h-8 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 transition-colors ${
+                    config.responseLength === option.value
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => set("responseLength", option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          }
+        />
+        <SettingRow
+          label="Auto-Approve"
+          description="Agents skip approval for safe creates. Updates, deletes, and archives still require confirmation."
+          control={<Switch checked={config.agentAutoApprove} onCheckedChange={(v) => set("agentAutoApprove", v)} />}
+        />
+        <SettingRow
+          label="Auto-Delegate"
+          description="Automatically launch agents for agent-classified tasks when a session summary is generated."
+          control={<Switch checked={config.autoDelegate} onCheckedChange={(v) => set("autoDelegate", v)} />}
+        />
+        <SettingRow
+          label="Codex"
+          description="Enable OpenAI Codex coding agent. Requires the codex CLI installed and logged in."
+          control={<Switch checked={config.codexEnabled} onCheckedChange={(v) => set("codexEnabled", v)} />}
+        />
+      </SettingsSection>
+
+      <SettingsSection icon={AgentsTabIcon} title="Memory" description="Agents extract learnings from completed tasks. Manage what they remember here.">
+        <SettingRow
+          label="Continual Learning"
+          description="Agents automatically learn your preferences and workspace facts after each task."
+          control={<Switch checked={config.learningEnabled} onCheckedChange={(v) => set("learningEnabled", v)} />}
+        />
+
+        <Separator className="my-4" />
+
+        {loading ? (
+          <p className="text-2xs text-muted-foreground">Loading...</p>
+        ) : learnings.length === 0 ? (
+          <p className="text-2xs text-muted-foreground/60 italic">
+            No learnings yet. Agents will start learning after completing tasks.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {Object.entries(grouped).map(([category, items]) => (
+              <div key={category}>
+                <p className="text-2xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-1.5">
+                  {category}
+                </p>
+                <ul className="space-y-1">
+                  {items.map((text) => (
+                    <li key={text} className="group flex items-start gap-2 text-xs text-foreground/80 py-1 px-2 rounded-sm hover:bg-muted/50 transition-colors">
+                      <span className="mt-1.5 size-1 rounded-full bg-muted-foreground/40 shrink-0" />
+                      <span className="flex-1 leading-relaxed">{text}</span>
+                      <button
+                        type="button"
+                        className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive cursor-pointer"
+                        onClick={() => { void window.electronAPI.deleteLearning(category, text).then(refresh); }}
+                        title="Remove"
+                      >
+                        <XIcon className="size-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            <div className="pt-2">
+              <Button variant="destructive" size="sm" onClick={() => { void window.electronAPI.clearLearnings().then(refresh); }}>
+                Clear All
+              </Button>
+            </div>
+          </div>
+        )}
+      </SettingsSection>
+    </div>
+  );
+}
+
 function ToolList({ tools }: { tools: McpToolInfo[] }) {
   if (tools.length === 0) return null;
   return (
@@ -697,7 +828,6 @@ export function SettingsPage({
               />
             </div>
           </SettingsSection>
-
           <SettingsSection icon={WrenchIcon} title="Advanced">
             <div className="space-y-1">
               <SettingRow
@@ -1094,6 +1224,10 @@ export function SettingsPage({
               </div>
             )}
           </SettingsSection>
+          </TabsContent>
+
+          <TabsContent value="memory">
+            <AgentsTab config={config} onConfigChange={onConfigChange} />
           </TabsContent>
 
           <TabsContent value="integrations">

@@ -66,7 +66,6 @@ import {
   recordContext,
   createBlock,
   loadAgentsMd,
-  loadProjectAgentsMd,
   writeSummaryLog,
   type ContextState,
 } from "./context";
@@ -320,14 +319,8 @@ export class Session {
         if (!projectId) return undefined;
         return this.db?.getProject(projectId)?.instructions ?? undefined;
       },
-      getProjectId: () => this.getCurrentProjectId(),
-      dataDir: this.dataDir,
       getAgentsMd: () => loadAgentsMd(),
-      getProjectAgentsMd: () => {
-        const projectId = this.getCurrentProjectId();
-        if (!projectId || !this.dataDir) return null;
-        return loadProjectAgentsMd(this.dataDir, projectId) || null;
-      },
+      learningEnabled: config.learningEnabled,
       searchTranscriptHistory: this.db ? (q: string, l?: number) => this.db!.searchBlocks(q, l) : undefined,
       searchAgentHistory: this.db ? (q: string, l?: number) => this.db!.searchAgents(q, l) : undefined,
       getExternalTools: this.getExternalTools,
