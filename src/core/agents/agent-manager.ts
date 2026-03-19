@@ -17,6 +17,7 @@ import type {
   AgentPlanApprovalResponse,
 } from "../types";
 import type { AgentExternalToolSet } from "./external-tools";
+import type { SkillMetadata } from "./skills";
 import { extractAgentLearnings } from "./learn";
 import { generateStructuredObject } from "../ai/structured-output";
 
@@ -42,6 +43,7 @@ type AgentManagerDeps = {
   searchAgentHistory?: (query: string, limit?: number) => unknown[];
   getExternalTools?: () => Promise<AgentExternalToolSet>;
   getCodexClient?: import("./codex-client").GetCodexClient;
+  getEnabledSkills?: () => SkillMetadata[];
   allowAutoApprove: boolean;
   db?: AppDatabase;
 };
@@ -438,6 +440,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         searchAgentHistory: deps.searchAgentHistory,
         getExternalTools: deps.getExternalTools,
         getCodexClient: deps.getCodexClient,
+        enabledSkills: deps.getEnabledSkills?.(),
         getFleetStatus: () => {
           const allAgents = [...agents.values()].map((a) => ({
             id: a.id,
@@ -512,6 +515,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         searchAgentHistory: deps.searchAgentHistory,
         getExternalTools: deps.getExternalTools,
         getCodexClient: deps.getCodexClient,
+        enabledSkills: deps.getEnabledSkills?.(),
         getFleetStatus: () => {
           const allAgents = [...agents.values()].map((a) => ({
             id: a.id,
@@ -768,6 +772,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         searchAgentHistory: deps.searchAgentHistory,
         getExternalTools: deps.getExternalTools,
         getCodexClient: deps.getCodexClient,
+        enabledSkills: deps.getEnabledSkills?.(),
         getFleetStatus: () => {
           const allAgents = [...agents.values()].map((a) => ({
             id: a.id,

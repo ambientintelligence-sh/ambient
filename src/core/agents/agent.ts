@@ -1,3 +1,4 @@
+import path from "node:path";
 import { streamText, tool, stepCountIs, type ModelMessage } from "ai";
 import { z } from "zod";
 import type {
@@ -22,6 +23,8 @@ import {
 } from "../prompt-loader";
 import { normalizeProviderErrorMessage } from "../text/text-utils";
 import type { AgentExternalToolSet } from "./external-tools";
+import type { SkillMetadata } from "./skills";
+import { loadSkillContent } from "./skills";
 import {
   rankExternalTools,
   resolveExternalToolName,
@@ -48,6 +51,7 @@ export type AgentDeps = {
   searchAgentHistory?: (query: string, limit?: number) => unknown[];
   getExternalTools?: () => Promise<AgentExternalToolSet>;
   getCodexClient?: import("./codex-client").GetCodexClient;
+  enabledSkills?: SkillMetadata[];
   getFleetStatus?: () => {
     agents: Array<{ id: string; task: string; status: AgentStatus; isYou: boolean }>;
     tasks: Array<{ id: string; text: string; completed: boolean; size: TaskSize }>;
@@ -131,6 +135,7 @@ const buildSystemPrompt = (
   agentsMd?: string,
   responseLength?: import("../types").ResponseLength,
   codexEnabled?: boolean,
+  enabledSkills?: SkillMetadata[],
 ) => {
   const base = renderPromptTemplate(getAgentSystemPromptTemplate(), {
     today: formatCurrentDateForPrompt(new Date()),
@@ -148,6 +153,17 @@ const buildSystemPrompt = (
 
   if (codexEnabled) {
     sections.push(getCodexInstructions());
+  }
+
+  if (enabledSkills && enabledSkills.length > 0) {
+    const skillLines = enabledSkills.map(
+      (s) => `- **${s.name}**: ${s.description}`
+    );
+    sections.push(
+      "## Available Skills\n\n" +
+        "You have access to the following skills. Use the loadSkill tool to load full instructions for a skill when its expertise is relevant to your task.\n\n" +
+        skillLines.join("\n")
+    );
   }
 
   const lengthPrompt = RESPONSE_LENGTH_PROMPTS[responseLength ?? "standard"];
@@ -297,6 +313,7 @@ async function buildTools(
   searchAgentHistory?: AgentDeps["searchAgentHistory"],
   getCodexClient?: AgentDeps["getCodexClient"],
   getFleetStatus?: AgentDeps["getFleetStatus"],
+  enabledSkills?: SkillMetadata[],
 ) {
   const baseTools: Parameters<typeof streamText>[0]["tools"] = {};
 
@@ -842,6 +859,28 @@ async function buildTools(
     });
   }
 
+  if (enabledSkills && enabledSkills.length > 0) {
+    const skills = enabledSkills;
+    baseTools["loadSkill"] = tool({
+      description:
+        "Load full instructions for an installed skill. Use this when a skill's expertise is relevant to your current task.",
+      inputSchema: z.object({
+        name: z.string().describe("The name of the skill to load"),
+      }),
+      execute: async ({ name }) => {
+        const skill = skills.find(
+          (s) => s.name.toLowerCase() === name.toLowerCase()
+        );
+        if (!skill) {
+          return { error: `Skill "${name}" not found. Available: ${skills.map((s) => s.name).join(", ")}` };
+        }
+        const content = loadSkillContent(skill.filePath);
+        const skillDir = path.dirname(skill.filePath);
+        return { name: skill.name, content, directory: skillDir };
+      },
+    });
+  }
+
   return { tools: baseTools, externalTools, codexRegistered };
 }
 
@@ -943,6 +982,11 @@ function summarizeToolCall(
     return { content: typeof name === "string" ? `Calling MCP tool: ${name}` : "Calling MCP tool", toolInput: safeJson(input) };
   }
 
+  if (toolName === "loadSkill") {
+    const name = (input as Record<string, unknown>)?.name;
+    return { content: typeof name === "string" ? `Loading skill: ${name}` : "Loading skill" };
+  }
+
   return {
     content: `Using ${toolName}`,
     toolInput: safeJson(input),
@@ -993,6 +1037,10 @@ const TOOL_RESULT_SUMMARIZERS: Record<string, (input: unknown, output: unknown) 
     if (status === "error") return { content: `${label} failed`, toolInput: getMcpCallResultErrorText(output) || safeJson(output) };
     if (status === "denied") return { content: `${label} denied`, toolInput: safeJson(output) };
     return { content: `${label} complete`, toolInput: safeJson(output) };
+  },
+  loadSkill: (input) => {
+    const name = (input as Record<string, unknown>)?.name;
+    return { content: typeof name === "string" ? `Loaded: ${name}` : "Skill loaded" };
   },
 };
 
@@ -1048,6 +1096,7 @@ async function runAgentWithMessages(
     searchAgentHistory,
     getExternalTools,
     getCodexClient,
+    enabledSkills,
     getFleetStatus,
     allowAutoApprove,
     requestClarification,
@@ -1077,6 +1126,7 @@ async function runAgentWithMessages(
       searchAgentHistory,
       getCodexClient,
       getFleetStatus,
+      enabledSkills,
     );
     const systemPrompt = buildSystemPrompt(
       getTranscriptContext(),
@@ -1084,8 +1134,8 @@ async function runAgentWithMessages(
       agentsMd,
       responseLength,
       codexRegistered,
+      enabledSkills,
     );
-
     // Track consecutive tool errors to circuit-break runaway retries
     let consecutiveToolErrors = 0;
 

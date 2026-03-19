@@ -60,6 +60,7 @@ export function buildSessionConfig(
     translationEnabled: config.translationEnabled,
     agentAutoApprove: config.agentAutoApprove,
     codexEnabled: config.codexEnabled,
+    disabledSkillIds: config.disabledSkillIds,
   };
 }
 

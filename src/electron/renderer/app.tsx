@@ -11,6 +11,7 @@ import type {
   AgentPlanApprovalResponse,
 } from "@core/types";
 import { DEFAULT_APP_CONFIG, normalizeAppConfig } from "@core/types";
+import type { SkillMetadata } from "@core/agents/skills";
 import { useSession } from "./hooks/use-session";
 import type { ResumeData } from "./hooks/use-session";
 import { useMicCapture } from "./hooks/use-mic-capture";
@@ -162,6 +163,12 @@ export function App() {
   onboardingPhaseRef.current = onboardingPhase;
 
   const existingTaskTexts = new Set(tasks.map((t) => t.text));
+
+  // --- Skills ---
+  const [skills, setSkills] = useState<SkillMetadata[]>([]);
+  useEffect(() => {
+    window.electronAPI.discoverSkills().then(setSkills).catch(() => {});
+  }, []);
 
   // --- Bootstrap ---
   const { refreshSessions, sessionsRef } = useAppBootstrap({
@@ -1182,6 +1189,14 @@ export function App() {
     }
   };
 
+  const handleToggleSkill = (skillId: string, enabled: boolean) => {
+    const current = appConfig.disabledSkillIds ?? [];
+    const next = enabled
+      ? current.filter((id) => id !== skillId)
+      : [...current, skillId];
+    handleAppConfigChange({ ...appConfig, disabledSkillIds: next });
+  };
+
   const handleAcceptSummaryItems = (
     items: Array<{
       text: string;
@@ -1413,6 +1428,9 @@ export function App() {
             onDeleteApiKey={handleDeleteApiKey}
             initialTab={onboardingPhase === "settings" ? "api-keys" : undefined}
             onShowTutorial={handleShowTutorial}
+            skills={skills}
+            disabledSkillIds={appConfig.disabledSkillIds}
+            onToggleSkill={handleToggleSkill}
           />
         ) : (
           <>

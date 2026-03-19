@@ -205,6 +205,7 @@ export type SessionConfig = {
   translationEnabled: boolean;
   agentAutoApprove: boolean;
   codexEnabled: boolean;
+  disabledSkillIds: string[];
   micDevice?: string;
 };
 
@@ -240,6 +241,7 @@ export type AppConfig = {
   agentAutoApprove: boolean;
   autoDelegate: boolean;
   codexEnabled: boolean;
+  disabledSkillIds: string[];
 };
 
 export type AppConfigOverrides = Partial<AppConfig>;
@@ -383,6 +385,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   agentAutoApprove: false,
   autoDelegate: false,
   codexEnabled: false,
+  disabledSkillIds: [],
 };
 
 export function normalizeAppConfig(
@@ -503,6 +506,9 @@ export function normalizeAppConfig(
       Array.isArray(merged.taskProviders) && merged.taskProviders.length > 0
         ? merged.taskProviders
         : DEFAULT_APP_CONFIG.taskProviders,
+    disabledSkillIds: Array.isArray(merged.disabledSkillIds)
+      ? merged.disabledSkillIds
+      : DEFAULT_APP_CONFIG.disabledSkillIds,
   };
 }
 

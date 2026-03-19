@@ -80,6 +80,7 @@ import {
   type AudioRecorder,
 } from "./audio/audio";
 import { createAgentManager, type AgentManager } from "./agents/agent-manager";
+import { discoverSkills } from "./agents/skills";
 import type { AgentExternalToolSet } from "./agents/external-tools";
 import {
   getTranscriptPostProcessPromptTemplate,
@@ -279,7 +280,7 @@ export class Session {
   }
 
   private ensureTranscriptContext(): void {
-    this.ensureTranscriptContext();
+    this.hydrateTranscriptContextFromDb();
   }
 
   constructor(config: SessionConfig, db?: AppDatabase, sessionId?: string, externalDeps?: SessionExternalDeps) {
@@ -330,6 +331,11 @@ export class Session {
       searchAgentHistory: this.db ? (q: string, l?: number) => this.db!.searchAgents(q, l) : undefined,
       getExternalTools: this.getExternalTools,
       getCodexClient: this.getCodexClient,
+      getEnabledSkills: () => {
+        const all = discoverSkills(process.cwd());
+        const disabled = new Set(config.disabledSkillIds ?? []);
+        return all.filter((s) => !disabled.has(s.id));
+      },
       responseLength: config.responseLength,
       allowAutoApprove: config.agentAutoApprove,
       db: this.db ?? undefined,

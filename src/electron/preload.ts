@@ -26,6 +26,7 @@ import type {
   AudioSource,
   ApiKeyDefinition,
 } from "@core/types";
+import type { SkillMetadata } from "@core/agents/skills";
 
 export type ElectronAPI = {
   wasSeeded: () => Promise<boolean>;
@@ -170,6 +171,7 @@ export type ElectronAPI = {
   onAgentTitleGenerated: (callback: (agentId: string, title: string) => void) => () => void;
   onSessionTitleGenerated: (callback: (sessionId: string, title: string) => void) => () => void;
 
+  discoverSkills: () => Promise<SkillMetadata[]>;
 };
 
 function createListener<T>(channel: string) {
@@ -322,6 +324,7 @@ const api: ElectronAPI = {
     return () => ipcRenderer.removeListener("session:title-generated", handler);
   },
 
+  discoverSkills: () => ipcRenderer.invoke("discover-skills"),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);

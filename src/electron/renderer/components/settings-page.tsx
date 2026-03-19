@@ -10,6 +10,7 @@ import type {
   ResponseLength,
   TranscriptionProvider,
 } from "@core/types";
+import type { SkillMetadata } from "@core/agents/skills";
 import { MODEL_CONFIG } from "@core/models";
 import { type ComponentType, type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -97,6 +98,9 @@ type SettingsPageProps = {
   onDeleteApiKey: (envVar: string) => Promise<{ ok: boolean; error?: string }>;
   initialTab?: "general" | "api-keys";
   onShowTutorial?: () => void;
+  skills?: SkillMetadata[];
+  disabledSkillIds?: string[];
+  onToggleSkill?: (skillId: string, enabled: boolean) => void;
 };
 
 function SegmentedControl<O extends { readonly value: string; readonly label: string }>({
@@ -430,6 +434,9 @@ export function SettingsPage({
   onDeleteApiKey,
   initialTab,
   onShowTutorial,
+  skills = [],
+  disabledSkillIds = [],
+  onToggleSkill,
 }: SettingsPageProps) {
   const codexConnected = useIntegrationStore((s) => s.codexConnected);
   const [systemPrefersDark, setSystemPrefersDark] = useState(() =>
@@ -1024,6 +1031,41 @@ export function SettingsPage({
                 }
               />
             </div>
+          </SettingsSection>
+
+          {/* ── Agent Skills ── */}
+          <SettingsSection icon={BookOpenIcon} title="Agent Skills" className="lg:col-span-2">
+            <p className="text-2xs text-muted-foreground mb-3">
+              Extend agent capabilities with installed skills. Skills are discovered from{" "}
+              <code className="text-[10px] bg-muted px-1 py-0.5 rounded">.agents/skills/</code> (project) and{" "}
+              <code className="text-[10px] bg-muted px-1 py-0.5 rounded">~/.config/agents/skills/</code> (global).
+            </p>
+            {skills.length === 0 ? (
+              <p className="text-2xs text-muted-foreground/60 italic">
+                No skills installed. Run <code className="text-[10px] bg-muted px-1 py-0.5 rounded">npx skills</code> to browse and install skills.
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {skills.map((skill) => {
+                  const enabled = !disabledSkillIds.includes(skill.id);
+                  return (
+                    <SettingRow
+                      key={skill.id}
+                      label={skill.name}
+                      description={
+                        `${skill.description} · ${skill.source === "project" ? "Project" : "Global"}`
+                      }
+                      control={
+                        <Switch
+                          checked={enabled}
+                          onCheckedChange={(v) => onToggleSkill?.(skill.id, v)}
+                        />
+                      }
+                    />
+                  );
+                })}
+              </div>
+            )}
           </SettingsSection>
 
           {/* ── Row 6: Integrations (full width) ── */}
