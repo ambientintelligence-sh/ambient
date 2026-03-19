@@ -3,6 +3,7 @@ import { z } from "zod";
 import type {
   AgentStep,
   Agent,
+  AgentStatus,
   AgentQuestionRequest,
   AgentQuestionSelection,
   AgentToolApprovalRequest,
@@ -10,6 +11,7 @@ import type {
   AgentPlanApprovalRequest,
   AgentPlanApprovalResponse,
   AgentTodoItem,
+  TaskSize,
 } from "../types";
 import { log } from "../logger";
 import {
@@ -46,6 +48,10 @@ export type AgentDeps = {
   searchAgentHistory?: (query: string, limit?: number) => unknown[];
   getExternalTools?: () => Promise<AgentExternalToolSet>;
   getCodexClient?: import("./codex-client").GetCodexClient;
+  getFleetStatus?: () => {
+    agents: Array<{ id: string; task: string; status: AgentStatus; isYou: boolean }>;
+    tasks: Array<{ id: string; text: string; completed: boolean; size: TaskSize }>;
+  };
   allowAutoApprove: boolean;
   requestClarification: (
     request: AgentQuestionRequest,
@@ -290,6 +296,7 @@ async function buildTools(
   searchTranscriptHistory?: AgentDeps["searchTranscriptHistory"],
   searchAgentHistory?: AgentDeps["searchAgentHistory"],
   getCodexClient?: AgentDeps["getCodexClient"],
+  getFleetStatus?: AgentDeps["getFleetStatus"],
 ) {
   const baseTools: Parameters<typeof streamText>[0]["tools"] = {};
 
@@ -331,6 +338,16 @@ async function buildTools(
       return getTranscriptContext();
     },
   });
+
+  if (getFleetStatus) {
+    const fleetStatusFn = getFleetStatus;
+    baseTools["getFleetStatus"] = tool({
+      description:
+        "Get current status of all agents in this session and the session task list. Use to understand what other agents are working on and avoid duplicate effort.",
+      inputSchema: z.object({}),
+      execute: async () => fleetStatusFn(),
+    });
+  }
 
   baseTools["askQuestion"] = tool({
     description:
@@ -874,6 +891,10 @@ function summarizeToolCall(
     return { content: "Reading transcript context" };
   }
 
+  if (toolName === "getFleetStatus") {
+    return { content: "Checking fleet status" };
+  }
+
   if (toolName === "askQuestion") {
     const request = parseAskQuestionInput(input);
     if (request) {
@@ -936,6 +957,11 @@ const TOOL_RESULT_SUMMARIZERS: Record<string, (input: unknown, output: unknown) 
     return { content: query ? `Searched: ${query}` : "Search complete" };
   },
   getTranscriptContext: () => ({ content: "Loaded transcript context" }),
+  getFleetStatus: (_input, output) => {
+    const record = asObject(output);
+    const agentCount = Array.isArray(record?.agents) ? record.agents.length : 0;
+    return { content: `Fleet: ${agentCount} agent${agentCount === 1 ? "" : "s"}` };
+  },
   askQuestion: (_input, output) => {
     const count = getAskQuestionAnswerCount(output);
     return { content: count > 0 ? `Clarification received (${count} answered)` : "Clarification received", toolInput: safeJson(output) };
@@ -1022,6 +1048,7 @@ async function runAgentWithMessages(
     searchAgentHistory,
     getExternalTools,
     getCodexClient,
+    getFleetStatus,
     allowAutoApprove,
     requestClarification,
     requestToolApproval,
@@ -1049,6 +1076,7 @@ async function runAgentWithMessages(
       searchTranscriptHistory,
       searchAgentHistory,
       getCodexClient,
+      getFleetStatus,
     );
     const systemPrompt = buildSystemPrompt(
       getTranscriptContext(),

@@ -438,6 +438,20 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         searchAgentHistory: deps.searchAgentHistory,
         getExternalTools: deps.getExternalTools,
         getCodexClient: deps.getCodexClient,
+        getFleetStatus: () => {
+          const allAgents = [...agents.values()].map((a) => ({
+            id: a.id,
+            task: a.task,
+            status: a.status,
+            isYou: a.id === agent.id,
+          }));
+          const sessionTasks = agent.sessionId && deps.db
+            ? deps.db.getTasksForSession(agent.sessionId)
+                .filter((t) => !t.archived)
+                .map((t) => ({ id: t.id, text: t.text, completed: t.completed, size: t.size }))
+            : [];
+          return { agents: allAgents, tasks: sessionTasks };
+        },
         allowAutoApprove: deps.allowAutoApprove,
         requestClarification: (request, options) =>
           requestClarification(agent.id, request, options),
@@ -498,6 +512,20 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         searchAgentHistory: deps.searchAgentHistory,
         getExternalTools: deps.getExternalTools,
         getCodexClient: deps.getCodexClient,
+        getFleetStatus: () => {
+          const allAgents = [...agents.values()].map((a) => ({
+            id: a.id,
+            task: a.task,
+            status: a.status,
+            isYou: a.id === agent.id,
+          }));
+          const sessionTasks = agent.sessionId && deps.db
+            ? deps.db.getTasksForSession(agent.sessionId)
+                .filter((t) => !t.archived)
+                .map((t) => ({ id: t.id, text: t.text, completed: t.completed, size: t.size }))
+            : [];
+          return { agents: allAgents, tasks: sessionTasks };
+        },
         allowAutoApprove: deps.allowAutoApprove,
         requestClarification: (request, options) =>
           requestClarification(agent.id, request, options),
@@ -740,6 +768,20 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         searchAgentHistory: deps.searchAgentHistory,
         getExternalTools: deps.getExternalTools,
         getCodexClient: deps.getCodexClient,
+        getFleetStatus: () => {
+          const allAgents = [...agents.values()].map((a) => ({
+            id: a.id,
+            task: a.task,
+            status: a.status,
+            isYou: a.id === agentId,
+          }));
+          const sessionTasks = agent.sessionId && deps.db
+            ? deps.db.getTasksForSession(agent.sessionId)
+                .filter((t) => !t.archived)
+                .map((t) => ({ id: t.id, text: t.text, completed: t.completed, size: t.size }))
+            : [];
+          return { agents: allAgents, tasks: sessionTasks };
+        },
         allowAutoApprove: deps.allowAutoApprove,
         requestClarification: (request, options) => requestClarification(agentId, request, options),
         requestToolApproval: (request, options) => requestToolApproval(agentId, request, options),
