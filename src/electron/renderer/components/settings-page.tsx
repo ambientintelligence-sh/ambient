@@ -2,17 +2,12 @@ import type {
   ApiKeyDefinition,
   AppConfig,
   CustomMcpStatus,
-  DarkVariant,
-  FontFamily,
-  FontSize,
   McpIntegrationStatus,
   McpProviderToolSummary,
   McpToolInfo,
   Language,
   LanguageCode,
-  LightVariant,
   ResponseLength,
-  ThemeMode,
   TranscriptionProvider,
 } from "@core/types";
 import { MODEL_CONFIG } from "@core/models";
@@ -35,9 +30,7 @@ import {
   EyeIcon,
   EyeOffIcon,
   KeyIcon,
-  Laptop2Icon,
   MicIcon,
-  MoonIcon,
   PaletteIcon,
   PlugIcon,
   RotateCcwIcon,
@@ -45,16 +38,27 @@ import {
   ShieldCheckIcon,
   BookOpenIcon,
   SlidersHorizontalIcon,
-  SunIcon,
   WrenchIcon,
   XIcon,
 } from "lucide-react";
 import { resolveProviderIcon, OpenAIIcon } from "./integration-icons";
-import {
-  SiOpenrouter,
-  SiGooglegemini,
-} from "@icons-pack/react-simple-icons";
 import { useIntegrationStore } from "../stores/integration-store";
+import {
+  THEME_OPTIONS,
+  LIGHT_VARIANT_OPTIONS,
+  DARK_VARIANT_OPTIONS,
+  FONT_SIZE_OPTIONS,
+  FONT_FAMILY_OPTIONS,
+  TRANSCRIPTION_PROVIDER_OPTIONS,
+  TRANSCRIPTION_PROVIDER_LABELS,
+  getTranscriptionProviderOption,
+  getTranscriptionModelOption,
+  ANALYSIS_PROVIDERS,
+  isProviderConfigured,
+  renderLanguageLabel,
+  isKeyNeeded,
+  renderApiKeyIcon,
+} from "./settings-config";
 
 type SettingsPageProps = {
   config: AppConfig;
@@ -95,42 +99,6 @@ type SettingsPageProps = {
   onShowTutorial?: () => void;
 };
 
-const THEME_OPTIONS: Array<{
-  value: ThemeMode;
-  label: string;
-  icon: ReactNode;
-}> = [
-  {
-    value: "system",
-    label: "System",
-    icon: <Laptop2Icon className="size-3.5" />,
-  },
-  { value: "light", label: "Light", icon: <SunIcon className="size-3.5" /> },
-  { value: "dark", label: "Dark", icon: <MoonIcon className="size-3.5" /> },
-];
-
-const LIGHT_VARIANT_OPTIONS: Array<{
-  value: LightVariant;
-  label: string;
-  swatch: string;
-}> = [
-  { value: "warm", label: "Warm", swatch: "oklch(0.985 0.002 90)" },
-  { value: "linen", label: "Linen", swatch: "#EEEEEE" },
-  { value: "ivory", label: "Ivory", swatch: "oklch(0.968 0.004 90)" },
-  { value: "petal", label: "Petal", swatch: "oklch(0.962 0.006 250)" },
-];
-
-const DARK_VARIANT_OPTIONS: Array<{
-  value: DarkVariant;
-  label: string;
-  swatch: string;
-}> = [
-  { value: "charcoal", label: "Charcoal", swatch: "oklch(0.145 0 0)" },
-  { value: "steel", label: "Steel", swatch: "oklch(0.2 0.004 260)" },
-  { value: "abyss", label: "Abyss", swatch: "oklch(0.185 0.02 264)" },
-  { value: "pitch-black", label: "Pitch Black", swatch: "oklch(0 0 0)" },
-];
-
 function SegmentedControl<O extends { readonly value: string; readonly label: string }>({
   options,
   value,
@@ -161,122 +129,6 @@ function SegmentedControl<O extends { readonly value: string; readonly label: st
     </div>
   );
 }
-
-const FONT_SIZE_OPTIONS: Array<{ value: FontSize; label: string }> = [
-  { value: "sm", label: "Small" },
-  { value: "md", label: "Default" },
-  { value: "lg", label: "Large" },
-];
-
-const FONT_FAMILY_OPTIONS: Array<{ value: FontFamily; label: string }> = [
-  { value: "sans", label: "Sans" },
-  { value: "serif", label: "Serif" },
-  { value: "mono", label: "Mono" },
-];
-
-type TranscriptionPreset = {
-  modelId: string;
-  label: string;
-  description: string;
-  defaultIntervalMs: number;
-};
-
-type TranscriptionProviderOption = {
-  value: TranscriptionProvider;
-  label: string;
-  description: string;
-  supportsTranslation: boolean;
-  models: TranscriptionPreset[];
-};
-
-const TRANSCRIPTION_PROVIDER_OPTIONS: TranscriptionProviderOption[] = [
-  {
-    value: "google",
-    label: "Google AI Studio",
-    description: "Gemini via API key auth",
-    supportsTranslation: true,
-    models: [
-      {
-        modelId: "gemini-3-flash-preview",
-        label: "Gemini 3 Flash",
-        description: "Best accuracy",
-        defaultIntervalMs: 8000,
-      },
-      {
-        modelId: "gemini-3.1-flash-lite-preview",
-        label: "Gemini 3.1 Flash Lite",
-        description: "Lowest Gemini cost",
-        defaultIntervalMs: 8000,
-      },
-    ],
-  },
-  {
-    value: "openrouter",
-    label: "OpenRouter",
-    description: "Gemini routed through OpenRouter",
-    supportsTranslation: true,
-    models: [
-      {
-        modelId: "google/gemini-3-flash-preview",
-        label: "Gemini 3 Flash",
-        description: "Best accuracy",
-        defaultIntervalMs: 8000,
-      },
-      {
-        modelId: "google/gemini-3.1-flash-lite-preview",
-        label: "Gemini 3.1 Flash Lite",
-        description: "Lowest Gemini cost",
-        defaultIntervalMs: 8000,
-      },
-    ],
-  },
-];
-
-const TRANSCRIPTION_PROVIDER_LABELS: Partial<Record<TranscriptionProvider, string>> = {
-  google: "Google AI Studio",
-  openrouter: "OpenRouter",
-};
-
-function getTranscriptionProviderOption(
-  provider: TranscriptionProvider,
-) {
-  return (
-    TRANSCRIPTION_PROVIDER_OPTIONS.find((option) => option.value === provider) ??
-    TRANSCRIPTION_PROVIDER_OPTIONS[0]
-  );
-}
-
-function getTranscriptionModelOption(
-  provider: TranscriptionProvider,
-  modelId: string,
-) {
-  const providerOption = getTranscriptionProviderOption(provider);
-  return (
-    providerOption.models.find((option) => option.modelId === modelId) ??
-    providerOption.models[0]
-  );
-}
-
-const ANALYSIS_PROVIDERS: Array<{ value: AppConfig["analysisProvider"]; label: string }> = [
-  { value: "openrouter", label: "OpenRouter" },
-  { value: "bedrock", label: "AWS Bedrock" },
-];
-
-const PROVIDER_REQUIRED_KEYS: Record<string, string[]> = {
-  openrouter: ["OPENROUTER_API_KEY"],
-  google: ["GEMINI_API_KEY"],
-  bedrock: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
-};
-
-function isProviderConfigured(
-  provider: string,
-  apiKeyStatus: Record<string, boolean>,
-): boolean {
-  const required = PROVIDER_REQUIRED_KEYS[provider];
-  if (!required || required.length === 0) return true;
-  return required.every((key) => apiKeyStatus[key]);
-}
-
 
 function SettingsSection({
   icon: Icon,
@@ -329,32 +181,6 @@ function SettingRow({
       <div className="shrink-0">{control}</div>
     </div>
   );
-}
-
-function renderLanguageLabel(languages: Language[], code: LanguageCode) {
-  const lang = languages.find((item) => item.code === code);
-  return lang
-    ? `${lang.native} (${lang.code.toUpperCase()})`
-    : code.toUpperCase();
-}
-
-function isKeyNeeded(def: ApiKeyDefinition, config: AppConfig): boolean {
-  if (def.providers.length === 0) return true;
-  if (def.envVar === "OPENROUTER_API_KEY") return true;
-  return def.providers.some(
-    (p) => p === config.transcriptionProvider || p === config.analysisProvider,
-  );
-}
-
-const API_KEY_ICONS: Record<string, ComponentType<{ size?: number; className?: string }>> = {
-  OPENROUTER_API_KEY: SiOpenrouter,
-  GEMINI_API_KEY: SiGooglegemini,
-};
-
-function renderApiKeyIcon(envVar: string) {
-  const Icon = API_KEY_ICONS[envVar];
-  if (Icon) return <Icon size={14} className="shrink-0" />;
-  return <KeyIcon className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />;
 }
 
 function ApiKeyRow({

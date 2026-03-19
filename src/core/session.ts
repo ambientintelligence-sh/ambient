@@ -6,7 +6,6 @@ import { z } from "zod";
 import type {
   Agent,
   AgentKind,
-  AgentsSummary,
   AgentQuestionSelection,
   AgentToolApprovalResponse,
   AgentPlanApprovalResponse,
@@ -16,7 +15,6 @@ import type {
   SessionConfig,
   SessionEvents,
   Summary,
-  FinalSummary,
   UIState,
   LanguageCode,
   TaskSuggestion,
@@ -33,14 +31,10 @@ import {
   agentSuggestionSchema,
   type AgentSuggestionItem,
   taskFromSelectionSchema,
-  finalSummarySchema,
-  agentsSummarySchema,
   sessionTitleSchema,
   buildAnalysisPrompt,
   buildAgentSuggestionPrompt,
   buildTaskFromSelectionPrompt,
-  buildFinalSummaryPrompt,
-  buildAgentsSummaryPrompt,
   buildSessionTitlePrompt,
 } from "./analysis/analysis";
 import { classifyTaskSize as classifyTaskSizeWithModel, type TaskSizeClassification } from "./analysis/task-size";
@@ -89,9 +83,14 @@ import { createAgentManager, type AgentManager } from "./agents/agent-manager";
 import type { AgentExternalToolSet } from "./agents/external-tools";
 import {
   getTranscriptPostProcessPromptTemplate,
-  getTranscriptPolishPromptTemplate,
   renderPromptTemplate,
 } from "./prompt-loader";
+import { ParagraphBuffer } from "./paragraph-buffer";
+import {
+  generateFinalSummary as generateFinalSummaryFn,
+  generateAgentsSummary as generateAgentsSummaryFn,
+  formatSummaryError,
+} from "./summary-generator";
 import { generateStructuredObject } from "./ai/structured-output";
 
 type TypedEmitter = EventEmitter & {
@@ -103,14 +102,6 @@ type AudioPipeline = {
   source: AudioSource;
   vadState: VadState;
   overlap: Buffer;
-};
-
-type PendingParagraph = {
-  transcript: string;
-  detectedLangHint: LanguageCode;
-  audioSource: AudioSource;
-  capturedAt: number;
-  lastUpdatedAt: number;
 };
 
 type TaskSuggestionDraft = {
@@ -235,9 +226,7 @@ export class Session {
     overlap: Buffer.alloc(0),
   };
 
-  private pendingParagraphs = new Map<AudioSource, PendingParagraph>();
-  private paragraphPolishInFlight = false;
-  private readonly paragraphCommitIntervalMs = 6_000;
+  private paragraphBuffer: ParagraphBuffer;
 
   private contextState: ContextState = createContextState();
   private costAccumulator: CostAccumulator = createCostAccumulator();
@@ -274,6 +263,15 @@ export class Session {
   private get targetLangLabel(): string { return getLanguageLabel(this.config.targetLang); }
   private get sourceLangName(): string { return LANG_NAMES[this.config.sourceLang]; }
   private get targetLangName(): string { return LANG_NAMES[this.config.targetLang]; }
+  private get summaryDeps() {
+    return {
+      synthesisModel: this.synthesisModel,
+      synthesisModelId: this.config.synthesisModelId,
+      sessionId: this.sessionId,
+      db: this.db,
+      trackCost: this.trackCost.bind(this),
+    };
+  }
 
   private trackCost(inputTokens: number, outputTokens: number, inputType: "audio" | "text", provider: TranscriptionProvider | AnalysisProvider): void {
     const total = addCostToAcc(this.costAccumulator, inputTokens, outputTokens, inputType, provider);
@@ -299,6 +297,13 @@ export class Session {
     this.taskModel = createTaskModel(config);
     this.utilitiesModel = createUtilitiesModel(config);
     this.synthesisModel = createSynthesisModel(config);
+    this.paragraphBuffer = new ParagraphBuffer({
+      utilitiesModel: this.utilitiesModel,
+      trackCost: this.trackCost.bind(this),
+      emitPartial: (source, text) => this.events.emit("partial", { source, text }),
+      commitTranscript: this.commitTranscript.bind(this),
+      debug: config.debug,
+    });
 
     this.agentManager = createAgentManager({
       model: this.analysisModel,
@@ -499,7 +504,7 @@ export class Session {
     this.systemPipeline.overlap = Buffer.alloc(0);
     this.inFlight.set("system", 0);
     this.inFlight.set("microphone", 0);
-    this.pendingParagraphs.clear();
+    this.paragraphBuffer.clear();
     this.events.emit("partial", { source: null, text: "" });
 
     if (!resume) {
@@ -607,7 +612,7 @@ export class Session {
       }
     }
     if (this.usesParagraphBuffering) {
-      void this.commitPendingParagraphs(["system"]);
+      void this.paragraphBuffer.commitPending(["system"]);
     }
     if (this.chunkQueues.get("system")!.length && this.inFlight.get("system")! < this.maxConcurrency) {
       void this.processQueue("system");
@@ -735,7 +740,7 @@ export class Session {
       void this.processQueue("microphone");
     }
     if (this.usesParagraphBuffering) {
-      void this.commitPendingParagraphs(["microphone"]);
+      void this.paragraphBuffer.commitPending(["microphone"]);
     }
 
     if (this.micProcess) {
@@ -761,7 +766,7 @@ export class Session {
     const wasBuffering = this.usesParagraphBuffering;
     this._translationEnabled = !this._translationEnabled;
     if (wasBuffering && this._translationEnabled) {
-      void this.commitPendingParagraphs();
+      void this.paragraphBuffer.commitPending();
     }
     this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
     log("INFO", `Translation ${this._translationEnabled ? "enabled" : "disabled"}`);
@@ -790,7 +795,7 @@ export class Session {
     this.refreshLanguageDerivedState();
     this.db?.updateSessionLanguages(this.sessionId, this.config.sourceLang, this.config.targetLang);
     if (wasBuffering) {
-      void this.commitPendingParagraphs();
+      void this.paragraphBuffer.commitPending();
     }
     this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
     log("INFO", `Translation mode: direction=${direction}, target=${targetLang ?? this.config.targetLang}`);
@@ -907,50 +912,15 @@ export class Session {
     }
 
     const allBlocks = [...this.contextState.transcriptBlocks.values()];
-    const prompt = buildFinalSummaryPrompt(allBlocks, this.contextState.allKeyPoints);
     this.events.emit("status", `Generating session summary with ${this.config.synthesisModelId}...`);
 
-    void (async () => {
-      try {
-        const { object, usage } = await generateStructuredObject({
-          model: this.synthesisModel,
-          schema: finalSummarySchema,
-          prompt,
-          temperature: 0,
-        });
-
-        this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", "openrouter");
-
-        const summary: FinalSummary = {
-          narrative: object.narrative.trim(),
-          agreements: object.agreements.map((item) => item.trim()).filter(Boolean),
-          missedItems: object.missedItems.map((item) => item.trim()).filter(Boolean),
-          unansweredQuestions: object.unansweredQuestions.map((item) => item.trim()).filter(Boolean),
-          agreementTodos: object.agreementTodos
-            .map((item) => ({ text: item.text.trim(), doer: item.doer }))
-            .filter((item) => item.text),
-          missedItemTodos: object.missedItemTodos
-            .map((item) => ({ text: item.text.trim(), doer: item.doer }))
-            .filter((item) => item.text),
-          unansweredQuestionTodos: object.unansweredQuestionTodos
-            .map((item) => ({ text: item.text.trim(), doer: item.doer }))
-            .filter((item) => item.text),
-          actionItems: object.actionItems
-            .map((item) => ({ text: item.text.trim(), doer: item.doer }))
-            .filter((item) => item.text),
-          modelId: this.config.synthesisModelId,
-          generatedAt: Date.now(),
-        };
-
-        this.db?.saveFinalSummary(this.sessionId, summary);
-        this.events.emit("final-summary-ready", summary);
-      } catch (error) {
-        log("ERROR", `Final summary generation failed: ${formatModelErrorForLog(error)}`);
+    void generateFinalSummaryFn(allBlocks, this.contextState.allKeyPoints, this.summaryDeps)
+      .then((summary) => this.events.emit("final-summary-ready", summary))
+      .catch((error) => {
+        log("ERROR", `Final summary generation failed: ${formatSummaryError(error)}`);
         this.events.emit("final-summary-error", toReadableError(error));
-      } finally {
-        this.events.emit("status", "");
-      }
-    })();
+      })
+      .finally(() => this.events.emit("status", ""));
   }
 
   generateAgentsSummary(): void {
@@ -966,47 +936,15 @@ export class Session {
 
     this.ensureTranscriptContext();
     const allBlocks = [...this.contextState.transcriptBlocks.values()];
-    const prompt = buildAgentsSummaryPrompt(terminalAgents, allBlocks, this.contextState.allKeyPoints);
     this.events.emit("status", `Generating agents summary with ${this.config.synthesisModelId}...`);
 
-    void (async () => {
-      try {
-        const { object, usage } = await generateStructuredObject({
-          model: this.synthesisModel,
-          schema: agentsSummarySchema,
-          prompt,
-          temperature: 0,
-        });
-
-        this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", "openrouter");
-
-        const totalDurationSecs = terminalAgents.reduce((acc, a) => {
-          return acc + (a.completedAt && a.createdAt
-            ? Math.round((a.completedAt - a.createdAt) / 1000) : 0);
-        }, 0);
-
-        const summary: AgentsSummary = {
-          overallNarrative: object.overallNarrative.trim(),
-          agentHighlights: object.agentHighlights,
-          coverageGaps: object.coverageGaps,
-          nextSteps: object.nextSteps.map((s) => s.trim()).filter(Boolean),
-          modelId: this.config.synthesisModelId,
-          generatedAt: Date.now(),
-          totalAgents: terminalAgents.length,
-          succeededAgents: terminalAgents.filter((a) => a.status === "completed").length,
-          failedAgents: terminalAgents.filter((a) => a.status === "failed").length,
-          totalDurationSecs,
-        };
-
-        this.db?.saveAgentsSummary(this.sessionId, summary);
-        this.events.emit("agents-summary-ready", summary);
-      } catch (error) {
-        log("ERROR", `Agents summary generation failed: ${formatModelErrorForLog(error)}`);
+    void generateAgentsSummaryFn(terminalAgents, allBlocks, this.contextState.allKeyPoints, this.summaryDeps)
+      .then((summary) => this.events.emit("agents-summary-ready", summary))
+      .catch((error) => {
+        log("ERROR", `Agents summary generation failed: ${formatSummaryError(error)}`);
         this.events.emit("agents-summary-error", toReadableError(error));
-      } finally {
-        this.events.emit("status", "");
-      }
-    })();
+      })
+      .finally(() => this.events.emit("status", ""));
   }
 
   private hydrateTranscriptContextFromDb() {
@@ -1047,9 +985,9 @@ export class Session {
     if (this._micEnabled) this.stopMic();
     if (this.isRecording) this.stopRecording(true);
     await this.waitForTranscriptionDrain();
-    if (this.pendingParagraphs.size > 0) {
-      await this.commitPendingParagraphs();
-      this.pendingParagraphs.clear();
+    if (this.paragraphBuffer.hasPending) {
+      await this.paragraphBuffer.commitPending();
+      this.paragraphBuffer.clear();
     }
     this.events.emit("partial", { source: null, text: "" });
     writeSummaryLog(this.contextState.allKeyPoints);
@@ -1267,137 +1205,6 @@ export class Session {
     this.scheduleAnalysis(0);
   }
 
-  private mergeParagraphTranscript(existing: string, incoming: string): string {
-    const a = existing.trim();
-    const b = incoming.trim();
-    if (!a) return b;
-    if (!b) return a;
-    if (a.endsWith(b)) return a;
-    if (b.startsWith(a)) return b;
-    return `${a} ${b}`.replace(/\s+/g, " ").trim();
-  }
-
-  private updateParagraphPreview(): void {
-    for (const [src, para] of this.pendingParagraphs) {
-      this.events.emit("partial", { source: src, text: para.transcript });
-    }
-    if (this.pendingParagraphs.size === 0) {
-      this.events.emit("partial", { source: null, text: "" });
-    }
-  }
-
-  private async polishTranscript(transcript: string): Promise<string> {
-    const trimmed = transcript.trim();
-    if (trimmed.length < 20) return trimmed;
-
-    const prompt = renderPromptTemplate(getTranscriptPolishPromptTemplate(), {
-      transcript: trimmed,
-    });
-
-    try {
-      const { object, usage } = await generateStructuredObject({
-        model: this.utilitiesModel,
-        schema: z.object({ polished: z.string() }),
-        prompt,
-        temperature: 0,
-      });
-
-      this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", "openrouter");
-
-      const polished = (object as { polished: string }).polished.trim();
-      return polished || trimmed;
-    } catch (error) {
-      if (this.config.debug) {
-        log("WARN", `Transcript polish failed: ${toReadableError(error)}`);
-      }
-      return trimmed;
-    }
-  }
-
-  private async commitPendingParagraphs(sources?: AudioSource[]): Promise<void> {
-    if (this.paragraphPolishInFlight) return;
-    const candidates = sources
-      ? [...this.pendingParagraphs.values()].filter((p) => sources.includes(p.audioSource))
-      : [...this.pendingParagraphs.values()];
-    if (candidates.length === 0) return;
-
-    this.paragraphPolishInFlight = true;
-    try {
-      for (const pending of candidates) {
-        const current = this.pendingParagraphs.get(pending.audioSource);
-        if (!current) continue;
-
-        const textToPolish = current.transcript.trim();
-        if (!textToPolish) {
-          this.pendingParagraphs.delete(pending.audioSource);
-          this.updateParagraphPreview();
-          continue;
-        }
-
-        const polished = await this.polishTranscript(textToPolish);
-
-        // Check if new text arrived while polishing. Keep the excess.
-        const latest = this.pendingParagraphs.get(pending.audioSource);
-        if (latest) {
-          const currentText = latest.transcript.trim();
-          const excess = currentText.length > textToPolish.length
-            ? currentText.slice(textToPolish.length).trim()
-            : "";
-          if (excess) {
-            latest.transcript = excess;
-            latest.lastUpdatedAt = Date.now();
-          } else {
-            this.pendingParagraphs.delete(pending.audioSource);
-          }
-        }
-        this.updateParagraphPreview();
-
-        await this.commitTranscript(
-          polished,
-          pending.detectedLangHint,
-          pending.audioSource,
-          pending.capturedAt,
-        );
-      }
-    } finally {
-      this.paragraphPolishInFlight = false;
-    }
-  }
-
-  private queueParagraphChunk(
-    transcript: string,
-    detectedLangHint: LanguageCode,
-    audioSource: AudioSource,
-    capturedAt: number,
-  ): void {
-    const incoming = transcript.trim();
-    if (!incoming) return;
-
-    const existing = this.pendingParagraphs.get(audioSource);
-    if (!existing) {
-      this.pendingParagraphs.set(audioSource, {
-        transcript: incoming,
-        detectedLangHint,
-        audioSource,
-        capturedAt,
-        lastUpdatedAt: Date.now(),
-      });
-    } else {
-      existing.transcript = this.mergeParagraphTranscript(existing.transcript, incoming);
-      existing.detectedLangHint = detectedLangHint;
-      existing.lastUpdatedAt = Date.now();
-    }
-
-    this.updateParagraphPreview();
-
-    // Commit when enough time has passed — LLM handles all formatting decisions
-    const now = Date.now();
-    const pending = this.pendingParagraphs.get(audioSource)!;
-    if (now - pending.capturedAt >= this.paragraphCommitIntervalMs) {
-      void this.commitPendingParagraphs([audioSource]);
-    }
-  }
-
   private enqueueChunk(pipeline: AudioPipeline, chunk: Buffer) {
     if (!chunk.length) return;
     const overlapBytes = Math.floor(16000 * 2 * 1.0);
@@ -1543,7 +1350,7 @@ export class Session {
         if (transcript && hasTranslatableContent(transcript)) {
           recordContext(this.contextState, transcript);
         }
-        this.queueParagraphChunk(transcript, detectedLang, audioSource, capturedAt);
+        this.paragraphBuffer.queue(transcript, detectedLang, audioSource, capturedAt);
         this.scheduleAnalysis();
         return;
       }

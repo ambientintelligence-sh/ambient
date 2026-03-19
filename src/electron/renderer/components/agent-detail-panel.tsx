@@ -13,8 +13,6 @@ import {
   ArchiveIcon,
   CopyIcon,
   RefreshCwIcon,
-  SendHorizonalIcon,
-  ListChecksIcon,
 } from "lucide-react";
 import {
   CitedMessageResponse,
@@ -45,15 +43,6 @@ import {
 } from "@/components/ai-elements/chain-of-thought";
 import { useStickToBottomContext } from "use-stick-to-bottom";
 import {
-  Plan,
-  PlanHeader,
-  PlanTitle,
-  PlanContent,
-  PlanTrigger,
-  PlanFooter,
-} from "@/components/ai-elements/plan";
-import { Button } from "@/components/ui/button";
-import {
   Queue,
   QueueSection,
   QueueSectionContent,
@@ -64,19 +53,34 @@ import {
 import type {
   Agent,
   AgentStep,
-  AgentQuestionRequest,
   AgentQuestionSelection,
   AgentToolApprovalResponse,
-  AgentToolApprovalState,
   AgentPlanApprovalResponse,
 } from "@core/types";
-
-type FollowUpResult = { ok: boolean; error?: string };
-type AnswerQuestionResult = { ok: boolean; error?: string };
-type AnswerToolApprovalResult = { ok: boolean; error?: string };
-type AnswerPlanApprovalResult = { ok: boolean; error?: string };
-
-type SkipQuestionResult = { ok: boolean; error?: string };
+import {
+  type FollowUpResult,
+  type AnswerQuestionResult,
+  type AnswerToolApprovalResult,
+  type AnswerPlanApprovalResult,
+  type SkipQuestionResult,
+  type TimelineItem,
+  TOOL_ACTIVITY_GRACE_MS,
+  parseAskQuestionRequest,
+  parseAskQuestionOutput,
+  isAskQuestionStep,
+  isToolApprovalStep,
+  getApprovalStateOrder,
+  isActivityStep,
+  getActivityTitle,
+  getToolCallCount,
+  getActivityBounds,
+  getActivityDurationSecs,
+  getSearchQuery,
+  getActivityStepSummary,
+} from "./agent-step-utils";
+import { AskQuestionPendingCard, AskQuestionResolvedCard } from "./ask-question-cards";
+import { AgentPlanCard } from "./agent-plan-card";
+import { ToolApprovalCard } from "./tool-approval-card";
 
 type AgentDetailPanelProps = {
   agent: Agent;
@@ -117,7 +121,7 @@ function isWaitingOnUser(steps: readonly AgentStep[]): boolean {
   return false;
 }
 
-function StatusBadge({ status, steps }: { status: Agent["status"]; steps: readonly AgentStep[] }) {
+function StatusBadge({ status, steps }: { status: Agent["status"]; steps: readonly AgentStep[]}) {
   const waiting = status === "running" && isWaitingOnUser(steps);
   switch (status) {
     case "running":
@@ -147,440 +151,6 @@ function StatusBadge({ status, steps }: { status: Agent["status"]; steps: readon
         </span>
       );
   }
-}
-
-type AskQuestionToolOutput = {
-  title?: string;
-  questions: AgentQuestionRequest["questions"];
-  answers: AgentQuestionSelection[];
-};
-
-function parseAskQuestionRequest(raw: string | undefined): AgentQuestionRequest | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as Partial<AgentQuestionRequest>;
-    if (!parsed || typeof parsed !== "object") return null;
-    if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) return null;
-    const questions = parsed.questions
-      .map((question) => {
-        if (!question || typeof question !== "object") return null;
-        if (typeof question.id !== "string" || !question.id.trim()) return null;
-        if (typeof question.prompt !== "string" || !question.prompt.trim()) return null;
-        if (!Array.isArray(question.options) || question.options.length === 0) return null;
-        const options = question.options
-          .map((option) => {
-            if (!option || typeof option !== "object") return null;
-            if (typeof option.id !== "string" || !option.id.trim()) return null;
-            if (typeof option.label !== "string" || !option.label.trim()) return null;
-            return { id: option.id, label: option.label };
-          })
-          .filter((option): option is { id: string; label: string } => !!option);
-        if (options.length === 0) return null;
-        return {
-          id: question.id,
-          prompt: question.prompt,
-          options,
-          allow_multiple: question.allow_multiple === true,
-        };
-      })
-      .filter(Boolean) as AgentQuestionRequest["questions"];
-    if (questions.length === 0) return null;
-    return {
-      title: typeof parsed.title === "string" ? parsed.title : undefined,
-      questions,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function parseAskQuestionOutput(raw: string | undefined): AskQuestionToolOutput | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as Partial<AskQuestionToolOutput>;
-    if (!parsed || typeof parsed !== "object") return null;
-    const questionRequest = parseAskQuestionRequest(JSON.stringify({
-      title: parsed.title,
-      questions: parsed.questions,
-    }));
-    if (!questionRequest) return null;
-    const answers = Array.isArray(parsed.answers)
-      ? parsed.answers
-          .map((answer) => {
-            if (!answer || typeof answer !== "object") return null;
-            if (typeof answer.questionId !== "string" || !answer.questionId.trim()) return null;
-            if (!Array.isArray(answer.selectedOptionIds)) return null;
-            const selectedOptionIds = answer.selectedOptionIds
-              .map((id) => (typeof id === "string" ? id.trim() : ""))
-              .filter(Boolean);
-            const freeText = typeof answer.freeText === "string" ? answer.freeText : undefined;
-            return { questionId: answer.questionId, selectedOptionIds, freeText };
-          })
-          .filter((answer): answer is NonNullable<typeof answer> => !!answer)
-      : [];
-
-    return {
-      title: questionRequest.title,
-      questions: questionRequest.questions,
-      answers,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function isAskQuestionStep(step: AgentStep): boolean {
-  return step.toolName === "askQuestion"
-    && (step.kind === "tool-call" || step.kind === "tool-result");
-}
-
-function isToolApprovalStep(step: AgentStep): boolean {
-  return !!step.approvalState && !!step.approvalId;
-}
-
-function getApprovalStateOrder(state: AgentToolApprovalState): number {
-  switch (state) {
-    case "approval-requested": return 0;
-    case "approval-responded": return 1;
-    case "output-denied": return 2;
-    case "output-available": return 2;
-  }
-}
-
-function formatToolName(toolName?: string): string {
-  if (!toolName) return "Tool";
-  return toolName
-    .replace(/^notion__/, "Notion / ")
-    .replace(/^linear__/, "Linear / ");
-}
-
-function AskQuestionPendingCard({
-  agent,
-  request,
-  onAnswerQuestion,
-  onSkipQuestion,
-}: {
-  agent: Agent;
-  request: AgentQuestionRequest;
-  onAnswerQuestion?: (
-    agent: Agent,
-    answers: AgentQuestionSelection[],
-  ) => Promise<AnswerQuestionResult> | AnswerQuestionResult;
-  onSkipQuestion?: (
-    agent: Agent,
-  ) => Promise<SkipQuestionResult> | SkipQuestionResult;
-}) {
-  const [selectedByQuestion, setSelectedByQuestion] = useState<Record<string, Set<string>>>({});
-  const [textByQuestion, setTextByQuestion] = useState<Record<string, string>>({});
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState("");
-
-  const toggleChip = (questionId: string, optionId: string, allowMultiple: boolean) => {
-    setSelectedByQuestion((prev) => {
-      const current = prev[questionId] ?? new Set<string>();
-      const next = new Set(current);
-      if (next.has(optionId)) {
-        next.delete(optionId);
-      } else {
-        if (!allowMultiple) next.clear();
-        next.add(optionId);
-      }
-      return { ...prev, [questionId]: next };
-    });
-  };
-
-  const canSubmit = request.questions.every((q) => {
-    const chips = selectedByQuestion[q.id];
-    const text = textByQuestion[q.id]?.trim();
-    return (chips && chips.size > 0) || (text && text.length > 0);
-  });
-
-  const handleSubmit = async () => {
-    if (!onAnswerQuestion || !canSubmit) return;
-    setSubmitting(true);
-    setSubmitError("");
-    const answers: AgentQuestionSelection[] = request.questions.map((q) => {
-      const chips = selectedByQuestion[q.id];
-      const text = textByQuestion[q.id]?.trim();
-      return {
-        questionId: q.id,
-        selectedOptionIds: chips ? [...chips] : [],
-        ...(text ? { freeText: text } : {}),
-      };
-    });
-    try {
-      const result = await onAnswerQuestion(agent, answers);
-      if (result.ok) return;
-      setSubmitError(result.error ?? "Could not submit answers.");
-    } catch (error) {
-      const errorText =
-        error instanceof Error ? error.message : "Could not submit answers.";
-      setSubmitError(errorText);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey && canSubmit) {
-      e.preventDefault();
-      void handleSubmit();
-    }
-  };
-
-  const handleSkip = async () => {
-    if (!onSkipQuestion) return;
-    setSubmitting(true);
-    setSubmitError("");
-    try {
-      const result = await onSkipQuestion(agent);
-      if (!result.ok) {
-        setSubmitError(result.error ?? "Could not skip.");
-      }
-    } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Could not skip.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="mt-3 mb-1">
-      <div className="border-l-2 border-l-amber-500/60 pl-3">
-        <p className="text-2xs font-medium text-amber-600/80 mb-2.5">
-          {request.title || "Needs your input"}
-        </p>
-
-        <div className="space-y-4">
-          {request.questions.map((question, index) => {
-            const selected = selectedByQuestion[question.id] ?? new Set<string>();
-            const text = textByQuestion[question.id] ?? "";
-            return (
-              <div key={question.id}>
-                <p className="text-2xs text-foreground/90 font-medium leading-relaxed mb-2">
-                  {request.questions.length > 1 ? `${index + 1}. ` : ""}
-                  {question.prompt}
-                </p>
-
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {question.options.map((option) => {
-                    const isSelected = selected.has(option.id);
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() =>
-                          toggleChip(
-                            question.id,
-                            option.id,
-                            !!question.allow_multiple,
-                          )
-                        }
-                        className={[
-                          "inline-flex min-h-7 items-center gap-1 rounded-md border px-2.5 py-1.5 text-2xs font-medium transition-[background-color,border-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-1",
-                          isSelected
-                            ? "border-primary/55 bg-primary/16 text-primary shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--primary)_18%,transparent)]"
-                            : "border-border/70 bg-background text-foreground/82 shadow-sm hover:border-primary/35 hover:bg-primary/[0.08] hover:text-foreground",
-                        ].join(" ")}
-                      >
-                        {isSelected && (
-                          <CheckIcon className="size-2.5 shrink-0" />
-                        )}
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <input
-                  type="text"
-                  value={text}
-                  onChange={(e) =>
-                    setTextByQuestion((c) => ({
-                      ...c,
-                      [question.id]: e.target.value,
-                    }))
-                  }
-                  onKeyDown={handleKeyDown}
-                  placeholder="Or type something else..."
-                  className="w-full rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-2xs text-foreground placeholder:text-muted-foreground/55 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15 transition-[border-color,box-shadow]"
-                />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between mt-3 pl-3">
-        <div className="flex-1 min-w-0">
-          {submitError && (
-            <p className="text-2xs text-destructive truncate">{submitError}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {onSkipQuestion && (
-            <button
-              type="button"
-              onClick={() => void handleSkip()}
-              disabled={submitting}
-              className="rounded-md px-2 py-1 text-2xs text-muted-foreground transition-colors hover:bg-muted/55 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-30"
-            >
-              Chat instead
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => void handleSubmit()}
-            disabled={!onAnswerQuestion || !canSubmit || submitting}
-            className="inline-flex items-center gap-1 rounded-md border border-primary/45 bg-primary/15 px-3 py-1.5 text-2xs font-medium text-primary shadow-sm transition-[background-color,border-color,color,box-shadow] hover:border-primary/60 hover:bg-primary/22 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 disabled:opacity-25"
-          >
-            {submitting ? "Sending..." : "Reply"}
-            {!submitting && <SendHorizonalIcon className="size-2.5" />}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AskQuestionResolvedCard({ output }: { output: AskQuestionToolOutput }) {
-  const answersByQuestionId = new Map(
-    output.answers.map((answer) => [answer.questionId, answer])
-  );
-
-  return (
-    <div className="mt-2 mb-1 border-l-2 border-l-border/40 pl-3 py-1">
-      <p className="text-2xs text-muted-foreground/60 mb-1.5">
-        {output.title || "Answered"}
-      </p>
-      <div className="space-y-1.5">
-        {output.questions.map((question) => {
-          const answer = answersByQuestionId.get(question.id);
-          const selectedLabels = question.options
-            .filter((option) => (answer?.selectedOptionIds ?? []).includes(option.id))
-            .map((option) => option.label);
-          const freeText = (answer as { freeText?: string } | undefined)?.freeText;
-          const parts = [...selectedLabels, ...(freeText ? [freeText] : [])];
-          const displayText = parts.length > 0 ? parts.join(", ") : "No answer";
-          return (
-            <div key={question.id}>
-              <p className="text-2xs text-muted-foreground/50 leading-snug">
-                {question.prompt}
-              </p>
-              <div className="flex flex-wrap gap-1 mt-0.5">
-                {selectedLabels.map((label) => (
-                  <span
-                    key={label}
-                    className="text-2xs px-1.5 py-0.5 rounded bg-muted/30 text-muted-foreground"
-                  >
-                    {label}
-                  </span>
-                ))}
-                {freeText && (
-                  <span className="text-2xs text-foreground/70 italic">
-                    {freeText}
-                  </span>
-                )}
-                {parts.length === 0 && (
-                  <span className="text-2xs text-muted-foreground/40 italic">
-                    {displayText}
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ToolApprovalCard({
-  agent,
-  step,
-  onAnswerToolApproval,
-}: {
-  agent: Agent;
-  step: AgentStep;
-  onAnswerToolApproval?: (
-    agent: Agent,
-    response: AgentToolApprovalResponse,
-  ) => Promise<AnswerToolApprovalResult> | AnswerToolApprovalResult;
-}) {
-  const [submitting, setSubmitting] = useState<"approve" | "reject" | null>(null);
-  const [submitError, setSubmitError] = useState("");
-  const approvalId = step.approvalId;
-  const approvalState = step.approvalState;
-  if (!approvalId || !approvalState) return null;
-
-  const toolLabel = formatToolName(step.toolName);
-
-  const submitApproval = async (approved: boolean) => {
-    if (!onAnswerToolApproval || approvalState !== "approval-requested") return;
-    setSubmitError("");
-    setSubmitting(approved ? "approve" : "reject");
-    const result = await onAnswerToolApproval(agent, { approvalId, approved });
-    setSubmitting(null);
-    if (!result.ok) {
-      setSubmitError(result.error ?? "Could not submit approval.");
-    }
-  };
-
-  const isDenied =
-    approvalState === "output-denied" ||
-    (approvalState === "approval-responded" && step.approvalApproved === false);
-  const isApproved =
-    approvalState === "output-available" ||
-    (approvalState === "approval-responded" && step.approvalApproved !== false);
-
-  if (isApproved) {
-    return (
-      <div className="mt-1 flex items-center gap-1.5 py-1">
-        <CheckIcon className="size-3 text-primary/60 shrink-0" />
-        <span className="text-2xs text-muted-foreground">{toolLabel}</span>
-      </div>
-    );
-  }
-
-  if (isDenied) {
-    return (
-      <div className="mt-1 flex items-center gap-1.5 py-1">
-        <XIcon className="size-3 text-muted-foreground/40 shrink-0" />
-        <span className="text-2xs text-muted-foreground/50 line-through">{toolLabel}</span>
-      </div>
-    );
-  }
-
-  // approval-requested
-  return (
-    <div className="mt-1 py-1.5">
-      <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 text-2xs text-foreground truncate">{toolLabel}</span>
-        <button
-          type="button"
-          onClick={() => void submitApproval(false)}
-          disabled={submitting !== null}
-          className="shrink-0 text-2xs text-muted-foreground hover:text-destructive disabled:opacity-40 transition-colors"
-        >
-          Reject
-        </button>
-        <button
-          type="button"
-          onClick={() => void submitApproval(true)}
-          disabled={submitting !== null}
-          className="shrink-0 text-2xs font-medium text-foreground hover:text-primary disabled:opacity-40 transition-colors"
-        >
-          Allow
-        </button>
-      </div>
-      {step.content && (
-        <p className="mt-0.5 text-2xs text-muted-foreground/60 leading-relaxed">{step.content}</p>
-      )}
-      {submitError && (
-        <p className="mt-1 text-2xs text-destructive">{submitError}</p>
-      )}
-    </div>
-  );
 }
 
 function TextStepActions({
@@ -622,130 +192,6 @@ function TextStepActions({
     </div>
   );
 }
-
-function AgentPlanCard({
-  step,
-  agent,
-  onAnswerPlanApproval,
-}: {
-  step: AgentStep;
-  agent: Agent;
-  onAnswerPlanApproval?: (
-    agent: Agent,
-    response: AgentPlanApprovalResponse,
-  ) => Promise<AnswerPlanApprovalResult> | AnswerPlanApprovalResult;
-}) {
-  const hasContent = Boolean(step.planContent);
-  const approvalState = step.planApprovalState;
-  const isAwaitingApproval = approvalState === "awaiting-approval";
-  const isApproved = approvalState === "approved";
-  const isRejected = approvalState === "rejected";
-
-  const [feedbackInput, setFeedbackInput] = useState("");
-  const [showFeedback, setShowFeedback] = useState(false);
-
-  const approvalId = step.id ? `plan-approval:${step.id}` : "";
-
-  const handleApprove = () => {
-    onAnswerPlanApproval?.(agent, {
-      approvalId,
-      approved: true,
-    });
-  };
-
-  const handleReject = () => {
-    if (showFeedback && feedbackInput.trim()) {
-      onAnswerPlanApproval?.(agent, {
-        approvalId,
-        approved: false,
-        feedback: feedbackInput.trim(),
-      });
-      setShowFeedback(false);
-      setFeedbackInput("");
-    } else {
-      setShowFeedback(true);
-    }
-  };
-
-  const handleRejectNoFeedback = () => {
-    onAnswerPlanApproval?.(agent, {
-      approvalId,
-      approved: false,
-    });
-    setShowFeedback(false);
-  };
-
-  return (
-    <div className="mt-1 py-1">
-      <Plan defaultOpen={hasContent || isAwaitingApproval}>
-        <PlanHeader>
-          <div className="flex items-center gap-2">
-            {isApproved ? (
-              <CheckCircleIcon className="size-3.5 text-green-500" />
-            ) : isRejected ? (
-              <XCircleIcon className="size-3.5 text-muted-foreground" />
-            ) : isAwaitingApproval ? (
-              <LoaderCircleIcon className="size-3.5 text-amber-500 animate-spin" />
-            ) : (
-              <ListChecksIcon className="size-3.5 text-muted-foreground" />
-            )}
-            <PlanTitle>{step.planTitle ?? "Plan"}</PlanTitle>
-          </div>
-          {hasContent && <PlanTrigger />}
-        </PlanHeader>
-        {hasContent && (
-          <PlanContent>
-            <div className="whitespace-pre-wrap text-xs text-muted-foreground">
-              {step.planContent}
-            </div>
-          </PlanContent>
-        )}
-        {isAwaitingApproval && (
-          <PlanFooter className="flex flex-col gap-2 pt-2">
-            {showFeedback && (
-              <div className="flex w-full gap-2">
-                <input
-                  type="text"
-                  value={feedbackInput}
-                  onChange={(e) => setFeedbackInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && feedbackInput.trim()) handleReject();
-                  }}
-                  placeholder="What should change?"
-                  className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-xs"
-                  autoFocus
-                />
-                <Button size="sm" variant="outline" onClick={handleRejectNoFeedback}>
-                  Skip
-                </Button>
-              </div>
-            )}
-            <div className="flex w-full justify-end gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={showFeedback ? handleReject : () => setShowFeedback(true)}
-              >
-                {showFeedback ? "Send feedback" : "Reject"}
-              </Button>
-              <Button size="sm" onClick={handleApprove}>
-                Approve
-              </Button>
-            </div>
-          </PlanFooter>
-        )}
-        {isRejected && step.planApprovalFeedback && (
-          <PlanFooter className="pt-1">
-            <p className="text-xs text-muted-foreground italic">
-              Feedback: {step.planApprovalFeedback}
-            </p>
-          </PlanFooter>
-        )}
-      </Plan>
-    </div>
-  );
-}
-
 
 function AgentTodoQueue({ items }: { items: ReadonlyArray<{ id: string; content: string; status: string }> }) {
   if (items.length === 0) return null;
@@ -859,92 +305,6 @@ function StepItem({
     default:
       return null;
   }
-}
-
-type TimelineItem =
-  | { kind: "step"; step: AgentStep }
-  | {
-      kind: "activity";
-      id: string;
-      title: string;
-      steps: AgentStep[];
-      isStreaming: boolean;
-    };
-
-const TOOL_ACTIVITY_GRACE_MS = 3_000;
-
-function isActivityStep(step: AgentStep): boolean {
-  return (
-    step.kind === "thinking" ||
-    step.kind === "tool-call" ||
-    step.kind === "tool-result"
-  );
-}
-
-function getActivityTitle(steps: AgentStep[]): string {
-  const hasThought = steps.some((step) => step.kind === "thinking");
-  const toolSteps = steps.filter(
-    (step) =>
-      (step.kind === "tool-call" || step.kind === "tool-result") &&
-      step.toolName !== "askQuestion"
-  );
-  const searchCount = toolSteps.filter((step) => step.toolName === "searchWeb").length;
-
-  if (hasThought && searchCount > 0) {
-    return `Thought + ${searchCount} search${searchCount === 1 ? "" : "es"}`;
-  }
-  if (hasThought && toolSteps.length > 0) {
-    return `Thought + ${toolSteps.length} tool${toolSteps.length === 1 ? "" : "s"}`;
-  }
-  if (hasThought) {
-    return "Thought process";
-  }
-  if (searchCount > 0) {
-    return `Did ${searchCount} search${searchCount === 1 ? "" : "es"}`;
-  }
-  return `Used ${toolSteps.length} tool${toolSteps.length === 1 ? "" : "s"}`;
-}
-
-function getToolCallCount(steps: AgentStep[]): number {
-  const toolCallIds = new Set<string>();
-  for (const step of steps) {
-    if (step.kind === "tool-call" || step.kind === "tool-result") {
-      toolCallIds.add(step.id);
-    }
-  }
-  return toolCallIds.size;
-}
-
-function getActivityBounds(steps: AgentStep[]): { start: number; end: number } | null {
-  if (steps.length === 0) return null;
-  const timestamps = steps.map((step) => step.createdAt).filter(Number.isFinite);
-  if (timestamps.length === 0) return null;
-  return {
-    start: Math.min(...timestamps),
-    end: Math.max(...timestamps),
-  };
-}
-
-function getActivityDurationSecs(steps: AgentStep[], isStreaming: boolean): number | null {
-  const bounds = getActivityBounds(steps);
-  if (!bounds) return null;
-  const end = isStreaming ? Date.now() : bounds.end;
-  return Math.max(1, Math.round((end - bounds.start) / 1000));
-}
-
-function getSearchQuery(step: AgentStep): string | null {
-  if (step.toolName !== "searchWeb") return null;
-  const match = step.content.match(/^Searched:\s*(.+)$/i);
-  const query = match?.[1]?.trim();
-  return query ? query : null;
-}
-
-function getActivityStepSummary(step: AgentStep): string {
-  if (step.kind === "thinking") return "Thought";
-  if (step.kind === "text") return "Update";
-  if (step.toolName === "searchWeb") return "Search";
-  if (step.toolName) return `Tool: ${step.toolName}`;
-  return "Action";
 }
 
 function ActivitySummaryItem({
