@@ -18,7 +18,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { ChevronsUpDownIcon } from "lucide-react";
+import { ChevronDownIcon } from "lucide-react";
 import { createContext, useContext } from "react";
 
 import { Shimmer } from "./shimmer";
@@ -49,7 +49,7 @@ export const Plan = ({
 }: PlanProps) => (
   <PlanContext.Provider value={{ isStreaming }}>
     <Collapsible asChild data-slot="plan" {...props}>
-      <Card className={cn("shadow-none", className)}>{children}</Card>
+      <Card className={cn("rounded-md border-border/70 bg-background shadow-none", className)}>{children}</Card>
     </Collapsible>
   </PlanContext.Provider>
 );
@@ -131,13 +131,16 @@ export type PlanTriggerProps = ComponentProps<typeof CollapsibleTrigger>;
 export const PlanTrigger = ({ className, ...props }: PlanTriggerProps) => (
   <CollapsibleTrigger asChild>
     <Button
-      className={cn("size-8", className)}
+      className={cn(
+        "size-7 rounded-md bg-background/80 text-muted-foreground hover:bg-muted/50 hover:text-foreground [&_svg]:transition-transform [&_svg]:duration-200 aria-expanded:[&_svg]:rotate-180",
+        className,
+      )}
       data-slot="plan-trigger"
-      size="icon"
+      size="icon-sm"
       variant="ghost"
       {...props}
     >
-      <ChevronsUpDownIcon className="size-4" />
+      <ChevronDownIcon className="size-4" />
       <span className="sr-only">Toggle plan</span>
     </Button>
   </CollapsibleTrigger>

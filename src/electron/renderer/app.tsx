@@ -162,6 +162,7 @@ export function App() {
     selectedAgentId,
     selectedAgent,
     openAgentIds,
+    agentTabTitles,
     agentSelectionNonce,
     selectAgent: _selectAgent,
     closeAgent,
@@ -178,7 +179,7 @@ export function App() {
     sl().setSelectedSessionId(data.sessionId);
     ts().setTasks(data.tasks);
     ts().setProcessingTaskIds([]);
-    seedAgents(data.agents);
+    seedAgents(data.sessionId, data.agents);
     ui().setFinalSummaryState({ kind: "idle" });
     void window.electronAPI.getArchivedTasks(data.sessionId).then(ts().setArchivedSuggestions);
     void refreshSessions();
@@ -255,7 +256,7 @@ export function App() {
       sl().setSessionActive(false);
       sl().setResumeSessionId(null);
       ts().resetForSession();
-      seedAgents([]);
+      seedAgents(null, []);
       ui().setFinalSummaryState({ kind: "idle" });
       session.clearSession();
       return;
@@ -270,7 +271,7 @@ export function App() {
       sl().setSessionActive(false);
       sl().setResumeSessionId(null);
       ts().resetForSession();
-      seedAgents([]);
+      seedAgents(null, []);
       ui().setFinalSummaryState({ kind: "idle" });
       session.clearSession();
       return;
@@ -280,7 +281,7 @@ export function App() {
     ui().setSplashDone(true);
     ui().setSettingsOpen(false);
     ts().resetForSession();
-    seedAgents([]);
+    seedAgents(parsed.sessionId, []);
     ui().setFinalSummaryState({ kind: "idle" });
     sl().setSelectedSessionId(parsed.sessionId);
     sl().setResumeSessionId(parsed.sessionId);
@@ -298,7 +299,7 @@ export function App() {
       window.electronAPI.getSessionAgents(sessionId),
     ]);
     ts().setTasks(demoTasks);
-    seedAgents(demoAgents);
+    seedAgents(sessionId, demoAgents);
   };
 
   useEffect(() => {
@@ -391,6 +392,7 @@ export function App() {
 
   useEffect(() => {
     if (!session.sessionId) return;
+    seedAgents(session.sessionId, agents);
     sl().setSelectedSessionId(session.sessionId);
     const currentPath = buildSessionPath(session.sessionId);
     if (pendingNewSessionRouteRef.current) {
@@ -400,6 +402,7 @@ export function App() {
       replaceSessionPath(session.sessionId);
     }
     void refreshSessionsRef.current();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.sessionId]);
 
   useThemeMode(appConfig.themeMode, appConfig.lightVariant, appConfig.darkVariant, appConfig.fontSize, appConfig.fontFamily);
@@ -496,7 +499,7 @@ export function App() {
     sl().setSelectedSessionId(null);
     sl().setResumeSessionId(null);
     ts().resetForSession();
-    seedAgents([]);
+    seedAgents(null, []);
     ui().setFinalSummaryState({ kind: "idle" });
     sl().setSessionActive(true);
   };
@@ -540,7 +543,7 @@ export function App() {
     pendingNewSessionRouteRef.current = true;
     sl().resetForNewSession();
     ts().resetForSession();
-    seedAgents([]);
+    seedAgents(null, []);
     ui().setFinalSummaryState({ kind: "idle" });
     session.clearSession();
     sl().bumpSessionRestartKey();
@@ -985,7 +988,7 @@ export function App() {
     sl().setSelectedSessionId(sid);
     sl().setResumeSessionId(sid);
     ts().resetForSession();
-    seedAgents([]);
+    seedAgents(sid, []);
     sl().setSessionActive(true);
   };
 
@@ -999,7 +1002,7 @@ export function App() {
       sl().setSessionActive(false);
       sl().setResumeSessionId(null);
       ts().resetForSession();
-      seedAgents([]);
+      seedAgents(null, []);
       session.clearSession();
     }
     await refreshSessions();
@@ -1323,9 +1326,11 @@ export function App() {
               <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/80 transition-colors group-hover:bg-foreground/30" />
             </div>
             <MiddlePanelTabs
+              sessionId={selectedSessionId ?? session.sessionId ?? null}
               summaryState={finalSummaryState}
               newAgentMode={newAgentMode}
               openAgentIds={openAgentIds}
+              agentTabTitles={agentTabTitles}
               selectedAgentId={selectedAgentId}
               agentSelectionNonce={agentSelectionNonce}
               onSelectAgent={selectAgent}

@@ -13,7 +13,7 @@ type NewAgentPanelProps = {
 
 export function NewAgentPanel({ onLaunch, onClose }: NewAgentPanelProps) {
   return (
-    <div className="w-full h-full shrink-0 flex flex-col min-h-0 bg-sidebar">
+    <div className="w-full h-full shrink-0 flex flex-col min-h-0 bg-background">
       {/* Header — matches AgentDetailPanel chrome */}
       <div className="shrink-0 border-b border-border px-3 py-2">
         <div className="flex items-center gap-2">

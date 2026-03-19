@@ -1,10 +1,16 @@
 import { useEffect, useReducer } from "react";
 import type { Agent, AgentStep } from "@core/types";
 
-type AgentsState = {
-  agents: Agent[];
+type SessionAgentUIState = {
   selectedAgentId: string | null;
   openAgentIds: string[];
+};
+
+type AgentsState = {
+  currentSessionId: string | null;
+  agents: Agent[];
+  sessionAgentUI: Record<string, SessionAgentUIState>;
+  sessionAgentTitles: Record<string, Record<string, string>>;
   agentSelectionNonce: number;
 };
 
@@ -17,7 +23,7 @@ type AgentsAction =
   | { kind: "agent-titled"; agentId: string; title: string }
   | { kind: "select-agent"; agentId: string | null }
   | { kind: "close-agent"; agentId: string }
-  | { kind: "load-agents"; agents: Agent[] }
+  | { kind: "load-agents"; sessionId: string | null; agents: Agent[] }
   | { kind: "reset" };
 
 function getNextSelectedAgentId(openAgentIds: string[], closedAgentId: string): string | null {
@@ -26,15 +32,53 @@ function getNextSelectedAgentId(openAgentIds: string[], closedAgentId: string): 
   return openAgentIds[currentIndex + 1] ?? openAgentIds[currentIndex - 1] ?? null;
 }
 
+function getSessionAgentUI(state: AgentsState, sessionId: string | null): SessionAgentUIState {
+  if (!sessionId) return { selectedAgentId: null, openAgentIds: [] };
+  return state.sessionAgentUI[sessionId] ?? { selectedAgentId: null, openAgentIds: [] };
+}
+
+function setSessionAgentUI(
+  state: AgentsState,
+  sessionId: string | null,
+  nextUI: SessionAgentUIState,
+): Record<string, SessionAgentUIState> {
+  if (!sessionId) return state.sessionAgentUI;
+  return {
+    ...state.sessionAgentUI,
+    [sessionId]: nextUI,
+  };
+}
+
+function mergeSessionAgentTitles(
+  state: AgentsState,
+  sessionId: string | null,
+  agents: Agent[],
+): Record<string, Record<string, string>> {
+  if (!sessionId || agents.length === 0) return state.sessionAgentTitles;
+  const nextTitles = { ...(state.sessionAgentTitles[sessionId] ?? {}) };
+  for (const agent of agents) {
+    nextTitles[agent.id] = agent.task;
+  }
+  return {
+    ...state.sessionAgentTitles,
+    [sessionId]: nextTitles,
+  };
+}
+
 function agentsReducer(state: AgentsState, action: AgentsAction): AgentsState {
   switch (action.kind) {
     case "agent-started": {
+      // Only surface live agent updates for the currently viewed session.
+      if (state.currentSessionId && action.agent.sessionId !== state.currentSessionId) {
+        return state;
+      }
       const exists = state.agents.some((a) => a.id === action.agent.id);
       return {
         ...state,
         agents: exists
-          ? state.agents.map((a) => a.id === action.agent.id ? action.agent : a)
+          ? state.agents.map((a) => (a.id === action.agent.id ? action.agent : a))
           : [action.agent, ...state.agents],
+        sessionAgentTitles: mergeSessionAgentTitles(state, state.currentSessionId, [action.agent]),
       };
     }
     case "agent-step":
@@ -52,7 +96,7 @@ function agentsReducer(state: AgentsState, action: AgentsAction): AgentsState {
                   };
                 }
                 return { ...a, steps: [...a.steps, action.step] };
-              })()
+              })(),
         ),
       };
     case "agent-completed":
@@ -61,7 +105,7 @@ function agentsReducer(state: AgentsState, action: AgentsAction): AgentsState {
         agents: state.agents.map((a) =>
           a.id === action.agentId
             ? { ...a, status: "completed" as const, result: action.result, completedAt: Date.now() }
-            : a
+            : a,
         ),
       };
     case "agent-failed":
@@ -70,22 +114,27 @@ function agentsReducer(state: AgentsState, action: AgentsAction): AgentsState {
         agents: state.agents.map((a) =>
           a.id === action.agentId
             ? { ...a, status: "failed" as const, result: action.error, completedAt: Date.now() }
-            : a
+            : a,
         ),
       };
     case "agent-archived":
     case "close-agent": {
-      const nextOpenAgentIds = state.openAgentIds.filter((id) => id !== action.agentId);
-      const nextSelectedAgentId = state.selectedAgentId === action.agentId
-        ? getNextSelectedAgentId(state.openAgentIds, action.agentId)
-        : state.selectedAgentId;
+      const sessionUI = getSessionAgentUI(state, state.currentSessionId);
+      const nextOpenAgentIds = sessionUI.openAgentIds.filter((id) => id !== action.agentId);
+      const nextSelectedAgentId = sessionUI.selectedAgentId === action.agentId
+        ? getNextSelectedAgentId(sessionUI.openAgentIds, action.agentId)
+        : sessionUI.selectedAgentId;
+
       return {
+        ...state,
         agents: action.kind === "agent-archived"
           ? state.agents.filter((a) => a.id !== action.agentId)
           : state.agents,
-        selectedAgentId: nextSelectedAgentId,
-        openAgentIds: nextOpenAgentIds,
-        agentSelectionNonce: nextSelectedAgentId !== state.selectedAgentId
+        sessionAgentUI: setSessionAgentUI(state, state.currentSessionId, {
+          selectedAgentId: nextSelectedAgentId,
+          openAgentIds: nextOpenAgentIds,
+        }),
+        agentSelectionNonce: nextSelectedAgentId !== sessionUI.selectedAgentId
           ? state.agentSelectionNonce + 1
           : state.agentSelectionNonce,
       };
@@ -94,34 +143,65 @@ function agentsReducer(state: AgentsState, action: AgentsAction): AgentsState {
       return {
         ...state,
         agents: state.agents.map((a) =>
-          a.id === action.agentId ? { ...a, task: action.title } : a
+          a.id === action.agentId ? { ...a, task: action.title } : a,
         ),
+        sessionAgentTitles: state.currentSessionId
+          ? {
+              ...state.sessionAgentTitles,
+              [state.currentSessionId]: {
+                ...(state.sessionAgentTitles[state.currentSessionId] ?? {}),
+                [action.agentId]: action.title,
+              },
+            }
+          : state.sessionAgentTitles,
       };
-    case "select-agent":
+    case "select-agent": {
+      const sessionUI = getSessionAgentUI(state, state.currentSessionId);
       return {
         ...state,
-        selectedAgentId: action.agentId,
-        openAgentIds: action.agentId && !state.openAgentIds.includes(action.agentId)
-          ? [...state.openAgentIds, action.agentId]
-          : state.openAgentIds,
+        sessionAgentUI: setSessionAgentUI(state, state.currentSessionId, {
+          selectedAgentId: action.agentId,
+          openAgentIds: action.agentId && !sessionUI.openAgentIds.includes(action.agentId)
+            ? [...sessionUI.openAgentIds, action.agentId]
+            : sessionUI.openAgentIds,
+        }),
         agentSelectionNonce: state.agentSelectionNonce + 1,
       };
-    case "load-agents":
+    }
+    case "load-agents": {
+      const restoredSessionUI = getSessionAgentUI(state, action.sessionId);
+      const isPlaceholderLoad = action.agents.length === 0;
+      const validAgentIds = new Set(action.agents.map((agent) => agent.id));
+      const nextOpenAgentIds = isPlaceholderLoad
+        ? restoredSessionUI.openAgentIds
+        : restoredSessionUI.openAgentIds.filter((agentId) => validAgentIds.has(agentId));
+      const nextSelectedAgentId = isPlaceholderLoad
+        ? restoredSessionUI.selectedAgentId
+        : restoredSessionUI.selectedAgentId && validAgentIds.has(restoredSessionUI.selectedAgentId)
+          ? restoredSessionUI.selectedAgentId
+          : null;
+
       return {
+        ...state,
+        currentSessionId: action.sessionId,
         agents: action.agents,
-        selectedAgentId: null,
-        openAgentIds: [],
-        agentSelectionNonce: state.agentSelectionNonce,
+        sessionAgentUI: setSessionAgentUI(state, action.sessionId, {
+          selectedAgentId: nextSelectedAgentId,
+          openAgentIds: nextOpenAgentIds,
+        }),
+        sessionAgentTitles: mergeSessionAgentTitles(state, action.sessionId, action.agents),
       };
+    }
     case "reset":
-      return { agents: [], selectedAgentId: null, openAgentIds: [], agentSelectionNonce: 0 };
+      return { currentSessionId: null, agents: [], sessionAgentUI: {}, sessionAgentTitles: {}, agentSelectionNonce: 0 };
   }
 }
 
 const initialState: AgentsState = {
+  currentSessionId: null,
   agents: [],
-  selectedAgentId: null,
-  openAgentIds: [],
+  sessionAgentUI: {},
+  sessionAgentTitles: {},
   agentSelectionNonce: 0,
 };
 
@@ -150,19 +230,24 @@ export function useAgents() {
     dispatch({ kind: "close-agent", agentId });
   };
 
-  const seedAgents = (agents: Agent[]) => {
-    dispatch({ kind: "load-agents", agents });
+  const seedAgents = (sessionId: string | null, agents: Agent[]) => {
+    dispatch({ kind: "load-agents", sessionId, agents });
   };
 
-  const selectedAgent = state.selectedAgentId
-    ? state.agents.find((a) => a.id === state.selectedAgentId) ?? null
+  const currentSessionUI = getSessionAgentUI(state, state.currentSessionId);
+  const currentSessionAgentTitles = state.currentSessionId
+    ? (state.sessionAgentTitles[state.currentSessionId] ?? {})
+    : {};
+  const selectedAgent = currentSessionUI.selectedAgentId
+    ? state.agents.find((a) => a.id === currentSessionUI.selectedAgentId) ?? null
     : null;
 
   return {
     agents: state.agents,
-    selectedAgentId: state.selectedAgentId,
+    selectedAgentId: currentSessionUI.selectedAgentId,
     selectedAgent,
-    openAgentIds: state.openAgentIds,
+    openAgentIds: currentSessionUI.openAgentIds,
+    agentTabTitles: currentSessionAgentTitles,
     agentSelectionNonce: state.agentSelectionNonce,
     selectAgent,
     closeAgent,

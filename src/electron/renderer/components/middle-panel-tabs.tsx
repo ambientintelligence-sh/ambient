@@ -4,14 +4,17 @@ import type { Agent } from "@core/types";
 import type { SummaryModalState } from "./session-summary-modal";
 
 type TabId = "transcript" | "summary" | "new-agent" | `agent:${string}`;
+const EMPTY_SESSION_TAB_KEY = "__empty__";
 
 type MiddlePanelTabsProps = {
+  sessionId?: string | null;
   transcriptContent: ReactNode;
   summaryContent: ReactNode;
   agentContent: ReactNode;
   summaryState: SummaryModalState;
   newAgentMode?: boolean;
   openAgentIds: string[];
+  agentTabTitles?: Record<string, string>;
   selectedAgentId?: string | null;
   agentSelectionNonce: number;
   onSelectAgent: (agentId: string) => void;
@@ -89,12 +92,14 @@ function truncateTask(task: string, maxLen = 30): string {
 }
 
 export function MiddlePanelTabs({
+  sessionId,
   transcriptContent,
   summaryContent,
   agentContent,
   summaryState,
   newAgentMode,
   openAgentIds,
+  agentTabTitles,
   selectedAgentId,
   agentSelectionNonce,
   onSelectAgent,
@@ -103,8 +108,14 @@ export function MiddlePanelTabs({
   onGenerateSummary,
   agents,
 }: MiddlePanelTabsProps) {
-  const [activeTab, setActiveTab] = useState<TabId>("transcript");
+  const [activeTabBySession, setActiveTabBySession] = useState<Record<string, TabId>>({});
   const prevSummaryKindRef = useRef(summaryState.kind);
+  const sessionTabKey = sessionId ?? EMPTY_SESSION_TAB_KEY;
+  const activeTab = activeTabBySession[sessionTabKey] ?? "transcript";
+
+  const setActiveTab = (tab: TabId) => {
+    setActiveTabBySession((prev) => ({ ...prev, [sessionTabKey]: tab }));
+  };
 
   const showAgentTabs = openAgentIds.length > 0;
   const agentById = new Map((agents ?? []).map((agent) => [agent.id, agent]));
@@ -116,13 +127,19 @@ export function MiddlePanelTabs({
     validTab = selectedAgentId ? getAgentTabId(selectedAgentId) : (newAgentMode ? "new-agent" : "transcript");
   }
 
+  useEffect(() => {
+    if (validTab !== activeTab) {
+      setActiveTab(validTab);
+    }
+  }, [activeTab, validTab, sessionTabKey]);
+
   // Consolidated tab auto-switch: new agent > selected agent > summary transition
   useEffect(() => {
     if (newAgentMode) { setActiveTab("new-agent"); return; }
     if (selectedAgentId) { setActiveTab(getAgentTabId(selectedAgentId)); return; }
     if (prevSummaryKindRef.current === "idle" && summaryState.kind !== "idle") setActiveTab("summary");
     prevSummaryKindRef.current = summaryState.kind;
-  }, [agentSelectionNonce, selectedAgentId, newAgentMode, summaryState.kind]);
+  }, [agentSelectionNonce, selectedAgentId, newAgentMode, summaryState.kind, sessionTabKey]);
 
   return (
     <main className="flex-1 flex flex-col min-h-0 min-w-0 relative">
@@ -156,7 +173,9 @@ export function MiddlePanelTabs({
         )}
         {showAgentTabs && openAgentIds.map((agentId) => {
           const agent = agentById.get(agentId);
-          const label = agent ? truncateTask(agent.task) : "Agent";
+          const label = agent
+            ? truncateTask(agent.task)
+            : truncateTask(agentTabTitles?.[agentId] ?? "Agent");
           const tabId = getAgentTabId(agentId);
           return (
             <TabButton

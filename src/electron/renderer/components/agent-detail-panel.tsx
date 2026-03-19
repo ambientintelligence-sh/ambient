@@ -5,6 +5,7 @@ import {
   LoaderCircleIcon,
   CheckCircleIcon,
   XCircleIcon,
+  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   SearchIcon,
@@ -1040,8 +1041,9 @@ function TaskContextCard({ task, taskContext }: { task: string; taskContext?: st
         Task
       </p>
       <p className="mt-0.5 text-xs leading-relaxed text-foreground">{task}</p>
-      <details className="mt-1">
-        <summary className="cursor-pointer text-2xs font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors">
+      <details className="group mt-1">
+        <summary className="flex cursor-pointer list-none items-center gap-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+          <ChevronDownIcon className="size-3 transition-transform duration-200 group-open:rotate-180" />
           Context
         </summary>
         <div className="mt-1 max-h-40 overflow-y-auto rounded-sm border border-border/60 bg-background px-2 py-1.5">
@@ -1364,7 +1366,7 @@ export function AgentDetailPanel({
   };
 
   return (
-    <div className="w-full h-full shrink-0 flex flex-col min-h-0 bg-sidebar">
+    <div className="w-full h-full shrink-0 flex flex-col min-h-0 bg-background">
       {/* Header */}
       <div className="shrink-0 border-b border-border px-3 py-2">
         <div className="flex items-center gap-2">
