@@ -61,6 +61,17 @@ import {
   renderApiKeyIcon,
 } from "./settings-config";
 
+type SettingsTab = "general" | "transcription" | "models" | "api-keys" | "skills" | "integrations";
+
+const SETTINGS_TABS: readonly { id: SettingsTab; label: string; icon: ComponentType<{ className?: string }> }[] = [
+  { id: "general", label: "General", icon: SlidersHorizontalIcon },
+  { id: "transcription", label: "Transcription", icon: MicIcon },
+  { id: "models", label: "Models", icon: CpuIcon },
+  { id: "api-keys", label: "API Keys", icon: KeyIcon },
+  { id: "skills", label: "Skills", icon: BookOpenIcon },
+  { id: "integrations", label: "Integrations", icon: PlugIcon },
+];
+
 type SettingsPageProps = {
   config: AppConfig;
   languages: Language[];
@@ -96,7 +107,7 @@ type SettingsPageProps = {
   apiKeyStatus: Record<string, boolean>;
   onSaveApiKey: (envVar: string, value: string) => Promise<{ ok: boolean; error?: string }>;
   onDeleteApiKey: (envVar: string) => Promise<{ ok: boolean; error?: string }>;
-  initialTab?: "general" | "api-keys";
+  initialTab?: SettingsTab;
   onShowTutorial?: () => void;
   skills?: SkillMetadata[];
   disabledSkillIds?: string[];
@@ -439,6 +450,7 @@ export function SettingsPage({
   onToggleSkill,
 }: SettingsPageProps) {
   const codexConnected = useIntegrationStore((s) => s.codexConnected);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [systemPrefersDark, setSystemPrefersDark] = useState(() =>
     typeof globalThis.matchMedia === "function"
       ? globalThis.matchMedia("(prefers-color-scheme: dark)").matches
@@ -475,51 +487,63 @@ export function SettingsPage({
   };
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-background">
-      <div className="mx-auto w-full max-w-6xl px-6 py-6">
-        <Tabs defaultValue={initialTab ?? "general"}>
-          <div className="flex items-start justify-between gap-4 mb-6">
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
-              <p className="text-xs text-muted-foreground mt-1">
-                Control appearance and runtime behavior. Session changes apply
-                when you start or resume a session.
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <TabsList>
-                <TabsTrigger value="general">
-                  <SlidersHorizontalIcon className="size-3" />
-                  General
-                </TabsTrigger>
-                <TabsTrigger value="api-keys">
-                  <KeyIcon className="size-3" />
-                  API Keys
-                </TabsTrigger>
-              </TabsList>
-              {onShowTutorial && (
-                <Button variant="outline" size="sm" onClick={onShowTutorial}>
-                  <BookOpenIcon className="size-3.5" data-icon="inline-start" />
-                  Show Tutorial
-                </Button>
-              )}
-              <Button variant="outline" size="sm" onClick={onReset}>
-                <RotateCcwIcon className="size-3.5" data-icon="inline-start" />
-                Reset Defaults
-              </Button>
-            </div>
+    <div className="flex-1 min-h-0 flex flex-col bg-background">
+      {/* Header */}
+      <div className="shrink-0 px-6 pt-6 pb-4 border-b border-border/40">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
+            <p className="text-xs text-muted-foreground mt-1">
+              Control appearance and runtime behavior. Session changes apply
+              when you start or resume a session.
+            </p>
           </div>
+          <div className="flex items-center gap-3">
+            {onShowTutorial && (
+              <Button variant="outline" size="sm" onClick={onShowTutorial}>
+                <BookOpenIcon className="size-3.5" data-icon="inline-start" />
+                Show Tutorial
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={onReset}>
+              <RotateCcwIcon className="size-3.5" data-icon="inline-start" />
+              Reset Defaults
+            </Button>
+          </div>
+        </div>
+        {isRecording && (
+          <div className="mt-4 border border-amber-300/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 px-3 py-2 text-xs rounded-sm">
+            Currently recording. Configuration updates will apply to the next
+            session.
+          </div>
+        )}
+      </div>
 
-          {isRecording && (
-            <div className="mb-6 border border-amber-300/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 px-3 py-2 text-xs rounded-sm">
-              Currently recording. Configuration updates will apply to the next
-              session.
-            </div>
-          )}
+      {/* Sidebar + Content */}
+      <Tabs
+        defaultValue={initialTab ?? "general"}
+        orientation="vertical"
+        className="flex-1 min-h-0 flex flex-row gap-0"
+        onValueChange={() => contentRef.current?.scrollTo(0, 0)}
+      >
+        <TabsList className="w-[200px] shrink-0 flex flex-col items-stretch h-auto gap-0.5 rounded-none border-0 border-r border-border/40 bg-transparent p-3">
+          {SETTINGS_TABS.map((tab) => (
+            <TabsTrigger
+              key={tab.id}
+              value={tab.id}
+              className="justify-start w-full gap-2 rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:border-0 data-[state=active]:shadow-none border-0 shadow-none"
+            >
+              <tab.icon className="size-3.5" />
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <div ref={contentRef} className="flex-1 min-h-0 overflow-y-auto">
+          <div className="mx-auto w-full max-w-4xl px-8 py-6">
 
           <TabsContent value="general">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* ── Row 1: Appearance + Session ── */}
+          <div className="space-y-5">
           <SettingsSection icon={PaletteIcon} title="Appearance">
             <SettingRow
               label="Theme"
@@ -674,8 +698,36 @@ export function SettingsPage({
             </div>
           </SettingsSection>
 
-          {/* ── Row 2: Transcription (full width) ── */}
-          <SettingsSection icon={MicIcon} title="Transcription" className="lg:col-span-2">
+          <SettingsSection icon={WrenchIcon} title="Advanced">
+            <div className="space-y-1">
+              <SettingRow
+                label="Debug Mode"
+                description="Enable extra logging and diagnostics."
+                control={
+                  <Switch
+                    checked={config.debug}
+                    onCheckedChange={(v) => set("debug", v)}
+                  />
+                }
+              />
+              <SettingRow
+                label="Legacy Audio"
+                description="Use the legacy ffmpeg loopback capture flow instead of ScreenCaptureKit."
+                control={
+                  <Switch
+                    checked={config.legacyAudio}
+                    onCheckedChange={(v) => set("legacyAudio", v)}
+                  />
+                }
+              />
+            </div>
+          </SettingsSection>
+
+          </div>
+          </TabsContent>
+
+          <TabsContent value="transcription">
+          <SettingsSection icon={MicIcon} title="Transcription">
             {(() => {
               const providerOption = getTranscriptionProviderOption(
                 config.transcriptionProvider
@@ -825,10 +877,10 @@ export function SettingsPage({
             })()}
           </SettingsSection>
 
-          {/* Translation settings removed — use toolbar dropdown instead */}
+          </TabsContent>
 
-          {/* ── Row 4: Agent Models (full width) ── */}
-          <SettingsSection icon={CpuIcon} title="Model Roles" className="lg:col-span-2">
+          <TabsContent value="models">
+          <SettingsSection icon={CpuIcon} title="Model Roles">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {(() => {
                 const providerKey = (config.analysisProvider === "openrouter" || config.analysisProvider === "bedrock")
@@ -1006,35 +1058,10 @@ export function SettingsPage({
               })()}
             </div>
           </SettingsSection>
+          </TabsContent>
 
-          {/* ── Row 5: Advanced (full width) ── */}
-          <SettingsSection icon={WrenchIcon} title="Advanced" className="lg:col-span-2">
-            <div className="space-y-1">
-              <SettingRow
-                label="Debug Mode"
-                description="Enable extra logging and diagnostics."
-                control={
-                  <Switch
-                    checked={config.debug}
-                    onCheckedChange={(v) => set("debug", v)}
-                  />
-                }
-              />
-              <SettingRow
-                label="Legacy Audio"
-                description="Use the legacy ffmpeg loopback capture flow instead of ScreenCaptureKit."
-                control={
-                  <Switch
-                    checked={config.legacyAudio}
-                    onCheckedChange={(v) => set("legacyAudio", v)}
-                  />
-                }
-              />
-            </div>
-          </SettingsSection>
-
-          {/* ── Agent Skills ── */}
-          <SettingsSection icon={BookOpenIcon} title="Agent Skills" className="lg:col-span-2">
+          <TabsContent value="skills">
+          <SettingsSection icon={BookOpenIcon} title="Agent Skills">
             <p className="text-2xs text-muted-foreground mb-3">
               Extend agent capabilities with installed skills. Skills are discovered from{" "}
               <code className="text-[10px] bg-muted px-1 py-0.5 rounded">.agents/skills/</code> (project) and{" "}
@@ -1067,9 +1094,10 @@ export function SettingsPage({
               </div>
             )}
           </SettingsSection>
+          </TabsContent>
 
-          {/* ── Row 6: Integrations (full width) ── */}
-          <SettingsSection icon={PlugIcon} title="Integrations" className="lg:col-span-2">
+          <TabsContent value="integrations">
+          <SettingsSection icon={PlugIcon} title="Integrations">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {mcpIntegrations.map((status) => {
                 const ProviderIcon = resolveProviderIcon(status.mcpUrl ?? "");
@@ -1306,7 +1334,6 @@ export function SettingsPage({
               )}
             </div>
           </SettingsSection>
-          </div>
           </TabsContent>
 
           <TabsContent value="api-keys">
@@ -1319,8 +1346,10 @@ export function SettingsPage({
               onDelete={onDeleteApiKey}
             />
           </TabsContent>
-        </Tabs>
-      </div>
+
+          </div>
+        </div>
+      </Tabs>
     </div>
   );
 }
