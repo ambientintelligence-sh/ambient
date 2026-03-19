@@ -177,6 +177,12 @@ export function registerSessionHandlers({ db, getWindow, sessionRef, getExternal
     return { ok: true };
   });
 
+  ipcMain.handle("set-source-language", (_event, sourceLang: string) => {
+    if (!sessionRef.current) return { ok: false, error: "No active session" };
+    sessionRef.current.setSourceLanguage(sourceLang as LanguageCode);
+    return { ok: true };
+  });
+
   ipcMain.handle("add-context-note", (_event, text: string) => {
     if (!sessionRef.current) return { ok: false, error: "No active session" };
     const trimmed = (text ?? "").trim();

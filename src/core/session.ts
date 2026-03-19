@@ -341,15 +341,55 @@ export class Session {
     }
     log("INFO", `AgentManager initialized${process.env.EXA_API_KEY ? " (web search enabled)" : " (web search disabled — no EXA_API_KEY)"}`);
 
-    this.sourceLangLabel = getLanguageLabel(config.sourceLang);
-    this.targetLangLabel = getLanguageLabel(config.targetLang);
-    this.sourceLangName = LANG_NAMES[config.sourceLang];
-    this.targetLangName = LANG_NAMES[config.targetLang];
+    this.refreshLanguageDerivedState();
 
-    const englishIsConfigured = config.sourceLang === "en" || config.targetLang === "en";
+  }
+
+  getUIState(status: UIState["status"]): UIState {
+    const langPair = `${this.sourceLangName} → ${this.targetLangName}`;
+    const deviceName = this.config.legacyAudio && this.legacyDevice
+      ? this.legacyDevice.name
+      : "System Audio (ScreenCaptureKit)";
+    return {
+      deviceName,
+      modelId: `${langPair} | ${this.config.transcriptionModelId}`,
+      intervalMs: this.config.intervalMs,
+      status,
+      contextLoaded: !!this.userContext,
+      cost: this.costAccumulator.totalCost,
+      translationEnabled: this._translationEnabled,
+      canTranslate: this.canTranslate,
+      direction: this.config.direction,
+      micEnabled: this._micEnabled,
+    };
+  }
+
+  get recording(): boolean {
+    return this.isRecording;
+  }
+
+  private get isCapturing(): boolean {
+    return this.isRecording || this._micEnabled;
+  }
+
+  get allKeyPoints(): readonly string[] {
+    return this.contextState.allKeyPoints;
+  }
+
+  get canTranslate(): boolean {
+    return this.config.transcriptionProvider === "vertex" || this.config.transcriptionProvider === "google" || this.config.transcriptionProvider === "openrouter";
+  }
+
+  private refreshLanguageDerivedState(): void {
+    this.sourceLangLabel = getLanguageLabel(this.config.sourceLang);
+    this.targetLangLabel = getLanguageLabel(this.config.targetLang);
+    this.sourceLangName = LANG_NAMES[this.config.sourceLang];
+    this.targetLangName = LANG_NAMES[this.config.targetLang];
+
+    const englishIsConfigured = this.config.sourceLang === "en" || this.config.targetLang === "en";
     const langEnumValues: [string, ...string[]] = englishIsConfigured
-      ? [config.sourceLang, config.targetLang]
-      : [config.sourceLang, config.targetLang, "en"];
+      ? [this.config.sourceLang, this.config.targetLang]
+      : [this.config.sourceLang, this.config.targetLang, "en"];
 
     const sourceLanguageDescription = `The detected language: ${langEnumValues.map((c) => `"${c}" for ${LANG_NAMES[c as LanguageCode] ?? c}`).join(", ")}`;
 
@@ -390,42 +430,6 @@ export class Session {
         .boolean()
         .describe("True if the transcript shifts to a new topic compared with provided context."),
     });
-
-  }
-
-  getUIState(status: UIState["status"]): UIState {
-    const langPair = `${this.sourceLangName} → ${this.targetLangName}`;
-    const deviceName = this.config.legacyAudio && this.legacyDevice
-      ? this.legacyDevice.name
-      : "System Audio (ScreenCaptureKit)";
-    return {
-      deviceName,
-      modelId: `${langPair} | ${this.config.transcriptionModelId}`,
-      intervalMs: this.config.intervalMs,
-      status,
-      contextLoaded: !!this.userContext,
-      cost: this.costAccumulator.totalCost,
-      translationEnabled: this._translationEnabled,
-      canTranslate: this.canTranslate,
-      direction: this.config.direction,
-      micEnabled: this._micEnabled,
-    };
-  }
-
-  get recording(): boolean {
-    return this.isRecording;
-  }
-
-  private get isCapturing(): boolean {
-    return this.isRecording || this._micEnabled;
-  }
-
-  get allKeyPoints(): readonly string[] {
-    return this.contextState.allKeyPoints;
-  }
-
-  get canTranslate(): boolean {
-    return this.config.transcriptionProvider === "vertex" || this.config.transcriptionProvider === "google" || this.config.transcriptionProvider === "openrouter";
   }
 
   get translationEnabled(): boolean {
@@ -807,6 +811,7 @@ export class Session {
       if (!wasBuffering && this.usesParagraphBuffering) {
         // Switched from translation to buffering — nothing to flush
       }
+      this.db?.updateSessionLanguages(this.sessionId, this.config.sourceLang, this.config.targetLang);
       this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
       log("INFO", "Translation disabled via setTranslationMode");
       return;
@@ -817,14 +822,26 @@ export class Session {
     this.config.direction = direction;
     if (targetLang) {
       this.config.targetLang = targetLang;
-      this.targetLangLabel = getLanguageLabel(targetLang);
-      this.targetLangName = LANG_NAMES[targetLang];
     }
+    this.refreshLanguageDerivedState();
+    this.db?.updateSessionLanguages(this.sessionId, this.config.sourceLang, this.config.targetLang);
     if (wasBuffering) {
       void this.commitPendingParagraphs();
     }
     this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
     log("INFO", `Translation mode: direction=${direction}, target=${targetLang ?? this.config.targetLang}`);
+  }
+
+  setSourceLanguage(sourceLang: LanguageCode): void {
+    const previousSourceLang = this.config.sourceLang;
+    this.config.sourceLang = sourceLang;
+    this.refreshLanguageDerivedState();
+    this.db?.updateSessionLanguages(this.sessionId, this.config.sourceLang, this.config.targetLang);
+    if (this.config.transcriptionProvider === "elevenlabs" && previousSourceLang !== sourceLang) {
+      this.refreshElevenLabsConnections();
+    }
+    this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
+    log("INFO", `Source language updated: ${sourceLang}`);
   }
 
   addNote(text: string): TranscriptBlock {
@@ -1308,7 +1325,7 @@ export class Session {
     }
 
     // Guard: stop() may have been called while we were awaiting connect()
-    if (!this.isRecording || (source === "microphone" && !this._micEnabled)) {
+    if (!this.shouldKeepElevenLabsConnection(source)) {
       connection.close();
       return;
     }
@@ -1338,7 +1355,7 @@ export class Session {
       connection.close();
       if (source === "system") this.systemConnection = null;
       else this.micConnection = null;
-      if (this.isRecording) this.scheduleElevenLabsReconnect(source, 500);
+      if (this.shouldKeepElevenLabsConnection(source)) this.scheduleElevenLabsReconnect(source, 500);
     });
 
     connection.on(RealtimeEvents.CLOSE, () => {
@@ -1346,7 +1363,7 @@ export class Session {
       if (current !== connection) return; // already replaced (e.g. by reconnect)
       if (source === "system") this.systemConnection = null;
       else this.micConnection = null;
-      if (this.isRecording) {
+      if (this.shouldKeepElevenLabsConnection(source)) {
         log("WARN", `ElevenLabs WS closed unexpectedly (${source}), reconnecting`);
         this.scheduleElevenLabsReconnect(source, 1000);
       }
@@ -1564,13 +1581,34 @@ export class Session {
     }
   }
 
+  private shouldKeepElevenLabsConnection(source: AudioSource): boolean {
+    return source === "system" ? this.isRecording : this._micEnabled;
+  }
+
+  private refreshElevenLabsConnections(): void {
+    const activeSources: AudioSource[] = [];
+    if (this.isRecording) {
+      activeSources.push("system");
+    }
+    if (this._micEnabled) {
+      activeSources.push("microphone");
+    }
+    if (activeSources.length === 0) {
+      return;
+    }
+
+    for (const source of activeSources) {
+      this.closeElevenLabsConnection(source);
+      void this.openElevenLabsConnection(source);
+    }
+  }
+
   private scheduleElevenLabsReconnect(source: AudioSource, delayMs: number): void {
     const timerField = source === "system" ? "systemReconnectTimer" : "micReconnectTimer";
     if (this[timerField]) return; // already scheduled
     this[timerField] = setTimeout(() => {
       this[timerField] = null;
-      if (!this.isRecording) return;
-      if (source === "microphone" && !this._micEnabled) return;
+      if (!this.shouldKeepElevenLabsConnection(source)) return;
       void this.openElevenLabsConnection(source);
     }, delayMs);
   }
