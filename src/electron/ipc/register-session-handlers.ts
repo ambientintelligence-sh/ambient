@@ -29,10 +29,11 @@ export function registerSessionHandlers({ db, getWindow, sessionRef, getExternal
       targetLang: LanguageCode,
       appConfig?: AppConfigOverrides,
       projectId?: string,
+      translationEnabled?: boolean,
     ) => {
       await shutdownCurrentSession(sessionRef, db);
 
-      const config = buildSessionConfig(sourceLang, targetLang, appConfig);
+      const config = buildSessionConfig(sourceLang, targetLang, appConfig, !!translationEnabled);
       try {
         validateEnv(config);
       } catch (error) {
@@ -66,7 +67,7 @@ export function registerSessionHandlers({ db, getWindow, sessionRef, getExternal
 
   ipcMain.handle(
     "resume-session",
-    async (_event, sessionId: string, appConfig?: AppConfigOverrides) => {
+    async (_event, sessionId: string, appConfig?: AppConfigOverrides, translationEnabled?: boolean) => {
       await shutdownCurrentSession(sessionRef, db);
 
       const meta = db.getSession(sessionId);
@@ -80,6 +81,7 @@ export function registerSessionHandlers({ db, getWindow, sessionRef, getExternal
         sourceLang as LanguageCode,
         targetLang as LanguageCode,
         appConfig,
+        !!translationEnabled,
       );
 
       try {

@@ -298,7 +298,7 @@ export class Session {
     this.utilitiesModel = createUtilitiesModel(config);
     this.synthesisModel = createSynthesisModel(config);
     this.paragraphBuffer = new ParagraphBuffer({
-      utilitiesModel: this.utilitiesModel,
+      polishModel: this.taskModel,
       trackCost: this.trackCost.bind(this),
       emitPartial: (source, text) => this.events.emit("partial", { source, text }),
       commitTranscript: this.commitTranscript.bind(this),
@@ -1137,7 +1137,9 @@ export class Session {
   private micDebugWindowCount = 0;
 
   private handleAudioData(pipeline: AudioPipeline, data: Buffer) {
-    const chunks = processAudioData(pipeline.vadState, data);
+    const chunks = processAudioData(pipeline.vadState, data, {
+      maxChunkMs: this.config.intervalMs,
+    });
 
     // Periodic mic level reporting (~every 2s of audio = 20 × 100ms windows)
     if (pipeline.source === "microphone") {

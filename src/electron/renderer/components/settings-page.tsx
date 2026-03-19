@@ -5,8 +5,6 @@ import type {
   McpIntegrationStatus,
   McpProviderToolSummary,
   McpToolInfo,
-  Language,
-  LanguageCode,
   ResponseLength,
   TranscriptionProvider,
 } from "@core/types";
@@ -58,7 +56,6 @@ import {
   getTranscriptionModelOption,
   ANALYSIS_PROVIDERS,
   isProviderConfigured,
-  renderLanguageLabel,
   isKeyNeeded,
   renderApiKeyIcon,
 } from "./settings-config";
@@ -81,11 +78,6 @@ const SETTINGS_TABS: readonly { id: SettingsTab; label: string; icon: ComponentT
 
 type SettingsPageProps = {
   config: AppConfig;
-  languages: Language[];
-  sourceLang: LanguageCode;
-  targetLang: LanguageCode;
-  onSourceLangChange: (lang: LanguageCode) => void;
-  onTargetLangChange: (lang: LanguageCode) => void;
   isRecording: boolean;
   onConfigChange: (next: AppConfig) => void;
   onReset: () => void;
@@ -552,11 +544,6 @@ function ToolList({ tools }: { tools: McpToolInfo[] }) {
 
 export function SettingsPage({
   config,
-  languages,
-  sourceLang,
-  targetLang,
-  onSourceLangChange,
-  onTargetLangChange,
   isRecording,
   onConfigChange,
   onReset,
@@ -612,7 +599,6 @@ export function SettingsPage({
     return () => media.removeEventListener("change", handleChange);
   }, []);
 
-  const languagesLoading = languages.length === 0;
   const set = <K extends keyof AppConfig>(key: K, value: AppConfig[K]) => {
     onConfigChange({ ...config, [key]: value });
   };
@@ -869,7 +855,7 @@ export function SettingsPage({
               );
 
               return (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <label className="text-2xs text-muted-foreground">
                       Provider
@@ -886,9 +872,6 @@ export function SettingsPage({
                           transcriptionProvider: provider,
                           transcriptionModelId: nextModel.modelId,
                           intervalMs: nextModel.defaultIntervalMs,
-                          translationEnabled: nextProvider.supportsTranslation
-                            ? config.translationEnabled
-                            : false,
                         });
                       }}
                     >
@@ -950,35 +933,6 @@ export function SettingsPage({
                         ? `, translation via ${TRANSCRIPTION_PROVIDER_LABELS[config.transcriptionProvider]}`
                         : ", transcription only"}
                     </p>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-2xs text-muted-foreground">
-                      Language
-                    </label>
-                    <Select
-                      value={sourceLang}
-                      onValueChange={(value) => {
-                        const next = value as LanguageCode;
-                        onSourceLangChange(next);
-                        if (next === targetLang) {
-                          onTargetLangChange(next === "en" ? "ko" : "en");
-                        }
-                      }}
-                      disabled={languagesLoading}
-                    >
-                      <SelectTrigger size="sm" className="w-full">
-                        <SelectValue>
-                          {renderLanguageLabel(languages, sourceLang)}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {languages.map((lang) => (
-                          <SelectItem key={lang.code} value={lang.code}>
-                            {lang.name} ({lang.native})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
                   </div>
                   <div className="space-y-1">
                     <label className="text-2xs text-muted-foreground">

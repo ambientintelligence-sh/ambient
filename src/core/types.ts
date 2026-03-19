@@ -238,7 +238,6 @@ export type AppConfig = {
   responseLength: ResponseLength;
   debug: boolean;
   legacyAudio: boolean;
-  translationEnabled: boolean;
   agentAutoApprove: boolean;
   autoDelegate: boolean;
   codexEnabled: boolean;
@@ -383,7 +382,6 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   responseLength: "standard",
   debug: !!ENV?.DEBUG,
   legacyAudio: false,
-  translationEnabled: true,
   agentAutoApprove: false,
   autoDelegate: false,
   codexEnabled: false,
@@ -499,7 +497,6 @@ export function normalizeAppConfig(
           : DEFAULT_APP_CONFIG.responseLength,
     debug: !!merged.debug,
     legacyAudio: !!merged.legacyAudio,
-    translationEnabled: !!merged.translationEnabled,
     agentAutoApprove: !!merged.agentAutoApprove,
     autoDelegate: !!merged.autoDelegate,
     codexEnabled: !!merged.codexEnabled,

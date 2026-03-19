@@ -245,24 +245,44 @@ Return sourceLanguage and transcript.`;
 
 const TRANSCRIPT_POLISH_PROMPT_PATH = path.join("prompts", "transcription", "transcript-polish.md");
 
-const DEFAULT_TRANSCRIPT_POLISH_PROMPT = `You are cleaning up a short raw speech transcript (typically 1-2 sentences).
+const DEFAULT_TRANSCRIPT_POLISH_PROMPT = `You are cleaning up a raw speech transcript assembled from overlapping audio chunks.
 
-The input comes from overlapping audio chunks and may contain:
-- Repeated words or phrases from chunk overlap
-- Missing punctuation
-- Cut-off words at boundaries
-- Filler words and false starts
+Each audio chunk overlaps the previous one by ~1 second. When concatenated, this creates duplicate words/phrases at the seams. Your job: merge the overlaps into clean, continuous text.
+{{previous_transcript_section}}
 
 Raw transcript:
 """{{transcript}}"""
 
-Your task:
-1. Remove duplicate/repeated fragments from audio overlap.
-2. Add punctuation and fix cut-off words when obvious from context.
-3. Remove filler words (um, uh, like, you know) and false starts.
-4. Preserve all substantive content exactly. Do not add or reinterpret.
-5. Keep the original language. Do not translate.
-6. Return 1-2 clean sentences. Do not combine into longer paragraphs.`;
+OVERLAP PATTERNS TO FIX (these are the most common — remove the duplicate, keep the complete version):
+
+Pattern 1 — Exact repetition:
+  Input:  "get rid of this government. Get rid of this government. In Mexico"
+  Output: "Get rid of this government. In Mexico"
+
+Pattern 2 — Cut-off word then full word:
+  Input:  "would appear in inter. would appear in interviews"
+  Output: "would appear in interviews"
+
+Pattern 3 — Phrase repeated with more words after:
+  Input:  "from the country to gather from the country to gather up support"
+  Output: "from the country to gather up support"
+
+Pattern 4 — Sentence broken across chunks:
+  Input:  "relationship with. them would be a huge factor"
+  Output: "relationship with them would be a huge factor"
+
+Pattern 5 — Number/word fragment from chunk boundary:
+  Input:  "Batista 59, finally fled" (where "59" is from "1959" split across chunks)
+  Output: "Batista finally fled" (drop orphaned fragments that don't make sense)
+
+RULES:
+1. Scan for ANY phrase that appears twice in a row (exact or near-exact). Keep one occurrence — the more complete one.
+2. If "previously committed transcript" is provided above, the raw text may START with words that overlap the END of that previous text. Remove that leading overlap.
+3. Fix broken sentences: rejoin words split by periods/spaces at chunk boundaries.
+4. Remove filler words (um, uh, like, you know) and false starts.
+5. Add proper punctuation and capitalization.
+6. Preserve all substantive content. Do not add, summarize, or reinterpret.
+7. Keep the original language. Do not translate.`;
 
 function loadPrompt(relativePath: string, fallback: string): string {
   const fullPath = path.join(process.cwd(), relativePath);

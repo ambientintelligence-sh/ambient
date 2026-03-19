@@ -18,7 +18,7 @@ type PendingParagraph = {
 };
 
 export type ParagraphBufferDeps = {
-  utilitiesModel: LanguageModel;
+  polishModel: LanguageModel;
   trackCost: (input: number, output: number, type: "text", provider: string) => void;
   emitPartial: (source: AudioSource | null, text: string) => void;
   commitTranscript: (transcript: string, lang: LanguageCode, source: AudioSource, capturedAt: number) => Promise<void>;
@@ -27,6 +27,7 @@ export type ParagraphBufferDeps = {
 
 export class ParagraphBuffer {
   private readonly pendingParagraphs = new Map<AudioSource, PendingParagraph>();
+  private readonly lastCommitted = new Map<AudioSource, string>();
   private polishInFlight = false;
   private readonly commitIntervalMs = 6_000;
   private readonly deps: ParagraphBufferDeps;
@@ -88,7 +89,10 @@ export class ParagraphBuffer {
           continue;
         }
 
-        const polished = await this.polishTranscript(textToPolish);
+        const previousText = this.lastCommitted.get(pending.audioSource) ?? "";
+        const polished = await this.polishTranscript(textToPolish, previousText);
+
+        this.lastCommitted.set(pending.audioSource, polished);
 
         // Check if new text arrived while polishing. Keep the excess.
         const latest = this.pendingParagraphs.get(pending.audioSource);
@@ -120,6 +124,7 @@ export class ParagraphBuffer {
 
   clear(): void {
     this.pendingParagraphs.clear();
+    this.lastCommitted.clear();
   }
 
   get hasPending(): boolean {
@@ -149,17 +154,22 @@ export class ParagraphBuffer {
     }
   }
 
-  private async polishTranscript(transcript: string): Promise<string> {
+  private async polishTranscript(transcript: string, previousTranscript: string): Promise<string> {
     const trimmed = transcript.trim();
     if (trimmed.length < 20) return trimmed;
 
+    const previousSection = previousTranscript
+      ? `\n\nPreviously committed transcript (for overlap detection):\n"""${previousTranscript}"""`
+      : "";
+
     const prompt = renderPromptTemplate(getTranscriptPolishPromptTemplate(), {
       transcript: trimmed,
+      previous_transcript_section: previousSection,
     });
 
     try {
       const { object, usage } = await generateStructuredObject({
-        model: this.deps.utilitiesModel,
+        model: this.deps.polishModel,
         schema: z.object({ polished: z.string() }),
         prompt,
         temperature: 0,

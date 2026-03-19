@@ -222,6 +222,7 @@ export function useSession(
   resumeSessionId: string | null = null,
   options: SessionOptions = {},
   restartKey = 0,
+  translationEnabled = false,
 ) {
   const [state, dispatch] = useReducer(sessionStateReducer, initialState);
   const onResumedRef = useRef(options.onResumed);
@@ -229,11 +230,13 @@ export function useSession(
   const projectIdRef = useRef(options.projectId);
   const sourceLangRef = useRef(sourceLang);
   const targetLangRef = useRef(targetLang);
+  const translationEnabledRef = useRef(translationEnabled);
   onResumedRef.current = options.onResumed;
   appConfigRef.current = appConfig;
   projectIdRef.current = options.projectId;
   sourceLangRef.current = sourceLang;
   targetLangRef.current = targetLang;
+  translationEnabledRef.current = translationEnabled;
 
   useEffect(() => {
     if (!active) return;
@@ -252,7 +255,7 @@ export function useSession(
     cleanups.push(api.onError((t) => dispatch({ kind: "error", text: t })));
 
     if (resumeSessionId) {
-      api.resumeSession(resumeSessionId, appConfigRef.current).then((result) => {
+      api.resumeSession(resumeSessionId, appConfigRef.current, translationEnabledRef.current).then((result) => {
         if (result.ok && result.sessionId) {
           const data: ResumeData = {
             sessionId: result.sessionId,
@@ -268,7 +271,7 @@ export function useSession(
         }
       });
     } else {
-      api.startSession(sourceLangRef.current, targetLangRef.current, appConfigRef.current, projectIdRef.current ?? undefined).then((result) => {
+      api.startSession(sourceLangRef.current, targetLangRef.current, appConfigRef.current, projectIdRef.current ?? undefined, translationEnabledRef.current).then((result) => {
         if (result.ok && result.sessionId) {
           dispatch({ kind: "session-started", sessionId: result.sessionId });
         } else {

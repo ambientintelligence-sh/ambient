@@ -234,6 +234,7 @@ export function App() {
     resumeSessionId,
     { onResumed: handleResumed, projectId: integrationActiveProjectId },
     sessionRestartKey,
+    translateToSelection !== "off",
   );
   const isDeviceAudioActive =
     session.uiState?.status === "recording" || session.uiState?.status === "connecting";
@@ -1404,11 +1405,6 @@ export function App() {
         {settingsOpen ? (
           <SettingsPage
             config={appConfig}
-            languages={languages}
-            sourceLang={sourceLang}
-            targetLang={targetLang}
-            onSourceLangChange={(lang) => { void handleSourceLangChange(lang); }}
-            onTargetLangChange={(lang) => { applyTargetLang(lang); ui().setLangError(""); }}
             isRecording={session.uiState?.status === "recording" || session.uiState?.status === "connecting"}
             onConfigChange={handleAppConfigChange}
             onReset={() => setStoredAppConfig(DEFAULT_APP_CONFIG)}
