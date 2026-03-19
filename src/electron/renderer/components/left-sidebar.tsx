@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { MoreHorizontal } from "lucide-react";
+import { ChevronRight, Folder, MoreHorizontal, PlusIcon } from "lucide-react";
 import { SectionLabel } from "@/components/ui/section-label";
 
 type LeftSidebarProps = {
@@ -104,6 +104,7 @@ export function LeftSidebar({
 }: LeftSidebarProps) {
   const [formMode, setFormMode] = useState<ProjectFormMode>({ kind: "none" });
   const [mode, setMode] = useLocalStorage<LeftRailMode>("ambient-left-rail-mode", "sessions");
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [formName, setFormName] = useState("");
   const [formInstructions, setFormInstructions] = useState("");
   const [formContext, setFormContext] = useState("");
@@ -114,6 +115,12 @@ export function LeftSidebar({
       nameInputRef.current?.focus();
     }
   }, [formMode.kind]);
+
+  useEffect(() => {
+    if (formMode.kind !== "none") {
+      setFormMode({ kind: "none" });
+    }
+  }, [activeProjectId]);
 
   const activeProject = activeProjectId ? projects.find((p) => p.id === activeProjectId) : null;
   const liveSummaryPoints = (() => {
@@ -150,11 +157,13 @@ export function LeftSidebar({
 
   function submitForm() {
     const name = formName.trim();
+    const instructions = formInstructions.trim();
+    const context = formContext.trim();
     if (!name) return;
     if (formMode.kind === "create") {
-      onCreateProject(name, formInstructions.trim(), formContext.trim());
+      onCreateProject(name, instructions, context);
     } else if (formMode.kind === "edit") {
-      onEditProject({ ...formMode.project, name, instructions: formInstructions.trim() || undefined, context: formContext.trim() || undefined });
+      onEditProject({ ...formMode.project, name, instructions, context });
     }
     setFormMode({ kind: "none" });
   }
@@ -164,15 +173,18 @@ export function LeftSidebar({
       {/* Project selector */}
       <div className="px-3 pt-2.5 pb-2 shrink-0">
         <div className="flex items-center gap-1">
-          <DropdownMenu>
+          <DropdownMenu open={projectMenuOpen} onOpenChange={setProjectMenuOpen}>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="sm"
                 className="flex-1 justify-between h-7 px-2 text-xs font-medium text-left truncate"
               >
-                <span className="truncate">{activeProject ? activeProject.name : "All Sessions"}</span>
-                <span className="text-muted-foreground ml-1 shrink-0">▾</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <Folder className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{activeProject ? activeProject.name : "All Sessions"}</span>
+                </span>
+                <ChevronRight className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${projectMenuOpen ? "rotate-90" : ""}`} />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-52">
@@ -187,7 +199,10 @@ export function LeftSidebar({
               ))}
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={openCreateForm}>
-                New Project…
+                <span className="flex items-center gap-1.5">
+                  <PlusIcon className="size-3.5 shrink-0" />
+                  <span>New Folder…</span>
+                </span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -196,7 +211,7 @@ export function LeftSidebar({
               variant="ghost"
               size="sm"
               className="shrink-0 h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-              title="Edit project"
+              title="Edit folder"
               onClick={() => openEditForm(activeProject)}
             >
               ✎
@@ -206,39 +221,54 @@ export function LeftSidebar({
 
         {/* Inline project form */}
         {formMode.kind !== "none" && (
-          <div className="mt-2 space-y-1.5">
-            <Input
-              ref={nameInputRef}
-              value={formName}
-              onChange={(e) => setFormName(e.target.value)}
-              placeholder="Project name"
-              className="h-7 text-xs"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") submitForm();
-                if (e.key === "Escape") cancelForm();
-              }}
-            />
-            <textarea
-              value={formInstructions}
-              onChange={(e) => setFormInstructions(e.target.value)}
-              placeholder="Agent instructions (optional)"
-              rows={3}
-              className="w-full resize-none rounded-sm border border-input bg-background px-2 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              onKeyDown={(e) => {
-                if (e.key === "Escape") cancelForm();
-              }}
-            />
-            <textarea
-              value={formContext}
-              onChange={(e) => setFormContext(e.target.value)}
-              placeholder="Transcription context — names, glossary, style hints"
-              rows={3}
-              className="w-full resize-none rounded-sm border border-input bg-background px-2 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              onKeyDown={(e) => {
-                if (e.key === "Escape") cancelForm();
-              }}
-            />
-            <div className="flex gap-1.5">
+          <div className="mt-2">
+            <div className="space-y-1">
+              <label className="block text-[11px] font-medium text-muted-foreground">
+                Folder name
+              </label>
+              <Input
+                ref={nameInputRef}
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="Name this folder"
+                className="h-7 bg-background text-xs"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") submitForm();
+                  if (e.key === "Escape") cancelForm();
+                }}
+              />
+            </div>
+            <div className="mt-1.5 space-y-1">
+              <label className="block text-[11px] font-medium text-muted-foreground">
+                Agent instructions
+              </label>
+              <textarea
+                value={formInstructions}
+                onChange={(e) => setFormInstructions(e.target.value)}
+                placeholder="Additional instructions for agents on how to behave (optional)"
+                rows={3}
+                className="w-full resize-none rounded-sm border border-input bg-background px-2 py-1.5 text-xs leading-5 placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") cancelForm();
+                }}
+              />
+            </div>
+            <div className="mt-1.5 space-y-1">
+              <label className="block text-[11px] font-medium text-muted-foreground">
+                Transcription context
+              </label>
+              <textarea
+                value={formContext}
+                onChange={(e) => setFormContext(e.target.value)}
+                placeholder="Additional speech context, like names, glossary terms, or jargon (optional)"
+                rows={3}
+                className="w-full resize-none rounded-sm border border-input bg-background px-2 py-1.5 text-xs leading-5 placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") cancelForm();
+                }}
+              />
+            </div>
+            <div className="mt-2 flex gap-1.5">
               <Button size="sm" className="h-6 text-xs px-2" onClick={submitForm} disabled={!formName.trim()}>
                 {formMode.kind === "create" ? "Create" : "Save"}
               </Button>
@@ -345,7 +375,7 @@ export function LeftSidebar({
                               <DropdownMenuContent align="end" className="w-52">
                                 {onMoveSessionToProject && (
                                   <>
-                                    <DropdownMenuLabel>Move to project</DropdownMenuLabel>
+                                    <DropdownMenuLabel>Move to folder</DropdownMenuLabel>
                                     <DropdownMenuItem
                                       onSelect={() => onMoveSessionToProject(session.id, null)}
                                       disabled={!session.projectId}
