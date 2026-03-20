@@ -48,7 +48,7 @@ jobs:
           python-version: "3.12"
 
       - name: Rebuild native modules
-        run: pnpm rebuild
+        run: pnpm rebuild better-sqlite3 macos-alias
 
       - name: Make distributables
         run: pnpm electron:make
