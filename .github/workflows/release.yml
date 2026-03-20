@@ -42,6 +42,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Setup Python for native modules
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Rebuild native modules
+        run: pnpm rebuild
+
       - name: Make distributables
         run: pnpm electron:make
 
