@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/investor55/ambient/compare/v1.0.0...v1.1.0) (2026-03-20)
+
+
+### Features
+
+* add Python setup and native module rebuild to CI ([db98320](https://github.com/investor55/ambient/commit/db98320d8f131e8305d3bd0491688e970fc30f33))
+* add Python setup and native module rebuild to release workflow ([95950d3](https://github.com/investor55/ambient/commit/95950d3cb268fbad9c55dcf0d6dd873e4f170720))
+
 ## 1.0.0 (2026-03-20)
 
 
