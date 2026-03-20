@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/investor55/ambient/compare/v1.1.0...v1.2.0) (2026-03-20)
+
+
+### Features
+
+* add in-app update notification banner ([#8](https://github.com/investor55/ambient/issues/8)) ([7c4e50a](https://github.com/investor55/ambient/commit/7c4e50a5053e31f95c339089deb402cf35f71a13))
+
 ## [1.1.0](https://github.com/investor55/ambient/compare/v1.0.0...v1.1.0) (2026-03-20)
 
 
