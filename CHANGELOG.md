@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/investor55/ambient/compare/v1.2.0...v1.2.1) (2026-03-20)
+
+
+### Bug Fixes
+
+* reactivate live task suggestion and improve behaviour ([#10](https://github.com/investor55/ambient/issues/10)) ([2983409](https://github.com/investor55/ambient/commit/29834094918b0eac2c2ec26dda4a154dafe21ac5))
+
 ## [1.2.0](https://github.com/investor55/ambient/compare/v1.1.0...v1.2.0) (2026-03-20)
 
 
