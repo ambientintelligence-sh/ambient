@@ -111,6 +111,14 @@ type TaskSuggestionDraft = {
   kind?: import("./types").SuggestionKind;
 };
 
+function buildSuggestionArchiveDetails(candidate: TaskSuggestionDraft): string | undefined {
+  const sections = [
+    candidate.details?.trim() ? `Context summary:\n${candidate.details.trim()}` : "",
+    candidate.transcriptExcerpt?.trim() ? `Original transcript excerpt:\n${candidate.transcriptExcerpt.trim()}` : "",
+  ].filter(Boolean);
+  return sections.length > 0 ? sections.join("\n\n") : undefined;
+}
+
 function stringifyErrorPart(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   if (typeof value === "string") {
@@ -1672,18 +1680,12 @@ export class Session {
             this.recentSuggestedTaskTexts,
             previousKeyPoints,
             previousEducationalInsights.slice(-20),
+            this.config.taskSuggestionAggressiveness,
           );
-          const { object: suggestionResult, usage: taskUsage } = await generateStructuredObject({
-            model: this.taskModel,
-            schema: agentSuggestionSchema,
-            prompt: suggestionPrompt,
-            temperature: 0,
-          });
-
-          this.trackCost(taskUsage?.inputTokens ?? 0, taskUsage?.outputTokens ?? 0, "text", "openrouter");
-          taskSuggestions = suggestionResult.suggestions
-            .map((raw) => this.normalizeAgentSuggestion(raw))
-            .filter((candidate): candidate is TaskSuggestionDraft => candidate !== null);
+          taskSuggestions = await this.generateTaskSuggestionsWithFallback(
+            suggestionPrompt,
+            taskBlocks.length,
+          );
           this.lastTaskAnalysisBlockCount = analysisTargetBlockCount;
         } catch (taskError) {
           if (this.config.debug) {
@@ -1748,6 +1750,51 @@ export class Session {
     };
   }
 
+  private async generateTaskSuggestionsWithFallback(
+    suggestionPrompt: string,
+    taskBlockCount: number,
+  ): Promise<TaskSuggestionDraft[]> {
+    const runAttempt = async (
+      model: LanguageModel,
+      costProvider: AnalysisProvider | TranscriptionProvider,
+    ): Promise<TaskSuggestionDraft[]> => {
+      const { object: suggestionResult, usage } = await generateStructuredObject({
+        model,
+        schema: agentSuggestionSchema,
+        prompt: suggestionPrompt,
+        temperature: 0,
+      });
+
+      this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", costProvider);
+      return suggestionResult.suggestions
+        .map((raw) => this.normalizeAgentSuggestion(raw))
+        .filter((candidate): candidate is TaskSuggestionDraft => candidate !== null);
+    };
+
+    try {
+      const primarySuggestions = await runAttempt(this.taskModel, this.config.analysisProvider === "bedrock" ? "bedrock" : "openrouter");
+      if (primarySuggestions.length > 0 || this.taskModel === this.analysisModel) {
+        return primarySuggestions;
+      }
+
+      if (this.config.debug) {
+        log("INFO", `Task model returned no suggestions for ${taskBlockCount} block(s); retrying with analysis model.`);
+      }
+
+      return await runAttempt(this.analysisModel, this.config.analysisProvider);
+    } catch (primaryError) {
+      if (this.taskModel === this.analysisModel) {
+        throw primaryError;
+      }
+
+      if (this.config.debug) {
+        log("WARN", `Task model suggestion pass failed: ${toReadableError(primaryError)}. Retrying with analysis model.`);
+      }
+
+      return runAttempt(this.analysisModel, this.config.analysisProvider);
+    }
+  }
+
   private tryEmitTaskSuggestion(
     candidate: TaskSuggestionDraft,
   ): TaskSuggestion | null {
@@ -1766,6 +1813,20 @@ export class Session {
     this.recentSuggestedTaskTexts.push(normalized);
     if (this.recentSuggestedTaskTexts.length > 500) {
       this.recentSuggestedTaskTexts = this.recentSuggestedTaskTexts.slice(-500);
+    }
+    if (this.db && !this.db.getTask(suggestion.id)) {
+      this.db.insertTask({
+        id: suggestion.id,
+        text: suggestion.text,
+        details: buildSuggestionArchiveDetails(candidate),
+        size: "large",
+        completed: false,
+        archived: true,
+        suggestionKind: suggestion.kind,
+        source: "ai",
+        createdAt: suggestion.createdAt,
+        sessionId: suggestion.sessionId,
+      });
     }
     this.events.emit("task-suggested", suggestion);
     return suggestion;

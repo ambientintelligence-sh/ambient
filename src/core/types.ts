@@ -200,6 +200,7 @@ export type SessionConfig = {
   vertexLocation: string;
   bedrockRegion: string;
   responseLength: ResponseLength;
+  taskSuggestionAggressiveness: TaskSuggestionAggressiveness;
   debug: boolean;
   legacyAudio: boolean;
   translationEnabled: boolean;
@@ -213,6 +214,7 @@ export type SessionConfig = {
 export type FontSize = "sm" | "md" | "lg";
 export type FontFamily = "sans" | "serif" | "mono";
 export type ResponseLength = "concise" | "standard" | "detailed";
+export type TaskSuggestionAggressiveness = "conservative" | "balanced" | "aggressive";
 
 export type AppConfig = {
   themeMode: ThemeMode;
@@ -236,6 +238,7 @@ export type AppConfig = {
   vertexLocation: string;
   bedrockRegion: string;
   responseLength: ResponseLength;
+  taskSuggestionAggressiveness: TaskSuggestionAggressiveness;
   debug: boolean;
   legacyAudio: boolean;
   agentAutoApprove: boolean;
@@ -314,6 +317,7 @@ export const DEFAULT_LIGHT_VARIANT: LightVariant = "warm";
 export const DEFAULT_DARK_VARIANT: DarkVariant = "charcoal";
 export const DEFAULT_FONT_SIZE: FontSize = "md";
 export const DEFAULT_FONT_FAMILY: FontFamily = "sans";
+export const DEFAULT_TASK_SUGGESTION_AGGRESSIVENESS: TaskSuggestionAggressiveness = "balanced";
 
 function normalizeLightVariant(
   value: unknown,
@@ -380,6 +384,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   vertexLocation: DEFAULT_VERTEX_LOCATION,
   bedrockRegion: DEFAULT_BEDROCK_REGION,
   responseLength: "standard",
+  taskSuggestionAggressiveness: DEFAULT_TASK_SUGGESTION_AGGRESSIVENESS,
   debug: !!ENV?.DEBUG,
   legacyAudio: false,
   agentAutoApprove: false,
@@ -465,6 +470,12 @@ export function normalizeAppConfig(
     merged.synthesisModelId?.trim() ||
     legacyMemoryModelId ||
     DEFAULT_APP_CONFIG.synthesisModelId;
+  const taskSuggestionAggressiveness: TaskSuggestionAggressiveness =
+    merged.taskSuggestionAggressiveness === "conservative" ||
+    merged.taskSuggestionAggressiveness === "aggressive" ||
+    merged.taskSuggestionAggressiveness === "balanced"
+      ? merged.taskSuggestionAggressiveness
+      : DEFAULT_APP_CONFIG.taskSuggestionAggressiveness;
 
   return {
     ...merged,
@@ -495,6 +506,7 @@ export function normalizeAppConfig(
         : (merged as unknown as { compact?: boolean }).compact
           ? "concise"
           : DEFAULT_APP_CONFIG.responseLength,
+    taskSuggestionAggressiveness,
     debug: !!merged.debug,
     legacyAudio: !!merged.legacyAudio,
     agentAutoApprove: !!merged.agentAutoApprove,

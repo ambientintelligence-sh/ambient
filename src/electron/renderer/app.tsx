@@ -219,7 +219,7 @@ export function App() {
     ts().setProcessingTaskIds([]);
     seedAgents(data.sessionId, data.agents);
     ui().setFinalSummaryState({ kind: "idle" });
-    void window.electronAPI.getArchivedTasks(data.sessionId).then(ts().setArchivedSuggestions);
+    void window.electronAPI.getArchivedTasks(data.sessionId).then(ts().hydrateSuggestionsFromArchive);
     void refreshSessions();
     void window.electronAPI.getFinalSummary(data.sessionId).then((result) => {
       if (result.ok && result.summary) {
@@ -1106,7 +1106,29 @@ export function App() {
     }
   };
 
-  const handleSelectSession = (sid: string) => {
+  const discardEmptyDraftSessionIfNeeded = async (nextSessionId: string) => {
+    const currentSessionId = session.sessionId;
+    if (!currentSessionId || currentSessionId === nextSessionId) return;
+
+    const currentMeta = sessions.find((entry) => entry.id === currentSessionId);
+    const looksLikeBlankDraft =
+      sessionActive &&
+      session.blocks.length === 0 &&
+      tasks.length === 0 &&
+      suggestions.length === 0 &&
+      archivedSuggestions.length === 0 &&
+      agents.length === 0 &&
+      (currentMeta
+        ? !currentMeta.endedAt && !currentMeta.title && currentMeta.blockCount === 0 && currentMeta.agentCount === 0
+        : true);
+
+    if (!looksLikeBlankDraft) return;
+    await window.electronAPI.deleteSession(currentSessionId);
+    await refreshSessions();
+  };
+
+  const handleSelectSession = async (sid: string) => {
+    await discardEmptyDraftSessionIfNeeded(sid);
     micCapture.stop();
     ui().setSettingsOpen(false);
     ui().setRouteNotice("");
@@ -1186,6 +1208,7 @@ export function App() {
       prev.analysisModelId !== normalized.analysisModelId ||
       prev.analysisProvider !== normalized.analysisProvider ||
       prev.taskModelId !== normalized.taskModelId ||
+      prev.taskSuggestionAggressiveness !== normalized.taskSuggestionAggressiveness ||
       prev.utilityModelId !== normalized.utilityModelId ||
       prev.synthesisModelId !== normalized.synthesisModelId ||
       prev.transcriptionProvider !== normalized.transcriptionProvider ||

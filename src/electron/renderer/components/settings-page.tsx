@@ -50,6 +50,7 @@ import {
   DARK_VARIANT_OPTIONS,
   FONT_SIZE_OPTIONS,
   FONT_FAMILY_OPTIONS,
+  TASK_SUGGESTION_AGGRESSIVENESS_OPTIONS,
   TRANSCRIPTION_PROVIDER_OPTIONS,
   TRANSCRIPTION_PROVIDER_LABELS,
   getTranscriptionProviderOption,
@@ -442,6 +443,29 @@ function AgentsTab({
           }
         />
         <SettingRow
+          label="Suggestion Level"
+          description="Control how readily Ambient surfaces suggested tasks from the conversation."
+          control={
+            <div className="inline-flex items-center border border-border rounded-sm overflow-hidden">
+              {TASK_SUGGESTION_AGGRESSIVENESS_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`h-8 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 transition-colors ${
+                    config.taskSuggestionAggressiveness === option.value
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => set("taskSuggestionAggressiveness", option.value)}
+                  title={option.description}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          }
+        />
+        <SettingRow
           label="Auto-Approve"
           description="Agents skip approval for safe creates. Updates, deletes, and archives still require confirmation."
           control={<Switch checked={config.agentAutoApprove} onCheckedChange={(v) => set("agentAutoApprove", v)} />}
@@ -754,66 +778,6 @@ export function SettingsPage({
             />
           </SettingsSection>
 
-          <SettingsSection icon={SlidersHorizontalIcon} title="Session">
-            <div className="space-y-1">
-              <SettingRow
-                label="Response Length"
-                description="Control how verbose agent responses are."
-                control={
-                  <div className="inline-flex items-center border border-border rounded-sm overflow-hidden">
-                    {([
-                      { value: "concise", label: "Concise" },
-                      { value: "standard", label: "Standard" },
-                      { value: "detailed", label: "Detailed" },
-                    ] as const).map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={`h-8 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 transition-colors ${
-                          config.responseLength === option.value
-                            ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                            : "bg-background text-muted-foreground hover:text-foreground"
-                        }`}
-                        onClick={() => set("responseLength", option.value)}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                }
-              />
-              <SettingRow
-                label="Agent Auto-Approve"
-                description="Agents skip approval for safe creates. Updates, deletes, and archives still require confirmation."
-                control={
-                  <Switch
-                    checked={config.agentAutoApprove}
-                    onCheckedChange={(v) => set("agentAutoApprove", v)}
-                  />
-                }
-              />
-              <SettingRow
-                label="Auto-Delegate"
-                description="Automatically launch agents for agent-classified tasks when a session summary is generated."
-                control={
-                  <Switch
-                    checked={config.autoDelegate}
-                    onCheckedChange={(v) => set("autoDelegate", v)}
-                  />
-                }
-              />
-              <SettingRow
-                label="Codex"
-                description="Enable OpenAI Codex coding agent. Requires the codex CLI installed and logged in (codex login)."
-                control={
-                  <Switch
-                    checked={config.codexEnabled}
-                    onCheckedChange={(v) => set("codexEnabled", v)}
-                  />
-                }
-              />
-            </div>
-          </SettingsSection>
           <SettingsSection icon={WrenchIcon} title="Advanced">
             <div className="space-y-1">
               <SettingRow

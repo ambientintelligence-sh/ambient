@@ -56,6 +56,7 @@ export function buildSessionConfig(
     vertexLocation: config.vertexLocation,
     bedrockRegion: config.bedrockRegion,
     responseLength: config.responseLength,
+    taskSuggestionAggressiveness: config.taskSuggestionAggressiveness,
     debug: config.debug,
     legacyAudio: config.legacyAudio,
     translationEnabled,
