@@ -792,7 +792,7 @@ export function SettingsPage({
                       type="button"
                       className={`h-8 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 transition-colors ${
                         config.fontSize === option.value
-                          ? "bg-primary text-primary-foreground"
+                          ? "bg-primary text-primary-foreground hover:bg-primary/90"
                           : "bg-background text-muted-foreground hover:text-foreground"
                       }`}
                       onClick={() => set("fontSize", option.value)}
@@ -814,7 +814,7 @@ export function SettingsPage({
                       type="button"
                       className={`h-8 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 transition-colors ${
                         config.fontFamily === option.value
-                          ? "bg-primary text-primary-foreground"
+                          ? "bg-primary text-primary-foreground hover:bg-primary/90"
                           : "bg-background text-muted-foreground hover:text-foreground"
                       }`}
                       onClick={() => set("fontFamily", option.value)}
@@ -852,7 +852,7 @@ export function SettingsPage({
                         type="button"
                         className={`h-8 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 transition-colors ${
                           config.responseLength === option.value
-                            ? "bg-primary text-primary-foreground"
+                            ? "bg-primary text-primary-foreground hover:bg-primary/90"
                             : "bg-background text-muted-foreground hover:text-foreground"
                         }`}
                         onClick={() => set("responseLength", option.value)}

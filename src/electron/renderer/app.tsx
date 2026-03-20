@@ -87,6 +87,8 @@ export function App() {
   const [sourceLang, setSourceLang] = useLocalStorage<LanguageCode>("ambient-source-lang", "ko");
   const [targetLang, setTargetLang] = useLocalStorage<LanguageCode>("ambient-translate-to-lang", "en");
   const [translateToSelection, setTranslateToSelection] = useLocalStorage<LanguageCode | "off">("ambient-translate-to-selection", "en");
+  const [armedMicInput, setArmedMicInput] = useLocalStorage<boolean>("ambient-armed-mic-input", true);
+  const [armedDeviceAudio, setArmedDeviceAudio] = useLocalStorage<boolean>("ambient-armed-device-audio", true);
   const [storedAppConfig, setStoredAppConfig] = useLocalStorage<AppConfig>("ambient-app-config", DEFAULT_APP_CONFIG);
   const appConfig = normalizeAppConfig(storedAppConfig);
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -100,6 +102,7 @@ export function App() {
   const [leftPanelWidth, setLeftPanelWidth] = useLocalStorage<number>("ambient-left-panel-width", 280);
   const [rightPanelWidth, setRightPanelWidth] = useLocalStorage<number>("ambient-right-panel-width", 300);
   const pendingNewSessionRouteRef = useRef(false);
+  const pendingCaptureStartRef = useRef<{ mic: boolean; deviceAudio: boolean } | null>(null);
 
   useEffect(() => {
     const hasStoredSelection = localStorage.getItem("ambient-translate-to-selection") !== null;
@@ -225,6 +228,10 @@ export function App() {
     { onResumed: handleResumed, projectId: integrationActiveProjectId },
     sessionRestartKey,
   );
+  const isDeviceAudioActive =
+    session.uiState?.status === "recording" || session.uiState?.status === "connecting";
+  const isMicActive = session.uiState?.micEnabled ?? false;
+  const isCaptureActive = isDeviceAudioActive || isMicActive;
 
   // Auto-start mic when a new session starts
   useEffect(() => {
@@ -431,16 +438,85 @@ export function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.sessionId]);
 
+  useEffect(() => {
+    if (!session.sessionId || !pendingCaptureStartRef.current) return;
+    const selection = pendingCaptureStartRef.current;
+    pendingCaptureStartRef.current = null;
+    void startCaptureSelection(selection);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.sessionId]);
+
   useThemeMode(appConfig.themeMode, appConfig.lightVariant, appConfig.darkVariant, appConfig.fontSize, appConfig.fontFamily);
 
   // --- Handlers ---
-  const handleToggleMic = async () => {
+  const toggleMicRuntime = async () => {
     const result = await window.electronAPI.toggleMic();
     if (result.ok && result.captureInRenderer) {
       await micCapture.start();
     } else if (result.ok && !result.micEnabled) {
       micCapture.stop();
     }
+    return result;
+  };
+
+  const startCaptureSelection = async (selection: { mic: boolean; deviceAudio: boolean }) => {
+    if (!selection.mic && !selection.deviceAudio) {
+      ui().setRouteNotice("Select Mic Input or Device Audio before recording.");
+      return false;
+    }
+
+    ui().setRouteNotice("");
+
+    if (selection.mic && !isMicActive) {
+      const result = await toggleMicRuntime();
+      if (!result.ok) {
+        ui().setRouteNotice(result.error ?? "Failed to enable mic input.");
+        return false;
+      }
+    }
+
+    if (selection.deviceAudio && !isDeviceAudioActive) {
+      await session.toggleRecording();
+    }
+
+    return true;
+  };
+
+  const handleToggleMic = async () => {
+    await toggleMicRuntime();
+  };
+
+  const handleToggleMicInputSelection = async () => {
+    const next = !armedMicInput;
+    setArmedMicInput(next);
+    if (session.sessionId && isCaptureActive && next !== isMicActive) {
+      await toggleMicRuntime();
+    }
+  };
+
+  const handleToggleDeviceAudioSelection = async () => {
+    const next = !armedDeviceAudio;
+    setArmedDeviceAudio(next);
+    if (session.sessionId && isCaptureActive && next !== isDeviceAudioActive) {
+      await session.toggleRecording();
+    }
+  };
+
+  const handleRecordToggle = async () => {
+    if (isCaptureActive) {
+      pendingCaptureStartRef.current = null;
+      await handleStopCapture();
+      return;
+    }
+
+    const selection = { mic: armedMicInput, deviceAudio: armedDeviceAudio };
+    if (!session.sessionId) {
+      pendingCaptureStartRef.current = selection;
+      handleStart();
+      return;
+    }
+
+    await startCaptureSelection(selection);
   };
 
   const handleConnectMcpProvider = async (providerId: string) => {
@@ -555,11 +631,23 @@ export function App() {
   };
 
   const handleStop = () => {
+    pendingCaptureStartRef.current = null;
     micCapture.stop();
     sl().setSessionActive(false);
     sl().setResumeSessionId(null);
     ui().setRouteNotice("");
     void refreshSessions();
+  };
+
+  const handleStopCapture = async () => {
+    pendingCaptureStartRef.current = null;
+    ui().setRouteNotice("");
+    if (isDeviceAudioActive) {
+      await session.toggleRecording();
+    }
+    if (isMicActive) {
+      await toggleMicRuntime();
+    }
   };
 
   const handleNewSession = () => {
@@ -1235,7 +1323,7 @@ export function App() {
   };
 
   useKeyboard({
-    onToggleRecording: sessionActive ? session.toggleRecording : handleStart,
+    onToggleRecording: () => { void handleRecordToggle(); },
     onQuit: sessionActive ? handleStop : () => window.close(),
     onScrollUp: sessionActive ? scrollUp : undefined,
     onScrollDown: sessionActive ? scrollDown : undefined,
@@ -1277,15 +1365,15 @@ export function App() {
         onTargetLangChange={(lang) => { applyTargetLang(lang); ui().setLangError(""); }}
         onTranslateToSelectionChange={setTranslateToSelection}
         sessionActive={sessionActive}
-        onStart={handleStart}
-        onNewSession={handleNewSession}
-        onTogglePause={session.toggleRecording}
+        armedMicInput={armedMicInput}
+        armedDeviceAudio={armedDeviceAudio}
+        onToggleMicInput={() => { void handleToggleMicInputSelection(); }}
+        onToggleDeviceAudio={() => { void handleToggleDeviceAudioSelection(); }}
+        onRecordToggle={() => { void handleRecordToggle(); }}
         uiState={session.uiState}
         langError={langError}
         onToggleTranslation={handleToggleTranslation}
         onSetTranslationMode={handleSetTranslationMode}
-        onToggleMic={handleToggleMic}
-        onEndSession={sessionActive ? handleStop : undefined}
         settingsOpen={settingsOpen}
         onToggleSettings={() => {
           if (settingsOpen && onboardingPhase === "settings") {
@@ -1333,6 +1421,7 @@ export function App() {
                 rollingKeyPoints={session.rollingKeyPoints}
                 sessions={visibleSessions}
                 activeSessionId={selectedSessionId}
+                onNewSession={handleNewSession}
                 onSelectSession={handleSelectSession}
                 onDeleteSession={handleDeleteSession}
                 projects={integrationProjects}
