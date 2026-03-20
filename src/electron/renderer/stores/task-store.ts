@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import type { AppConfig, TaskItem, TaskSize, TaskSuggestion } from "@core/types";
 
+const LIVE_SUGGESTION_MAX_AGE_MS = 5 * 60_000;
+
 function buildAiSuggestionDetails(suggestion: TaskSuggestion): string | undefined {
   const sections = [
     suggestion.details?.trim()
@@ -11,6 +13,46 @@ function buildAiSuggestionDetails(suggestion: TaskSuggestion): string | undefine
       : "",
   ].filter(Boolean);
   return sections.length > 0 ? sections.join("\n\n") : undefined;
+}
+
+function parseAiSuggestionDetails(details?: string): Pick<TaskSuggestion, "details" | "transcriptExcerpt"> {
+  const trimmed = details?.trim();
+  if (!trimmed) return {};
+
+  const summaryPrefix = "Context summary:\n";
+  const excerptPrefix = "Original transcript excerpt:\n";
+
+  if (trimmed.startsWith(summaryPrefix)) {
+    const withoutPrefix = trimmed.slice(summaryPrefix.length);
+    const excerptIndex = withoutPrefix.indexOf(`\n\n${excerptPrefix}`);
+    if (excerptIndex >= 0) {
+      return {
+        details: withoutPrefix.slice(0, excerptIndex).trim() || undefined,
+        transcriptExcerpt: withoutPrefix.slice(excerptIndex + `\n\n${excerptPrefix}`.length).trim() || undefined,
+      };
+    }
+    return { details: withoutPrefix.trim() || undefined };
+  }
+
+  if (trimmed.startsWith(excerptPrefix)) {
+    return { transcriptExcerpt: trimmed.slice(excerptPrefix.length).trim() || undefined };
+  }
+
+  return { details: trimmed };
+}
+
+function archivedTaskToSuggestion(task: TaskItem): TaskSuggestion | null {
+  if (!task.archived || task.source !== "ai") return null;
+  const parsed = parseAiSuggestionDetails(task.details);
+  return {
+    id: task.id,
+    text: task.text,
+    details: parsed.details,
+    transcriptExcerpt: parsed.transcriptExcerpt,
+    kind: task.suggestionKind,
+    sessionId: task.sessionId,
+    createdAt: task.createdAt,
+  };
 }
 
 type TaskState = {
@@ -41,6 +83,7 @@ type TaskActions = {
   dismissSuggestion: (id: string) => void;
 
   setArchivedSuggestions: (archived: TaskItem[]) => void;
+  hydrateSuggestionsFromArchive: (archived: TaskItem[]) => void;
   acceptArchivedTask: (task: TaskItem) => void;
   deleteArchivedSuggestion: (id: string) => void;
 
@@ -170,13 +213,24 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
         suggestions: s.suggestions.filter((item) => item.id !== id),
         archivedSuggestions: [archivedTask, ...s.archivedSuggestions],
       }));
-      void window.electronAPI.addTask(archivedTask);
     } else {
       set((s) => ({ suggestions: s.suggestions.filter((item) => item.id !== id) }));
     }
   },
 
   setArchivedSuggestions: (archived) => set({ archivedSuggestions: archived }),
+  hydrateSuggestionsFromArchive: (archived) => {
+    const now = Date.now();
+    const suggestions = archived
+      .map(archivedTaskToSuggestion)
+      .filter((item): item is TaskSuggestion => item !== null)
+      .filter((item) => now - item.createdAt < LIVE_SUGGESTION_MAX_AGE_MS);
+    const suggestionIds = new Set(suggestions.map((item) => item.id));
+    set({
+      suggestions,
+      archivedSuggestions: archived.filter((item) => !suggestionIds.has(item.id)),
+    });
+  },
   acceptArchivedTask: (task) => {
     set((s) => ({
       archivedSuggestions: s.archivedSuggestions.filter((t) => t.id !== task.id),
@@ -246,6 +300,7 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
 
   acceptSuggestion: async ({ suggestion, targetSessionId, appConfig }) => {
     const suggestionDetails = buildAiSuggestionDetails(suggestion);
+    const existingArchivedTask = get().archivedSuggestions.find((task) => task.id === suggestion.id);
     const optimisticTask: TaskItem = {
       id: suggestion.id,
       text: suggestion.text,
@@ -260,26 +315,42 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
     set((s) => ({
       suggestions: s.suggestions.filter((item) => item.id !== suggestion.id),
       tasks: [optimisticTask, ...s.tasks.filter((t) => t.id !== suggestion.id)],
+      archivedSuggestions: s.archivedSuggestions.filter((task) => task.id !== suggestion.id),
       processingTaskIds: s.processingTaskIds.includes(suggestion.id)
         ? s.processingTaskIds
         : [suggestion.id, ...s.processingTaskIds],
     }));
 
-    const result = await get().persistTask({
-      targetSessionId,
-      text: suggestion.text,
-      details: suggestionDetails,
-      source: "ai",
-      id: suggestion.id,
-      createdAt: suggestion.createdAt,
-      appConfig,
-    });
+    const unarchiveResult = await window.electronAPI.unarchiveTask(suggestion.id);
+    const result = unarchiveResult.ok
+      ? {
+          ok: true as const,
+          task: {
+            ...(existingArchivedTask ?? optimisticTask),
+            archived: false,
+            text: suggestion.text,
+            details: suggestionDetails,
+            sessionId: targetSessionId,
+          } satisfies TaskItem,
+        }
+      : await get().persistTask({
+          targetSessionId,
+          text: suggestion.text,
+          details: suggestionDetails,
+          source: "ai",
+          id: suggestion.id,
+          createdAt: suggestion.createdAt,
+          appConfig,
+        });
 
     if (!result.ok) {
       set((s) => ({
         processingTaskIds: s.processingTaskIds.filter((id) => id !== suggestion.id),
         tasks: s.tasks.filter((t) => t.id !== suggestion.id),
         suggestions: [suggestion, ...s.suggestions.filter((item) => item.id !== suggestion.id)],
+        archivedSuggestions: existingArchivedTask
+          ? [existingArchivedTask, ...s.archivedSuggestions.filter((task) => task.id !== suggestion.id)]
+          : s.archivedSuggestions,
       }));
       return;
     }

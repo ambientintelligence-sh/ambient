@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { TranscriptBlock, TaskItem, Agent } from "../types";
+import type { TranscriptBlock, TaskItem, Agent, TaskSuggestionAggressiveness } from "../types";
 import {
   getAgentSuggestionPromptTemplate,
   getAnalysisRequestPromptTemplate,
@@ -357,6 +357,7 @@ export function buildAgentSuggestionPrompt(
   historicalSuggestions: readonly string[] = [],
   keyPoints: readonly string[] = [],
   educationalContext: readonly string[] = [],
+  aggressiveness: TaskSuggestionAggressiveness = "balanced",
 ): string {
   const transcript = recentBlocks
     .map((b) => {
@@ -398,6 +399,12 @@ export function buildAgentSuggestionPrompt(
   const educationalSection = educationalContext.length > 0
     ? `\n\nPrior educational insights (use to inform suggestions, do not repeat):\n${educationalContext.map((text) => `- ${text}`).join("\n")}`
     : "";
+  const aggressivenessSection =
+    aggressiveness === "conservative"
+      ? "\n\nSuggestion aggressiveness: conservative.\n- Only surface a suggestion when the transcript contains a fairly explicit follow-up, ask, deliverable, or risk.\n- Prefer silence over speculative suggestions."
+      : aggressiveness === "aggressive"
+        ? "\n\nSuggestion aggressiveness: aggressive.\n- Proactively surface implied next steps, research opportunities, drafting help, and decision support.\n- If there is plausible user-saving work to offer, prefer suggesting it."
+        : "\n\nSuggestion aggressiveness: balanced.\n- Surface explicit follow-ups and strong implied next steps.\n- Avoid weak or speculative suggestions.";
 
   return renderPromptTemplate(getAgentSuggestionPromptTemplate(), {
     transcript,
@@ -405,6 +412,7 @@ export function buildAgentSuggestionPrompt(
     historical_suggestions_section: historicalSuggestionsSection,
     key_points_section: keyPointsSection,
     educational_context_section: educationalSection,
+    suggestion_aggressiveness_section: aggressivenessSection,
   });
 }
 

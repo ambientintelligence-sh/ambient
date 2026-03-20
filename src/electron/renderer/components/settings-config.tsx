@@ -18,6 +18,7 @@ import type {
   Language,
   LanguageCode,
   LightVariant,
+  TaskSuggestionAggressiveness,
   ThemeMode,
   TranscriptionProvider,
 } from "@core/types";
@@ -68,6 +69,16 @@ export const FONT_FAMILY_OPTIONS: Array<{ value: FontFamily; label: string }> = 
   { value: "sans", label: "Sans" },
   { value: "serif", label: "Serif" },
   { value: "mono", label: "Mono" },
+];
+
+export const TASK_SUGGESTION_AGGRESSIVENESS_OPTIONS: Array<{
+  value: TaskSuggestionAggressiveness;
+  label: string;
+  description: string;
+}> = [
+  { value: "conservative", label: "Focused", description: "Only surface strong, explicit follow-ups." },
+  { value: "balanced", label: "Balanced", description: "Catch clear asks and solid implied next steps." },
+  { value: "aggressive", label: "Proactive", description: "Surface more research, drafting, and follow-up opportunities." },
 ];
 
 export type TranscriptionPreset = {

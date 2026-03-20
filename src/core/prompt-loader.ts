@@ -59,7 +59,7 @@ const DEFAULT_TASK_CREATION_SHARED_PROMPT = `Shared task creation standard (appl
 const DEFAULT_AGENT_SUGGESTION_PROMPT = `You are an AI assistant watching a live conversation over someone's shoulder. Your job is to proactively offer to help — research, draft, flag risks, or follow up on loose threads.
 
 Recent transcript:
-{{transcript}}{{existing_tasks_section}}{{historical_suggestions_section}}{{key_points_section}}{{educational_context_section}}
+{{transcript}}{{existing_tasks_section}}{{historical_suggestions_section}}{{key_points_section}}{{educational_context_section}}{{suggestion_aggressiveness_section}}
 
 Your role:
 - Watch the conversation and offer to DO things, not just observe.
@@ -69,6 +69,8 @@ Your role:
 
 Rules:
 - Return 0-3 suggestions. Quality over quantity. Return empty when nothing warrants an offer.
+- If the transcript contains an explicit follow-up, assignment, deadline, deliverable, research question, or comparison request, prefer returning at least 1 concrete suggestion instead of none.
+- Bias toward surfacing real work that could save the user time. Do not wait for perfect certainty when an actionable next step is clearly implied by the conversation.
 - Every suggestion must be something the agent can actually DO if accepted (search, draft, compare, verify, etc.).
 - Phrase each suggestion as a question: "Want me to…?", "Should I…?", "I noticed X — shall I check?".
 - Do NOT duplicate, rephrase, or re-suggest anything from existing tasks or historical suggestions. If you have already suggested something similar, skip it entirely. Return fewer suggestions rather than repeat ideas.
@@ -358,4 +360,3 @@ export function getAudioTranscriptionOnlyPromptTemplate(): string {
 export function getTranscriptPolishPromptTemplate(): string {
   return loadPrompt(TRANSCRIPT_POLISH_PROMPT_PATH, DEFAULT_TRANSCRIPT_POLISH_PROMPT);
 }
-
