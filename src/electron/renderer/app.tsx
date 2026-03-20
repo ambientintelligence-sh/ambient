@@ -127,6 +127,8 @@ export function App() {
   const onboardingCompleted = useUIStore((s) => s.onboardingCompleted);
   const tourStep = useUIStore((s) => s.tourStep);
   const finalSummaryState = useUIStore((s) => s.finalSummaryState);
+  const updateAvailable = useUIStore((s) => s.updateAvailable);
+  const updateDismissed = useUIStore((s) => s.updateDismissed);
 
   const tasks = useTaskStore((s) => s.tasks);
   const suggestions = useTaskStore((s) => s.suggestions);
@@ -274,6 +276,9 @@ export function App() {
       }),
       window.electronAPI.onFinalSummaryError((error) => {
         useUIStore.getState().setFinalSummaryState({ kind: "error", message: error });
+      }),
+      window.electronAPI.onUpdateAvailable((info) => {
+        useUIStore.getState().setUpdateAvailable(info);
       }),
     ];
     return () => cleanups.forEach((fn) => fn());
@@ -1600,6 +1605,28 @@ export function App() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {updateAvailable && !updateDismissed && (
+        <div className="flex items-center justify-between px-4 py-2 text-xs border-t border-blue-500/20 bg-blue-500/5">
+          <span className="text-blue-400">
+            v{updateAvailable.latestVersion} is available.{" "}
+            <a
+              href={updateAvailable.releaseUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-blue-300"
+            >
+              Download
+            </a>
+          </span>
+          <button
+            onClick={() => useUIStore.getState().dismissUpdate()}
+            className="text-muted-foreground hover:text-foreground ml-4"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {routeNotice && (
         <div className="px-4 py-2 text-muted-foreground text-xs border-t border-border bg-muted/40">
