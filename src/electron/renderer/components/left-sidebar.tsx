@@ -14,11 +14,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { ChevronRight, Folder, MoreHorizontal, PlusIcon } from "lucide-react";
 import { SectionLabel } from "@/components/ui/section-label";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Tick02Icon } from "@hugeicons/core-free-icons";
 
 type LeftSidebarProps = {
   rollingKeyPoints: string[];
   sessions: SessionMeta[];
   activeSessionId?: string | null;
+  onNewSession?: () => void;
   onSelectSession?: (sessionId: string) => void;
   onDeleteSession?: (sessionId: string) => void;
   projects: ProjectMeta[];
@@ -92,6 +95,7 @@ export function LeftSidebar({
   rollingKeyPoints,
   sessions,
   activeSessionId,
+  onNewSession,
   onSelectSession,
   onDeleteSession,
   projects,
@@ -189,15 +193,22 @@ export function LeftSidebar({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-52">
               <DropdownMenuItem onSelect={() => onSelectProject(null)}>
-                All Sessions
+                <span className="flex flex-1 items-center">
+                  <span className="flex-1">All Sessions</span>
+                  {!activeProject && <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="size-4 text-muted-foreground" />}
+                </span>
               </DropdownMenuItem>
-              {projects.length > 0 && <DropdownMenuSeparator />}
               {projects.map((p) => (
                 <DropdownMenuItem key={p.id} onSelect={() => onSelectProject(p.id)}>
-                  <span className="flex-1 truncate">{p.name}</span>
+                  <span className="flex flex-1 items-center">
+                    <span className="flex-1 truncate">{p.name}</span>
+                    {activeProjectId === p.id && (
+                      <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="size-4 text-muted-foreground" />
+                    )}
+                  </span>
                 </DropdownMenuItem>
               ))}
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator className="mx-2" />
               <DropdownMenuItem onSelect={openCreateForm}>
                 <span className="flex items-center gap-1.5">
                   <PlusIcon className="size-3.5 shrink-0" />
@@ -290,7 +301,18 @@ export function LeftSidebar({
         )}
       </div>
 
-      <Separator />
+      <Separator className="mx-auto !w-[calc(100%-1rem)]" />
+
+      <div className="px-3 pt-3 pb-2 shrink-0">
+        <Button
+          size="sm"
+          className="w-full justify-center hover:bg-primary/90"
+          onClick={onNewSession}
+        >
+          <PlusIcon className="size-3.5" data-icon="inline-start" />
+          New Session
+        </Button>
+      </div>
 
       <div className="px-2 py-2 shrink-0">
         <div className="grid grid-cols-2 gap-1 rounded-md bg-foreground/[0.045] p-1 dark:bg-muted/50">
@@ -332,7 +354,7 @@ export function LeftSidebar({
           </div>
         ) : (
           <>
-            <SectionLabel className="mb-2 shrink-0">Session Timeline</SectionLabel>
+            <SectionLabel className="mb-2 shrink-0">Sessions</SectionLabel>
             <div className="flex-1 min-h-0 overflow-y-auto">
               {sessions.length > 0 ? (
                 <ul className="space-y-1">
@@ -350,9 +372,6 @@ export function LeftSidebar({
                             <span className="text-foreground font-medium truncate">
                               {session.title ?? "Untitled Session"}
                             </span>
-                            <span className="text-muted-foreground text-2xs font-mono shrink-0">
-                              {session.blockCount}
-                            </span>
                           </div>
                           <div className="text-muted-foreground text-2xs font-mono">
                             {formatDate(session.startedAt)} · {formatTime(session.startedAt)}
@@ -366,38 +385,37 @@ export function LeftSidebar({
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-6 w-6 p-0 text-muted-foreground opacity-60 transition-opacity hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+                                  className="h-6 w-6 p-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
                                   aria-label="Session actions"
                                 >
                                   <MoreHorizontal className="size-3.5" />
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-52">
-                                {onMoveSessionToProject && (
+                                {onMoveSessionToProject && projects.length > 0 && (
                                   <>
                                     <DropdownMenuLabel>Move to folder</DropdownMenuLabel>
-                                    <DropdownMenuItem
-                                      onSelect={() => onMoveSessionToProject(session.id, null)}
-                                      disabled={!session.projectId}
-                                    >
-                                      All Sessions
-                                    </DropdownMenuItem>
-                                    {projects.length > 0 && <DropdownMenuSeparator />}
                                     {projects.map((project) => (
                                       <DropdownMenuItem
                                         key={project.id}
-                                        onSelect={() => onMoveSessionToProject(session.id, project.id)}
-                                        disabled={session.projectId === project.id}
+                                        onSelect={() => onMoveSessionToProject(
+                                          session.id,
+                                          session.projectId === project.id ? null : project.id,
+                                        )}
                                       >
-                                        {project.name}
-                                        {session.projectId === project.id ? " (current)" : ""}
+                                        <span className="flex flex-1 items-center">
+                                          <span className="flex-1 truncate">{project.name}</span>
+                                          {session.projectId === project.id && (
+                                            <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="size-4 text-muted-foreground" />
+                                          )}
+                                        </span>
                                       </DropdownMenuItem>
                                     ))}
                                   </>
                                 )}
                                 {onDeleteSession && (
                                   <>
-                                    {onMoveSessionToProject && <DropdownMenuSeparator />}
+                                    {onMoveSessionToProject && projects.length > 0 && <DropdownMenuSeparator className="mx-2" />}
                                     <DropdownMenuItem
                                       variant="destructive"
                                       onSelect={() => onDeleteSession(session.id)}

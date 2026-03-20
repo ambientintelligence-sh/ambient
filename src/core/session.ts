@@ -704,7 +704,7 @@ export class Session {
         log("ERROR", `Mic ffmpeg error: ${err.message}`);
         this._micEnabled = false;
         this.events.emit("error", `Mic failed: ${err.message}`);
-        this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
+        this.events.emit("state-change", this.getUIState(this.isRecording || this._micEnabled ? "recording" : "paused"));
       });
 
       this.micProcess.on("close", (code) => {
@@ -715,13 +715,13 @@ export class Session {
             log("ERROR", `Mic ffmpeg exited: code=${code}, stderr: ${micStderrBuffer.trim()}`);
             this.events.emit("error", `Mic stopped unexpectedly: ${detail}`);
           }
-          this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
+          this.events.emit("state-change", this.getUIState(this.isRecording || this._micEnabled ? "recording" : "paused"));
         }
       });
 
       log("INFO", `Mic started: device=${device}, cmd: ffmpeg -loglevel info -f avfoundation -thread_queue_size 1024 -i none:${device} -ac 1 -ar 16000 -f s16le -acodec pcm_s16le -nostdin -`);
       this.events.emit("status", "Starting microphone...");
-      this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
+      this.events.emit("state-change", this.getUIState(this.isRecording || this._micEnabled ? "recording" : "paused"));
     } catch (error) {
       this._micEnabled = false;
       log("ERROR", `Failed to start mic: ${toReadableError(error)}`);
@@ -749,7 +749,7 @@ export class Session {
 
     log("INFO", "Mic started via renderer capture (Web Audio API)");
     this.events.emit("status", "Mic active — listening...");
-    this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
+    this.events.emit("state-change", this.getUIState(this.isRecording || this._micEnabled ? "recording" : "paused"));
   }
 
   /** Receive PCM audio from renderer IPC */
