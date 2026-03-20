@@ -1,8 +1,10 @@
+import path from "node:path";
 import { streamText, tool, stepCountIs, type ModelMessage } from "ai";
 import { z } from "zod";
 import type {
   AgentStep,
   Agent,
+  AgentStatus,
   AgentQuestionRequest,
   AgentQuestionSelection,
   AgentToolApprovalRequest,
@@ -10,6 +12,7 @@ import type {
   AgentPlanApprovalRequest,
   AgentPlanApprovalResponse,
   AgentTodoItem,
+  TaskSize,
 } from "../types";
 import { log } from "../logger";
 import {
@@ -20,6 +23,8 @@ import {
 } from "../prompt-loader";
 import { normalizeProviderErrorMessage } from "../text/text-utils";
 import type { AgentExternalToolSet } from "./external-tools";
+import type { SkillMetadata } from "./skills";
+import { loadSkillContent } from "./skills";
 import {
   rankExternalTools,
   resolveExternalToolName,
@@ -38,7 +43,8 @@ type ExaClient = {
 export type AgentDeps = {
   model: Parameters<typeof streamText>[0]["model"];
   exa?: ExaClient | null;
-  getTranscriptContext: () => string;
+  getTranscriptSummary: () => string;
+  getTranscriptContext: (last?: number, offset?: number) => { blocks: string; returned: number; total: number; remaining: number };
   projectInstructions?: string;
   agentsMd?: string;
   responseLength?: import("../types").ResponseLength;
@@ -46,6 +52,11 @@ export type AgentDeps = {
   searchAgentHistory?: (query: string, limit?: number) => unknown[];
   getExternalTools?: () => Promise<AgentExternalToolSet>;
   getCodexClient?: import("./codex-client").GetCodexClient;
+  enabledSkills?: SkillMetadata[];
+  getFleetStatus?: () => {
+    agents: Array<{ id: string; task: string; status: AgentStatus; isYou: boolean }>;
+    tasks: Array<{ id: string; text: string; completed: boolean; size: TaskSize }>;
+  };
   allowAutoApprove: boolean;
   requestClarification: (
     request: AgentQuestionRequest,
@@ -125,6 +136,7 @@ const buildSystemPrompt = (
   agentsMd?: string,
   responseLength?: import("../types").ResponseLength,
   codexEnabled?: boolean,
+  enabledSkills?: SkillMetadata[],
 ) => {
   const base = renderPromptTemplate(getAgentSystemPromptTemplate(), {
     today: formatCurrentDateForPrompt(new Date()),
@@ -142,6 +154,17 @@ const buildSystemPrompt = (
 
   if (codexEnabled) {
     sections.push(getCodexInstructions());
+  }
+
+  if (enabledSkills && enabledSkills.length > 0) {
+    const skillLines = enabledSkills.map(
+      (s) => `- **${s.name}**: ${s.description}`
+    );
+    sections.push(
+      "## Available Skills\n\n" +
+        "You have access to the following skills. Use the loadSkill tool to load full instructions for a skill when its expertise is relevant to your task.\n\n" +
+        skillLines.join("\n")
+    );
   }
 
   const lengthPrompt = RESPONSE_LENGTH_PROMPTS[responseLength ?? "standard"];
@@ -279,7 +302,7 @@ function getMcpCallResultErrorText(output: unknown): string {
 
 async function buildTools(
   exa: ExaClient | null | undefined,
-  getTranscriptContext: () => string,
+  getTranscriptContext: (last?: number, offset?: number) => { blocks: string; returned: number; total: number; remaining: number },
   requestClarification: AgentDeps["requestClarification"],
   requestToolApproval: AgentDeps["requestToolApproval"],
   requestPlanApproval: AgentDeps["requestPlanApproval"],
@@ -290,6 +313,8 @@ async function buildTools(
   searchTranscriptHistory?: AgentDeps["searchTranscriptHistory"],
   searchAgentHistory?: AgentDeps["searchAgentHistory"],
   getCodexClient?: AgentDeps["getCodexClient"],
+  getFleetStatus?: AgentDeps["getFleetStatus"],
+  enabledSkills?: SkillMetadata[],
 ) {
   const baseTools: Parameters<typeof streamText>[0]["tools"] = {};
 
@@ -325,12 +350,25 @@ async function buildTools(
 
   baseTools["getTranscriptContext"] = tool({
     description:
-      "Get recent transcript blocks from the current conversation for more context.",
-    inputSchema: z.object({}),
-    execute: async () => {
-      return getTranscriptContext();
+      "Read transcript blocks from the current conversation. Returns blocks plus metadata (returned, total, remaining) for pagination.",
+    inputSchema: z.object({
+      last: z.number().optional().describe("Number of most recent blocks to return (default 10)"),
+      offset: z.number().optional().describe("Skip this many blocks from the end to page backwards (default 0)"),
+    }),
+    execute: async ({ last, offset }) => {
+      return getTranscriptContext(last, offset);
     },
   });
+
+  if (getFleetStatus) {
+    const fleetStatusFn = getFleetStatus;
+    baseTools["getFleetStatus"] = tool({
+      description:
+        "Get current status of all agents in this session and the session task list. Use to understand what other agents are working on and avoid duplicate effort.",
+      inputSchema: z.object({}),
+      execute: async () => fleetStatusFn(),
+    });
+  }
 
   baseTools["askQuestion"] = tool({
     description:
@@ -825,6 +863,28 @@ async function buildTools(
     });
   }
 
+  if (enabledSkills && enabledSkills.length > 0) {
+    const skills = enabledSkills;
+    baseTools["loadSkill"] = tool({
+      description:
+        "Load full instructions for an installed skill. Use this when a skill's expertise is relevant to your current task.",
+      inputSchema: z.object({
+        name: z.string().describe("The name of the skill to load"),
+      }),
+      execute: async ({ name }) => {
+        const skill = skills.find(
+          (s) => s.name.toLowerCase() === name.toLowerCase()
+        );
+        if (!skill) {
+          return { error: `Skill "${name}" not found. Available: ${skills.map((s) => s.name).join(", ")}` };
+        }
+        const content = loadSkillContent(skill.filePath);
+        const skillDir = path.dirname(skill.filePath);
+        return { name: skill.name, content, directory: skillDir };
+      },
+    });
+  }
+
   return { tools: baseTools, externalTools, codexRegistered };
 }
 
@@ -871,7 +931,17 @@ function summarizeToolCall(
   }
 
   if (toolName === "getTranscriptContext") {
-    return { content: "Reading transcript context" };
+    const record = asObject(input);
+    const last = record?.last;
+    const offset = record?.offset;
+    const detail = typeof last === "number" || typeof offset === "number"
+      ? ` (last=${last ?? 10}, offset=${offset ?? 0})`
+      : "";
+    return { content: `Reading transcript context${detail}` };
+  }
+
+  if (toolName === "getFleetStatus") {
+    return { content: "Checking fleet status" };
   }
 
   if (toolName === "askQuestion") {
@@ -922,94 +992,77 @@ function summarizeToolCall(
     return { content: typeof name === "string" ? `Calling MCP tool: ${name}` : "Calling MCP tool", toolInput: safeJson(input) };
   }
 
+  if (toolName === "loadSkill") {
+    const name = (input as Record<string, unknown>)?.name;
+    return { content: typeof name === "string" ? `Loading skill: ${name}` : "Loading skill" };
+  }
+
   return {
     content: `Using ${toolName}`,
     toolInput: safeJson(input),
   };
 }
 
-function summarizeToolResult(
-  toolName: string,
-  input: unknown,
-  output: unknown
-): {
-  content: string;
-  toolInput?: string;
-} {
-  if (toolName === "searchWeb") {
+type ToolSummary = { content: string; toolInput?: string };
+
+const TOOL_RESULT_SUMMARIZERS: Record<string, (input: unknown, output: unknown) => ToolSummary> = {
+  searchWeb: (input) => {
     const query = getSearchQuery(input);
-    if (query) {
-      return { content: `Searched: ${query}` };
-    }
-    return { content: "Search complete" };
-  }
-
-  if (toolName === "getTranscriptContext") {
-    return { content: "Loaded transcript context" };
-  }
-
-  if (toolName === "askQuestion") {
+    return { content: query ? `Searched: ${query}` : "Search complete" };
+  },
+  getTranscriptContext: (_input, output) => {
+    const record = asObject(output);
+    const returned = typeof record?.returned === "number" ? record.returned : "?";
+    const total = typeof record?.total === "number" ? record.total : "?";
+    return { content: `Loaded ${returned}/${total} transcript blocks` };
+  },
+  getFleetStatus: (_input, output) => {
+    const record = asObject(output);
+    const agentCount = Array.isArray(record?.agents) ? record.agents.length : 0;
+    return { content: `Fleet: ${agentCount} agent${agentCount === 1 ? "" : "s"}` };
+  },
+  askQuestion: (_input, output) => {
     const count = getAskQuestionAnswerCount(output);
-    return {
-      content:
-        count > 0
-          ? `Clarification received (${count} answered)`
-          : "Clarification received",
-      toolInput: safeJson(output),
-    };
-  }
-
-  if (toolName === "createPlan") {
-    return { content: "Plan created" };
-  }
-
-  if (toolName === "updateTodos") {
-    return { content: "Todos updated" };
-  }
-
-  if (toolName === "searchTranscriptHistory") {
+    return { content: count > 0 ? `Clarification received (${count} answered)` : "Clarification received", toolInput: safeJson(output) };
+  },
+  createPlan: () => ({ content: "Plan created" }),
+  updateTodos: () => ({ content: "Todos updated" }),
+  searchTranscriptHistory: (_input, output) => {
     const results = Array.isArray(output) ? output : [];
     return { content: `Found ${results.length} transcript${results.length === 1 ? "" : "s"}` };
-  }
-
-  if (toolName === "searchAgentHistory") {
+  },
+  searchAgentHistory: (_input, output) => {
     const results = Array.isArray(output) ? output : [];
     return { content: `Found ${results.length} agent result${results.length === 1 ? "" : "s"}` };
-  }
-
-  if (toolName === "getMcpToolSchema") {
+  },
+  getMcpToolSchema: (_input, output) => {
     const record = asObject(output);
     const name = record && typeof record.name === "string" ? record.name : null;
     return { content: name ? `Schema loaded: ${name}` : "Schema lookup complete" };
-  }
-
-  if (toolName === "searchMcpTools") {
+  },
+  searchMcpTools: (_input, output) => {
     const record = asObject(output);
     const results = Array.isArray(record?.results) ? record.results : [];
     return { content: `Found ${results.length} MCP tool${results.length === 1 ? "" : "s"}` };
-  }
-
-  if (toolName === "callMcpTool") {
+  },
+  callMcpTool: (input, output) => {
     const name = (input as Record<string, unknown>)?.name;
     const label = typeof name === "string" ? name : "MCP tool";
     const status = getMcpCallResultStatus(output);
-    if (status === "error") {
-      const errorText = getMcpCallResultErrorText(output);
-      return {
-        content: `${label} failed`,
-        toolInput: errorText || safeJson(output),
-      };
-    }
-    if (status === "denied") {
-      return { content: `${label} denied`, toolInput: safeJson(output) };
-    }
+    if (status === "error") return { content: `${label} failed`, toolInput: getMcpCallResultErrorText(output) || safeJson(output) };
+    if (status === "denied") return { content: `${label} denied`, toolInput: safeJson(output) };
     return { content: `${label} complete`, toolInput: safeJson(output) };
-  }
+  },
+  loadSkill: (input) => {
+    const name = (input as Record<string, unknown>)?.name;
+    return { content: typeof name === "string" ? `Loaded: ${name}` : "Skill loaded" };
+  },
+};
 
-  return {
-    content: `${toolName} complete`,
-    toolInput: safeJson(output),
-  };
+function summarizeToolResult(toolName: string, input: unknown, output: unknown): ToolSummary {
+  const summarizer = TOOL_RESULT_SUMMARIZERS[toolName];
+  if (summarizer) return summarizer(input, output);
+  return { content: `${toolName} complete`, toolInput: safeJson(output) };
 }
 
 /**
@@ -1050,6 +1103,7 @@ async function runAgentWithMessages(
   const {
     model,
     exa,
+    getTranscriptSummary,
     getTranscriptContext,
     projectInstructions,
     agentsMd,
@@ -1058,6 +1112,8 @@ async function runAgentWithMessages(
     searchAgentHistory,
     getExternalTools,
     getCodexClient,
+    enabledSkills,
+    getFleetStatus,
     allowAutoApprove,
     requestClarification,
     requestToolApproval,
@@ -1085,15 +1141,17 @@ async function runAgentWithMessages(
       searchTranscriptHistory,
       searchAgentHistory,
       getCodexClient,
+      getFleetStatus,
+      enabledSkills,
     );
     const systemPrompt = buildSystemPrompt(
-      getTranscriptContext(),
+      getTranscriptSummary(),
       projectInstructions,
       agentsMd,
       responseLength,
       codexRegistered,
+      enabledSkills,
     );
-
     // Track consecutive tool errors to circuit-break runaway retries
     let consecutiveToolErrors = 0;
 

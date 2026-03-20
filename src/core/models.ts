@@ -17,7 +17,7 @@ export type ModelPreset = {
   providers?: string[];
 };
 
-export type ModelProvider = "openrouter" | "bedrock" | "fireworks";
+export type ModelProvider = "openrouter" | "bedrock";
 
 export type ProviderRoleDefaults = {
   analysisModelId: string;
@@ -87,42 +87,6 @@ export const MODEL_CONFIG: Record<ModelProvider, ProviderConfig> = {
       {
         label: "GLM 5",
         modelId: "z-ai/glm-5",
-        reasoning: true,
-      },
-    ],
-  },
-  fireworks: {
-    defaults: {
-      analysisModelId: "accounts/fireworks/models/kimi-k2p5",
-      taskModelId: "accounts/fireworks/models/gpt-oss-120b",
-      utilityModelId: "accounts/fireworks/models/gpt-oss-20b",
-      synthesisModelId: "accounts/fireworks/models/gpt-oss-20b",
-      taskProviders: [],
-    },
-    models: [
-      {
-        label: "GPT-OSS 20B",
-        modelId: "accounts/fireworks/models/gpt-oss-20b",
-        reasoning: true,
-      },
-      {
-        label: "GPT-OSS 120B",
-        modelId: "accounts/fireworks/models/gpt-oss-120b",
-        reasoning: true,
-      },
-      {
-        label: "Minimax M2.5",
-        modelId: "accounts/fireworks/models/minimax-m2p5",
-        reasoning: true,
-      },
-      {
-        label: "Kimi K2.5",
-        modelId: "accounts/fireworks/models/kimi-k2p5",
-        reasoning: true,
-      },
-      {
-        label: "GLM 5",
-        modelId: "accounts/fireworks/models/glm-5",
         reasoning: true,
       },
     ],

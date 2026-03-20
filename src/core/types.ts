@@ -48,10 +48,8 @@ export type DarkVariant = "charcoal" | "steel" | "pitch-black" | "abyss";
 export type TranscriptionProvider =
   | "openrouter"
   | "vertex"
-  | "google"
-  | "elevenlabs"
-  | "fireworks";
-export type AnalysisProvider = "openrouter" | "google" | "vertex" | "bedrock" | "fireworks";
+  | "google";
+export type AnalysisProvider = "openrouter" | "google" | "vertex" | "bedrock";
 export type { AnalysisModelPreset } from "./models";
 
 export type TranscriptBlock = {
@@ -207,6 +205,8 @@ export type SessionConfig = {
   translationEnabled: boolean;
   agentAutoApprove: boolean;
   codexEnabled: boolean;
+  disabledSkillIds: string[];
+  learningEnabled: boolean;
   micDevice?: string;
 };
 
@@ -238,10 +238,11 @@ export type AppConfig = {
   responseLength: ResponseLength;
   debug: boolean;
   legacyAudio: boolean;
-  translationEnabled: boolean;
   agentAutoApprove: boolean;
   autoDelegate: boolean;
   codexEnabled: boolean;
+  disabledSkillIds: string[];
+  learningEnabled: boolean;
 };
 
 export type AppConfigOverrides = Partial<AppConfig>;
@@ -381,10 +382,11 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   responseLength: "standard",
   debug: !!ENV?.DEBUG,
   legacyAudio: false,
-  translationEnabled: true,
   agentAutoApprove: false,
   autoDelegate: false,
   codexEnabled: false,
+  disabledSkillIds: [],
+  learningEnabled: true,
 };
 
 export function normalizeAppConfig(
@@ -432,17 +434,14 @@ export function normalizeAppConfig(
   const transcriptionProvider: TranscriptionProvider =
     merged.transcriptionProvider === "openrouter" ||
     merged.transcriptionProvider === "vertex" ||
-    merged.transcriptionProvider === "google" ||
-    merged.transcriptionProvider === "elevenlabs" ||
-    merged.transcriptionProvider === "fireworks"
+    merged.transcriptionProvider === "google"
       ? merged.transcriptionProvider
       : DEFAULT_APP_CONFIG.transcriptionProvider;
   const analysisProvider: AnalysisProvider =
     merged.analysisProvider === "openrouter" ||
     merged.analysisProvider === "google" ||
     merged.analysisProvider === "vertex" ||
-    merged.analysisProvider === "bedrock" ||
-    merged.analysisProvider === "fireworks"
+    merged.analysisProvider === "bedrock"
       ? merged.analysisProvider
       : DEFAULT_APP_CONFIG.analysisProvider;
   const intervalMs =
@@ -498,7 +497,6 @@ export function normalizeAppConfig(
           : DEFAULT_APP_CONFIG.responseLength,
     debug: !!merged.debug,
     legacyAudio: !!merged.legacyAudio,
-    translationEnabled: !!merged.translationEnabled,
     agentAutoApprove: !!merged.agentAutoApprove,
     autoDelegate: !!merged.autoDelegate,
     codexEnabled: !!merged.codexEnabled,
@@ -508,6 +506,10 @@ export function normalizeAppConfig(
       Array.isArray(merged.taskProviders) && merged.taskProviders.length > 0
         ? merged.taskProviders
         : DEFAULT_APP_CONFIG.taskProviders,
+    disabledSkillIds: Array.isArray(merged.disabledSkillIds)
+      ? merged.disabledSkillIds
+      : DEFAULT_APP_CONFIG.disabledSkillIds,
+    learningEnabled: merged.learningEnabled !== false,
   };
 }
 

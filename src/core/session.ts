@@ -6,7 +6,6 @@ import { z } from "zod";
 import type {
   Agent,
   AgentKind,
-  AgentsSummary,
   AgentQuestionSelection,
   AgentToolApprovalResponse,
   AgentPlanApprovalResponse,
@@ -16,11 +15,12 @@ import type {
   SessionConfig,
   SessionEvents,
   Summary,
-  FinalSummary,
   UIState,
   LanguageCode,
   TaskSuggestion,
   Insight,
+  TranscriptionProvider,
+  AnalysisProvider,
 } from "./types";
 import { createTranscriptionModel, createAnalysisModel, createTaskModel, createUtilitiesModel, createSynthesisModel } from "./providers";
 import { log } from "./logger";
@@ -31,14 +31,10 @@ import {
   agentSuggestionSchema,
   type AgentSuggestionItem,
   taskFromSelectionSchema,
-  finalSummarySchema,
-  agentsSummarySchema,
   sessionTitleSchema,
   buildAnalysisPrompt,
   buildAgentSuggestionPrompt,
   buildTaskFromSelectionPrompt,
-  buildFinalSummaryPrompt,
-  buildAgentsSummaryPrompt,
   buildSessionTitlePrompt,
 } from "./analysis/analysis";
 import { classifyTaskSize as classifyTaskSizeWithModel, type TaskSizeClassification } from "./analysis/task-size";
@@ -70,7 +66,6 @@ import {
   recordContext,
   createBlock,
   loadAgentsMd,
-  loadProjectAgentsMd,
   writeSummaryLog,
   type ContextState,
 } from "./context";
@@ -84,19 +79,18 @@ import {
   type AudioRecorder,
 } from "./audio/audio";
 import { createAgentManager, type AgentManager } from "./agents/agent-manager";
+import { discoverSkills } from "./agents/skills";
 import type { AgentExternalToolSet } from "./agents/external-tools";
 import {
-  connectElevenLabsRealtime,
-  normalizeElevenLabsLanguageCode,
-  RealtimeEvents,
-  type RealtimeConnection,
-} from "./transcription/elevenlabs";
-import { transcribeWithFireworks } from "./transcription/fireworks";
-import {
   getTranscriptPostProcessPromptTemplate,
-  getTranscriptPolishPromptTemplate,
   renderPromptTemplate,
 } from "./prompt-loader";
+import { ParagraphBuffer } from "./paragraph-buffer";
+import {
+  generateFinalSummary as generateFinalSummaryFn,
+  generateAgentsSummary as generateAgentsSummaryFn,
+  formatSummaryError,
+} from "./summary-generator";
 import { generateStructuredObject } from "./ai/structured-output";
 
 type TypedEmitter = EventEmitter & {
@@ -108,14 +102,6 @@ type AudioPipeline = {
   source: AudioSource;
   vadState: VadState;
   overlap: Buffer;
-};
-
-type PendingParagraph = {
-  transcript: string;
-  detectedLangHint: LanguageCode;
-  audioSource: AudioSource;
-  capturedAt: number;
-  lastUpdatedAt: number;
 };
 
 type TaskSuggestionDraft = {
@@ -201,7 +187,7 @@ export class Session {
   readonly config: SessionConfig;
   readonly sessionId: string;
 
-  private transcriptionModel: LanguageModel | null;
+  private transcriptionModel: LanguageModel;
   private analysisModel: LanguageModel;
   private taskModel: LanguageModel;
   private utilitiesModel: LanguageModel;
@@ -240,14 +226,7 @@ export class Session {
     overlap: Buffer.alloc(0),
   };
 
-  // ElevenLabs realtime — one connection per active audio source
-  private systemConnection: RealtimeConnection | null = null;
-  private micConnection: RealtimeConnection | null = null;
-  private systemReconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private micReconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private pendingParagraphs = new Map<AudioSource, PendingParagraph>();
-  private paragraphPolishInFlight = false;
-  private readonly paragraphCommitIntervalMs = 6_000;
+  private paragraphBuffer: ParagraphBuffer;
 
   private contextState: ContextState = createContextState();
   private costAccumulator: CostAccumulator = createCostAccumulator();
@@ -280,10 +259,28 @@ export class Session {
   private getCodexClient?: SessionExternalDeps["getCodexClient"];
   private dataDir?: string;
 
-  private sourceLangLabel: string;
-  private targetLangLabel: string;
-  private sourceLangName: string;
-  private targetLangName: string;
+  private get sourceLangLabel(): string { return getLanguageLabel(this.config.sourceLang); }
+  private get targetLangLabel(): string { return getLanguageLabel(this.config.targetLang); }
+  private get sourceLangName(): string { return LANG_NAMES[this.config.sourceLang]; }
+  private get targetLangName(): string { return LANG_NAMES[this.config.targetLang]; }
+  private get summaryDeps() {
+    return {
+      synthesisModel: this.synthesisModel,
+      synthesisModelId: this.config.synthesisModelId,
+      sessionId: this.sessionId,
+      db: this.db,
+      trackCost: this.trackCost.bind(this),
+    };
+  }
+
+  private trackCost(inputTokens: number, outputTokens: number, inputType: "audio" | "text", provider: TranscriptionProvider | AnalysisProvider): void {
+    const total = addCostToAcc(this.costAccumulator, inputTokens, outputTokens, inputType, provider);
+    this.events.emit("cost-updated", total);
+  }
+
+  private ensureTranscriptContext(): void {
+    this.hydrateTranscriptContextFromDb();
+  }
 
   constructor(config: SessionConfig, db?: AppDatabase, sessionId?: string, externalDeps?: SessionExternalDeps) {
     this.config = config;
@@ -292,17 +289,21 @@ export class Session {
     this.getExternalTools = externalDeps?.getExternalTools;
     this.getCodexClient = externalDeps?.getCodexClient;
     this.dataDir = externalDeps?.dataDir;
-    this._translationEnabled = config.translationEnabled && (config.transcriptionProvider === "vertex" || config.transcriptionProvider === "google" || config.transcriptionProvider === "openrouter");
+    this._translationEnabled = config.translationEnabled;
     this.userContext = this.loadProjectContext();
 
-    this.transcriptionModel =
-      config.transcriptionProvider === "elevenlabs" || config.transcriptionProvider === "fireworks"
-        ? null
-        : createTranscriptionModel(config);
+    this.transcriptionModel = createTranscriptionModel(config);
     this.analysisModel = createAnalysisModel(config);
     this.taskModel = createTaskModel(config);
     this.utilitiesModel = createUtilitiesModel(config);
     this.synthesisModel = createSynthesisModel(config);
+    this.paragraphBuffer = new ParagraphBuffer({
+      polishModel: this.taskModel,
+      trackCost: this.trackCost.bind(this),
+      emitPartial: (source, text) => this.events.emit("partial", { source, text }),
+      commitTranscript: this.commitTranscript.bind(this),
+      debug: config.debug,
+    });
 
     this.agentManager = createAgentManager({
       model: this.analysisModel,
@@ -310,25 +311,25 @@ export class Session {
       synthesisModel: this.synthesisModel,
       exaApiKey: process.env.EXA_API_KEY,
       events: this.events,
-      getTranscriptContext: () => this.getTranscriptContextForAgent(),
+      getTranscriptSummary: () => this.getTranscriptSummaryForAgent(),
+      getTranscriptContext: (last?: number, offset?: number) => this.getTranscriptBlocks(last, offset),
       getRecentBlocks: () => this.db ? this.db.getBlocksForSession(this.sessionId).slice(-20) : [],
       getProjectInstructions: () => {
         const projectId = this.getCurrentProjectId();
         if (!projectId) return undefined;
         return this.db?.getProject(projectId)?.instructions ?? undefined;
       },
-      getProjectId: () => this.getCurrentProjectId(),
-      dataDir: this.dataDir,
       getAgentsMd: () => loadAgentsMd(),
-      getProjectAgentsMd: () => {
-        const projectId = this.getCurrentProjectId();
-        if (!projectId || !this.dataDir) return null;
-        return loadProjectAgentsMd(this.dataDir, projectId) || null;
-      },
+      learningEnabled: config.learningEnabled,
       searchTranscriptHistory: this.db ? (q: string, l?: number) => this.db!.searchBlocks(q, l) : undefined,
       searchAgentHistory: this.db ? (q: string, l?: number) => this.db!.searchAgents(q, l) : undefined,
       getExternalTools: this.getExternalTools,
       getCodexClient: this.getCodexClient,
+      getEnabledSkills: () => {
+        const all = discoverSkills(process.cwd());
+        const disabled = new Set(config.disabledSkillIds ?? []);
+        return all.filter((s) => !disabled.has(s.id));
+      },
       responseLength: config.responseLength,
       allowAutoApprove: config.agentAutoApprove,
       db: this.db ?? undefined,
@@ -341,51 +342,10 @@ export class Session {
     }
     log("INFO", `AgentManager initialized${process.env.EXA_API_KEY ? " (web search enabled)" : " (web search disabled — no EXA_API_KEY)"}`);
 
-    this.refreshLanguageDerivedState();
-
+    this.rebuildTranscriptionSchemas();
   }
 
-  getUIState(status: UIState["status"]): UIState {
-    const langPair = `${this.sourceLangName} → ${this.targetLangName}`;
-    const deviceName = this.config.legacyAudio && this.legacyDevice
-      ? this.legacyDevice.name
-      : "System Audio (ScreenCaptureKit)";
-    return {
-      deviceName,
-      modelId: `${langPair} | ${this.config.transcriptionModelId}`,
-      intervalMs: this.config.intervalMs,
-      status,
-      contextLoaded: !!this.userContext,
-      cost: this.costAccumulator.totalCost,
-      translationEnabled: this._translationEnabled,
-      canTranslate: this.canTranslate,
-      direction: this.config.direction,
-      micEnabled: this._micEnabled,
-    };
-  }
-
-  get recording(): boolean {
-    return this.isRecording;
-  }
-
-  private get isCapturing(): boolean {
-    return this.isRecording || this._micEnabled;
-  }
-
-  get allKeyPoints(): readonly string[] {
-    return this.contextState.allKeyPoints;
-  }
-
-  get canTranslate(): boolean {
-    return this.config.transcriptionProvider === "vertex" || this.config.transcriptionProvider === "google" || this.config.transcriptionProvider === "openrouter";
-  }
-
-  private refreshLanguageDerivedState(): void {
-    this.sourceLangLabel = getLanguageLabel(this.config.sourceLang);
-    this.targetLangLabel = getLanguageLabel(this.config.targetLang);
-    this.sourceLangName = LANG_NAMES[this.config.sourceLang];
-    this.targetLangName = LANG_NAMES[this.config.targetLang];
-
+  private rebuildTranscriptionSchemas(): void {
     const englishIsConfigured = this.config.sourceLang === "en" || this.config.targetLang === "en";
     const langEnumValues: [string, ...string[]] = englishIsConfigured
       ? [this.config.sourceLang, this.config.targetLang]
@@ -430,6 +390,41 @@ export class Session {
         .boolean()
         .describe("True if the transcript shifts to a new topic compared with provided context."),
     });
+  }
+
+  getUIState(status: UIState["status"]): UIState {
+    const langPair = `${this.sourceLangName} → ${this.targetLangName}`;
+    const deviceName = this.config.legacyAudio && this.legacyDevice
+      ? this.legacyDevice.name
+      : "System Audio (ScreenCaptureKit)";
+    return {
+      deviceName,
+      modelId: `${langPair} | ${this.config.transcriptionModelId}`,
+      intervalMs: this.config.intervalMs,
+      status,
+      contextLoaded: !!this.userContext,
+      cost: this.costAccumulator.totalCost,
+      translationEnabled: this._translationEnabled,
+      canTranslate: this.canTranslate,
+      direction: this.config.direction,
+      micEnabled: this._micEnabled,
+    };
+  }
+
+  get recording(): boolean {
+    return this.isRecording;
+  }
+
+  private get isCapturing(): boolean {
+    return this.isRecording || this._micEnabled;
+  }
+
+  get allKeyPoints(): readonly string[] {
+    return this.contextState.allKeyPoints;
+  }
+
+  get canTranslate(): boolean {
+    return this.config.transcriptionProvider === "vertex" || this.config.transcriptionProvider === "google" || this.config.transcriptionProvider === "openrouter";
   }
 
   get translationEnabled(): boolean {
@@ -513,7 +508,7 @@ export class Session {
     this.systemPipeline.overlap = Buffer.alloc(0);
     this.inFlight.set("system", 0);
     this.inFlight.set("microphone", 0);
-    this.pendingParagraphs.clear();
+    this.paragraphBuffer.clear();
     this.events.emit("partial", { source: null, text: "" });
 
     if (!resume) {
@@ -599,10 +594,6 @@ export class Session {
 
     this.startAnalysisTimer();
 
-    if (this.config.transcriptionProvider === "elevenlabs") {
-      void this.openElevenLabsConnection("system");
-    }
-
   }
 
   stopRecording(flushRemaining = true): void {
@@ -614,16 +605,10 @@ export class Session {
       this.stopAnalysisTimer();
     }
 
-    // Close ElevenLabs WS before killing audio capture
-    if (this.config.transcriptionProvider === "elevenlabs") {
-      this.closeElevenLabsConnection("system");
-    }
-
     if (this.audioRecorder) { this.audioRecorder.stop(); this.audioRecorder = null; }
     if (this.ffmpegProcess) { this.ffmpegProcess.kill("SIGTERM"); this.ffmpegProcess = null; }
 
-    // VAD flush only needed for Google/Vertex
-    if (flushRemaining && this.config.transcriptionProvider !== "elevenlabs") {
+    if (flushRemaining) {
       const remaining = flushVad(this.systemPipeline.vadState);
       if (remaining) {
         this.enqueueChunk(this.systemPipeline, remaining);
@@ -631,7 +616,7 @@ export class Session {
       }
     }
     if (this.usesParagraphBuffering) {
-      void this.commitPendingParagraphs(["system"]);
+      void this.paragraphBuffer.commitPending(["system"]);
     }
     if (this.chunkQueues.get("system")!.length && this.inFlight.get("system")! < this.maxConcurrency) {
       void this.processQueue("system");
@@ -657,10 +642,6 @@ export class Session {
       this._micEnabled = true;
       resetVadState(this.micPipeline.vadState);
       this.micPipeline.overlap = Buffer.alloc(0);
-
-      if (this.config.transcriptionProvider === "elevenlabs") {
-        void this.openElevenLabsConnection("microphone");
-      }
 
       let micDataReceived = false;
       let micTotalBytes = 0;
@@ -738,10 +719,6 @@ export class Session {
     this.micPipeline.overlap = Buffer.alloc(0);
     this.micDebugWindowCount = 0;
 
-    if (this.config.transcriptionProvider === "elevenlabs") {
-      void this.openElevenLabsConnection("microphone");
-    }
-
     // Start analysis timer if system audio isn't already driving it
     if (!this.isRecording) {
       this.startAnalysisTimer();
@@ -761,17 +738,13 @@ export class Session {
   stopMic(): void {
     if (!this._micEnabled) return;
 
-    if (this.config.transcriptionProvider === "elevenlabs") {
-      this.closeElevenLabsConnection("microphone");
-    } else {
-      const remaining = flushVad(this.micPipeline.vadState);
-      if (remaining) {
-        this.enqueueChunk(this.micPipeline, remaining);
-        void this.processQueue("microphone");
-      }
-      if (this.usesParagraphBuffering) {
-        void this.commitPendingParagraphs(["microphone"]);
-      }
+    const remaining = flushVad(this.micPipeline.vadState);
+    if (remaining) {
+      this.enqueueChunk(this.micPipeline, remaining);
+      void this.processQueue("microphone");
+    }
+    if (this.usesParagraphBuffering) {
+      void this.paragraphBuffer.commitPending(["microphone"]);
     }
 
     if (this.micProcess) {
@@ -797,7 +770,7 @@ export class Session {
     const wasBuffering = this.usesParagraphBuffering;
     this._translationEnabled = !this._translationEnabled;
     if (wasBuffering && this._translationEnabled) {
-      void this.commitPendingParagraphs();
+      void this.paragraphBuffer.commitPending();
     }
     this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
     log("INFO", `Translation ${this._translationEnabled ? "enabled" : "disabled"}`);
@@ -823,23 +796,19 @@ export class Session {
     if (targetLang) {
       this.config.targetLang = targetLang;
     }
-    this.refreshLanguageDerivedState();
+    this.rebuildTranscriptionSchemas();
     this.db?.updateSessionLanguages(this.sessionId, this.config.sourceLang, this.config.targetLang);
     if (wasBuffering) {
-      void this.commitPendingParagraphs();
+      void this.paragraphBuffer.commitPending();
     }
     this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
     log("INFO", `Translation mode: direction=${direction}, target=${targetLang ?? this.config.targetLang}`);
   }
 
   setSourceLanguage(sourceLang: LanguageCode): void {
-    const previousSourceLang = this.config.sourceLang;
     this.config.sourceLang = sourceLang;
-    this.refreshLanguageDerivedState();
+    this.rebuildTranscriptionSchemas();
     this.db?.updateSessionLanguages(this.sessionId, this.config.sourceLang, this.config.targetLang);
-    if (this.config.transcriptionProvider === "elevenlabs" && previousSourceLang !== sourceLang) {
-      this.refreshElevenLabsConnections();
-    }
     this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
     log("INFO", `Source language updated: ${sourceLang}`);
   }
@@ -867,9 +836,7 @@ export class Session {
     suggestions: TaskSuggestion[];
     error?: string;
   }> {
-    if (this.contextState.transcriptBlocks.size === 0) {
-      this.hydrateTranscriptContextFromDb();
-    }
+    this.ensureTranscriptContext();
     if (this.contextState.transcriptBlocks.size === 0) {
       this.events.emit("status", "Task scan: no transcript available yet.");
       setTimeout(() => this.events.emit("status", ""), 3000);
@@ -938,66 +905,22 @@ export class Session {
   }
 
   generateFinalSummary(): void {
-    if (this.contextState.transcriptBlocks.size === 0) {
-      this.hydrateTranscriptContextFromDb();
-    }
+    this.ensureTranscriptContext();
     if (this.contextState.transcriptBlocks.size === 0) {
       this.events.emit("final-summary-error", "No transcript available to summarise");
       return;
     }
 
     const allBlocks = [...this.contextState.transcriptBlocks.values()];
-    const prompt = buildFinalSummaryPrompt(allBlocks, this.contextState.allKeyPoints);
     this.events.emit("status", `Generating session summary with ${this.config.synthesisModelId}...`);
 
-    void (async () => {
-      try {
-        const { object, usage } = await generateStructuredObject({
-          model: this.synthesisModel,
-          schema: finalSummarySchema,
-          prompt,
-          temperature: 0,
-        });
-
-        const totalCost = addCostToAcc(
-          this.costAccumulator,
-          usage?.inputTokens ?? 0,
-          usage?.outputTokens ?? 0,
-          "text",
-          "openrouter",
-        );
-        this.events.emit("cost-updated", totalCost);
-
-        const summary: FinalSummary = {
-          narrative: object.narrative.trim(),
-          agreements: object.agreements.map((item) => item.trim()).filter(Boolean),
-          missedItems: object.missedItems.map((item) => item.trim()).filter(Boolean),
-          unansweredQuestions: object.unansweredQuestions.map((item) => item.trim()).filter(Boolean),
-          agreementTodos: object.agreementTodos
-            .map((item) => ({ text: item.text.trim(), doer: item.doer }))
-            .filter((item) => item.text),
-          missedItemTodos: object.missedItemTodos
-            .map((item) => ({ text: item.text.trim(), doer: item.doer }))
-            .filter((item) => item.text),
-          unansweredQuestionTodos: object.unansweredQuestionTodos
-            .map((item) => ({ text: item.text.trim(), doer: item.doer }))
-            .filter((item) => item.text),
-          actionItems: object.actionItems
-            .map((item) => ({ text: item.text.trim(), doer: item.doer }))
-            .filter((item) => item.text),
-          modelId: this.config.synthesisModelId,
-          generatedAt: Date.now(),
-        };
-
-        this.db?.saveFinalSummary(this.sessionId, summary);
-        this.events.emit("final-summary-ready", summary);
-      } catch (error) {
-        log("ERROR", `Final summary generation failed: ${formatModelErrorForLog(error)}`);
+    void generateFinalSummaryFn(allBlocks, this.contextState.allKeyPoints, this.summaryDeps)
+      .then((summary) => this.events.emit("final-summary-ready", summary))
+      .catch((error) => {
+        log("ERROR", `Final summary generation failed: ${formatSummaryError(error)}`);
         this.events.emit("final-summary-error", toReadableError(error));
-      } finally {
-        this.events.emit("status", "");
-      }
-    })();
+      })
+      .finally(() => this.events.emit("status", ""));
   }
 
   generateAgentsSummary(): void {
@@ -1011,58 +934,17 @@ export class Session {
       return;
     }
 
-    if (this.contextState.transcriptBlocks.size === 0) {
-      this.hydrateTranscriptContextFromDb();
-    }
+    this.ensureTranscriptContext();
     const allBlocks = [...this.contextState.transcriptBlocks.values()];
-    const prompt = buildAgentsSummaryPrompt(terminalAgents, allBlocks, this.contextState.allKeyPoints);
     this.events.emit("status", `Generating agents summary with ${this.config.synthesisModelId}...`);
 
-    void (async () => {
-      try {
-        const { object, usage } = await generateStructuredObject({
-          model: this.synthesisModel,
-          schema: agentsSummarySchema,
-          prompt,
-          temperature: 0,
-        });
-
-        const totalCost = addCostToAcc(
-          this.costAccumulator,
-          usage?.inputTokens ?? 0,
-          usage?.outputTokens ?? 0,
-          "text",
-          "openrouter",
-        );
-        this.events.emit("cost-updated", totalCost);
-
-        const totalDurationSecs = terminalAgents.reduce((acc, a) => {
-          return acc + (a.completedAt && a.createdAt
-            ? Math.round((a.completedAt - a.createdAt) / 1000) : 0);
-        }, 0);
-
-        const summary: AgentsSummary = {
-          overallNarrative: object.overallNarrative.trim(),
-          agentHighlights: object.agentHighlights,
-          coverageGaps: object.coverageGaps,
-          nextSteps: object.nextSteps.map((s) => s.trim()).filter(Boolean),
-          modelId: this.config.synthesisModelId,
-          generatedAt: Date.now(),
-          totalAgents: terminalAgents.length,
-          succeededAgents: terminalAgents.filter((a) => a.status === "completed").length,
-          failedAgents: terminalAgents.filter((a) => a.status === "failed").length,
-          totalDurationSecs,
-        };
-
-        this.db?.saveAgentsSummary(this.sessionId, summary);
-        this.events.emit("agents-summary-ready", summary);
-      } catch (error) {
-        log("ERROR", `Agents summary generation failed: ${formatModelErrorForLog(error)}`);
+    void generateAgentsSummaryFn(terminalAgents, allBlocks, this.contextState.allKeyPoints, this.summaryDeps)
+      .then((summary) => this.events.emit("agents-summary-ready", summary))
+      .catch((error) => {
+        log("ERROR", `Agents summary generation failed: ${formatSummaryError(error)}`);
         this.events.emit("agents-summary-error", toReadableError(error));
-      } finally {
-        this.events.emit("status", "");
-      }
-    })();
+      })
+      .finally(() => this.events.emit("status", ""));
   }
 
   private hydrateTranscriptContextFromDb() {
@@ -1102,12 +984,10 @@ export class Session {
     log("INFO", "Session shutdown");
     if (this._micEnabled) this.stopMic();
     if (this.isRecording) this.stopRecording(true);
-    if (this.config.transcriptionProvider !== "elevenlabs") {
-      await this.waitForTranscriptionDrain();
-    }
-    if (this.pendingParagraphs.size > 0) {
-      await this.commitPendingParagraphs();
-      this.pendingParagraphs.clear();
+    await this.waitForTranscriptionDrain();
+    if (this.paragraphBuffer.hasPending) {
+      await this.paragraphBuffer.commitPending();
+      this.paragraphBuffer.clear();
     }
     this.events.emit("partial", { source: null, text: "" });
     writeSummaryLog(this.contextState.allKeyPoints);
@@ -1159,14 +1039,7 @@ export class Session {
         temperature: 0,
       });
 
-      const totalWithTask = addCostToAcc(
-        this.costAccumulator,
-        usage?.inputTokens ?? 0,
-        usage?.outputTokens ?? 0,
-        "text",
-        "openrouter"
-      );
-      this.events.emit("cost-updated", totalWithTask);
+      this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", "openrouter");
 
       const taskTitle = object.taskTitle.trim();
       const taskDetails = object.taskDetails.trim();
@@ -1219,19 +1092,34 @@ export class Session {
     return this.agentManager?.cancelAgent(agentId) ?? false;
   }
 
-  private getTranscriptContextForAgent(): string {
-    if (this.contextState.transcriptBlocks.size === 0) {
-      this.hydrateTranscriptContextFromDb();
+  private getTranscriptSummaryForAgent(): string {
+    this.ensureTranscriptContext();
+    const totalBlocks = this.contextState.transcriptBlocks.size;
+    if (totalBlocks === 0) return "(No transcript yet)";
+
+    const keyPoints = this.contextState.allKeyPoints;
+    if (keyPoints.length > 0) {
+      return `Key points from the conversation so far (${totalBlocks} transcript blocks available — use getTranscriptContext to read them):\n${keyPoints.map((kp) => `- ${kp}`).join("\n")}`;
     }
-    const blocks = [...this.contextState.transcriptBlocks.values()].slice(-20);
-    if (blocks.length === 0) return "(No transcript yet)";
-    return blocks
-      .map((b) => {
-        const src = `[${b.audioSource}] ${b.sourceText}`;
-        const translation = b.translation ? ` → ${b.translation}` : "";
-        return src + translation;
-      })
-      .join("\n");
+
+    return `${totalBlocks} transcript blocks available — use getTranscriptContext to read them.`;
+  }
+
+  private getTranscriptBlocks(last = 10, offset = 0): { blocks: string; returned: number; total: number; remaining: number } {
+    this.ensureTranscriptContext();
+    const all = [...this.contextState.transcriptBlocks.values()];
+    const total = all.length;
+    const end = total - offset;
+    const start = Math.max(0, end - last);
+    const slice = all.slice(start, Math.max(0, end));
+    const formatted = slice.length === 0
+      ? "(No blocks in this range)"
+      : slice.map((b) => {
+          const src = `[${b.audioSource}] ${b.sourceText}`;
+          const translation = b.translation ? ` → ${b.translation}` : "";
+          return src + translation;
+        }).join("\n");
+    return { blocks: formatted, returned: slice.length, total, remaining: Math.max(0, start) };
   }
 
   private getCurrentProjectId(): string | undefined {
@@ -1249,29 +1137,9 @@ export class Session {
   private micDebugWindowCount = 0;
 
   private handleAudioData(pipeline: AudioPipeline, data: Buffer) {
-    if (this.config.transcriptionProvider === "elevenlabs") {
-      // Update mic-priority timestamp from audio energy (VAD path is skipped for ElevenLabs)
-      if (pipeline.source === "microphone") {
-        const rms = computeRms(data);
-        if (rms > pipeline.vadState.silenceThreshold) {
-  
-        }
-      }
-      // Realtime path: stream raw PCM directly, no local VAD or queue
-      const connection = pipeline.source === "system"
-        ? this.systemConnection
-        : this.micConnection;
-      if (connection) {
-        try {
-          connection.send({ audioBase64: data.toString("base64") });
-        } catch (err) {
-          log("WARN", `ElevenLabs send failed (${pipeline.source}): ${toReadableError(err)}`);
-        }
-      }
-      return;
-    }
-
-    const chunks = processAudioData(pipeline.vadState, data);
+    const chunks = processAudioData(pipeline.vadState, data, {
+      maxChunkMs: this.config.intervalMs,
+    });
 
     // Periodic mic level reporting (~every 2s of audio = 20 × 100ms windows)
     if (pipeline.source === "microphone") {
@@ -1302,81 +1170,7 @@ export class Session {
     }
   }
 
-  private async openElevenLabsConnection(source: AudioSource): Promise<void> {
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    if (!apiKey) {
-      this.events.emit("error", "Missing ELEVENLABS_API_KEY");
-      return;
-    }
-    const languageCode = this.config.sourceLang;
-
-    let connection: RealtimeConnection;
-    try {
-      connection = await connectElevenLabsRealtime({
-        apiKey,
-        modelId: this.config.transcriptionModelId,
-        languageCode,
-      });
-    } catch (err) {
-      log("ERROR", `ElevenLabs WS connect failed (${source}): ${toReadableError(err)}`);
-      this.events.emit("status", `⚠ ElevenLabs connection failed`);
-      this.scheduleElevenLabsReconnect(source, 2000);
-      return;
-    }
-
-    // Guard: stop() may have been called while we were awaiting connect()
-    if (!this.shouldKeepElevenLabsConnection(source)) {
-      connection.close();
-      return;
-    }
-
-    if (source === "system") this.systemConnection = connection;
-    else this.micConnection = connection;
-
-    this.attachElevenLabsHandlers(connection, source);
-    log("INFO", `ElevenLabs WS connected (${source})`);
-  }
-
-  private attachElevenLabsHandlers(connection: RealtimeConnection, source: AudioSource): void {
-    connection.on(RealtimeEvents.PARTIAL_TRANSCRIPT, (msg) => {
-      if (msg.text) this.events.emit("partial", { source, text: `${msg.text}` });
-    });
-
-    connection.on(RealtimeEvents.COMMITTED_TRANSCRIPT_WITH_TIMESTAMPS, (msg) => {
-      const text = msg.text?.trim();
-      if (!text) return;
-      const langHint = normalizeElevenLabsLanguageCode(msg.language_code)
-        ?? detectSourceLanguage(text, this.config.sourceLang, this.config.targetLang);
-      void this.handleElevenLabsCommit(text, langHint, source, Date.now());
-    });
-
-    connection.on(RealtimeEvents.SESSION_TIME_LIMIT_EXCEEDED, () => {
-      log("WARN", `ElevenLabs session limit hit (${source}), reconnecting`);
-      connection.close();
-      if (source === "system") this.systemConnection = null;
-      else this.micConnection = null;
-      if (this.shouldKeepElevenLabsConnection(source)) this.scheduleElevenLabsReconnect(source, 500);
-    });
-
-    connection.on(RealtimeEvents.CLOSE, () => {
-      const current = source === "system" ? this.systemConnection : this.micConnection;
-      if (current !== connection) return; // already replaced (e.g. by reconnect)
-      if (source === "system") this.systemConnection = null;
-      else this.micConnection = null;
-      if (this.shouldKeepElevenLabsConnection(source)) {
-        log("WARN", `ElevenLabs WS closed unexpectedly (${source}), reconnecting`);
-        this.scheduleElevenLabsReconnect(source, 1000);
-      }
-    });
-
-    connection.on(RealtimeEvents.ERROR, (err) => {
-      const msg = "error" in err ? (err as { error: string }).error : (err as Error).message;
-      log("ERROR", `ElevenLabs WS error (${source}): ${msg}`);
-      this.events.emit("status", `⚠ STT error: ${msg}`);
-    });
-  }
-
-  private async handleElevenLabsCommit(
+  private async commitTranscript(
     transcript: string,
     detectedLangHint: LanguageCode,
     audioSource: AudioSource,
@@ -1430,189 +1224,6 @@ export class Session {
     this.scheduleAnalysis(0);
   }
 
-  private mergeParagraphTranscript(existing: string, incoming: string): string {
-    const a = existing.trim();
-    const b = incoming.trim();
-    if (!a) return b;
-    if (!b) return a;
-    if (a.endsWith(b)) return a;
-    if (b.startsWith(a)) return b;
-    return `${a} ${b}`.replace(/\s+/g, " ").trim();
-  }
-
-  private updateParagraphPreview(): void {
-    for (const [src, para] of this.pendingParagraphs) {
-      this.events.emit("partial", { source: src, text: para.transcript });
-    }
-    if (this.pendingParagraphs.size === 0) {
-      this.events.emit("partial", { source: null, text: "" });
-    }
-  }
-
-  private async polishTranscript(transcript: string): Promise<string> {
-    const trimmed = transcript.trim();
-    if (trimmed.length < 20) return trimmed;
-
-    const prompt = renderPromptTemplate(getTranscriptPolishPromptTemplate(), {
-      transcript: trimmed,
-    });
-
-    try {
-      const { object, usage } = await generateStructuredObject({
-        model: this.utilitiesModel,
-        schema: z.object({ polished: z.string() }),
-        prompt,
-        temperature: 0,
-      });
-
-      const totalCost = addCostToAcc(
-        this.costAccumulator,
-        usage?.inputTokens ?? 0,
-        usage?.outputTokens ?? 0,
-        "text",
-        "openrouter",
-      );
-      this.events.emit("cost-updated", totalCost);
-
-      const polished = (object as { polished: string }).polished.trim();
-      return polished || trimmed;
-    } catch (error) {
-      if (this.config.debug) {
-        log("WARN", `Transcript polish failed: ${toReadableError(error)}`);
-      }
-      return trimmed;
-    }
-  }
-
-  private async commitPendingParagraphs(sources?: AudioSource[]): Promise<void> {
-    if (this.paragraphPolishInFlight) return;
-    const candidates = sources
-      ? [...this.pendingParagraphs.values()].filter((p) => sources.includes(p.audioSource))
-      : [...this.pendingParagraphs.values()];
-    if (candidates.length === 0) return;
-
-    this.paragraphPolishInFlight = true;
-    try {
-      for (const pending of candidates) {
-        const current = this.pendingParagraphs.get(pending.audioSource);
-        if (!current) continue;
-
-        const textToPolish = current.transcript.trim();
-        if (!textToPolish) {
-          this.pendingParagraphs.delete(pending.audioSource);
-          this.updateParagraphPreview();
-          continue;
-        }
-
-        const polished = await this.polishTranscript(textToPolish);
-
-        // Check if new text arrived while polishing. Keep the excess.
-        const latest = this.pendingParagraphs.get(pending.audioSource);
-        if (latest) {
-          const currentText = latest.transcript.trim();
-          const excess = currentText.length > textToPolish.length
-            ? currentText.slice(textToPolish.length).trim()
-            : "";
-          if (excess) {
-            latest.transcript = excess;
-            latest.lastUpdatedAt = Date.now();
-          } else {
-            this.pendingParagraphs.delete(pending.audioSource);
-          }
-        }
-        this.updateParagraphPreview();
-
-        await this.handleElevenLabsCommit(
-          polished,
-          pending.detectedLangHint,
-          pending.audioSource,
-          pending.capturedAt,
-        );
-      }
-    } finally {
-      this.paragraphPolishInFlight = false;
-    }
-  }
-
-  private queueParagraphChunk(
-    transcript: string,
-    detectedLangHint: LanguageCode,
-    audioSource: AudioSource,
-    capturedAt: number,
-  ): void {
-    const incoming = transcript.trim();
-    if (!incoming) return;
-
-    const existing = this.pendingParagraphs.get(audioSource);
-    if (!existing) {
-      this.pendingParagraphs.set(audioSource, {
-        transcript: incoming,
-        detectedLangHint,
-        audioSource,
-        capturedAt,
-        lastUpdatedAt: Date.now(),
-      });
-    } else {
-      existing.transcript = this.mergeParagraphTranscript(existing.transcript, incoming);
-      existing.detectedLangHint = detectedLangHint;
-      existing.lastUpdatedAt = Date.now();
-    }
-
-    this.updateParagraphPreview();
-
-    // Commit when enough time has passed — LLM handles all formatting decisions
-    const now = Date.now();
-    const pending = this.pendingParagraphs.get(audioSource)!;
-    if (now - pending.capturedAt >= this.paragraphCommitIntervalMs) {
-      void this.commitPendingParagraphs([audioSource]);
-    }
-  }
-
-  private closeElevenLabsConnection(source: AudioSource): void {
-    const timerField = source === "system" ? "systemReconnectTimer" : "micReconnectTimer";
-    const connField = source === "system" ? "systemConnection" : "micConnection";
-    if (this[timerField]) {
-      clearTimeout(this[timerField]!);
-      this[timerField] = null;
-    }
-    if (this[connField]) {
-      this[connField]!.close();
-      this[connField] = null;
-    }
-  }
-
-  private shouldKeepElevenLabsConnection(source: AudioSource): boolean {
-    return source === "system" ? this.isRecording : this._micEnabled;
-  }
-
-  private refreshElevenLabsConnections(): void {
-    const activeSources: AudioSource[] = [];
-    if (this.isRecording) {
-      activeSources.push("system");
-    }
-    if (this._micEnabled) {
-      activeSources.push("microphone");
-    }
-    if (activeSources.length === 0) {
-      return;
-    }
-
-    for (const source of activeSources) {
-      this.closeElevenLabsConnection(source);
-      void this.openElevenLabsConnection(source);
-    }
-  }
-
-  private scheduleElevenLabsReconnect(source: AudioSource, delayMs: number): void {
-    const timerField = source === "system" ? "systemReconnectTimer" : "micReconnectTimer";
-    if (this[timerField]) return; // already scheduled
-    this[timerField] = setTimeout(() => {
-      this[timerField] = null;
-      if (!this.shouldKeepElevenLabsConnection(source)) return;
-      void this.openElevenLabsConnection(source);
-    }, delayMs);
-  }
-
   private enqueueChunk(pipeline: AudioPipeline, chunk: Buffer) {
     if (!chunk.length) return;
     const overlapBytes = Math.floor(16000 * 2 * 1.0);
@@ -1664,8 +1275,6 @@ export class Session {
 
 
   private async processQueue(source: AudioSource): Promise<void> {
-    // ElevenLabs uses persistent WS; this queue is for Google/Vertex.
-    if (this.config.transcriptionProvider === "elevenlabs") return;
     const queue = this.chunkQueues.get(source)!;
     if (this.inFlight.get(source)! >= this.maxConcurrency || queue.length === 0) return;
     const item = queue.shift();
@@ -1691,82 +1300,65 @@ export class Session {
         log("INFO", `Transcription request [${this.config.transcriptionProvider}]: src=${audioSource} chunk=${chunkDurationMs.toFixed(0)}ms, queue=${queue.length}, inflight=${this.inFlight.get(source)}`);
       }
 
-      if (this.config.transcriptionProvider === "fireworks") {
-        const wavBuffer = pcmToWavBuffer(chunk, 16000);
-        const apiKey = process.env.FIREWORKS_API_KEY;
-        if (!apiKey) throw new Error("FIREWORKS_API_KEY is not set.");
+      const schema = useTranslation ? this.audioTranscriptionSchema : this.transcriptionOnlySchema;
+      const wavBuffer = pcmToWavBuffer(chunk, 16000);
 
-        transcript = await transcribeWithFireworks(wavBuffer, apiKey);
-        isPartial = this.isTranscriptLikelyPartial(transcript);
-
-        if (this.config.debug) {
-          log("INFO", `Fireworks transcription response: ${Date.now() - startTime}ms, queue: ${queue.length}`);
-        }
-      } else {
-        const schema = useTranslation ? this.audioTranscriptionSchema : this.transcriptionOnlySchema;
-        const wavBuffer = pcmToWavBuffer(chunk, 16000);
-
-        if (this.config.debug) {
-          log("INFO", `Audio buffer: ${(wavBuffer.byteLength / 1024).toFixed(0)}KB`);
-        }
-
-        const prompt = useTranslation
-          ? buildAudioPromptForStructured(
-              this.config.direction,
-              this.config.sourceLang,
-              this.config.targetLang,
-            )
-          : buildAudioTranscriptionOnlyPrompt(
-              this.config.sourceLang,
-              this.config.targetLang,
-            );
-        if (!this.transcriptionModel) {
-          throw new Error("Transcription model is not initialized.");
-        }
-
-        const transcriptionProviderOptions =
-          this.config.transcriptionProvider === "google" || this.config.transcriptionProvider === "vertex"
-            ? { google: { thinkingConfig: { includeThoughts: false, thinkingBudget: 0 } } }
-            : undefined;
-
-        const { object: result, usage: finalUsage } = await generateStructuredObject({
-          model: this.transcriptionModel,
-          schema,
-          system: this.userContext || undefined,
-          temperature: 0,
-          maxRetries: 2,
-          providerOptions: transcriptionProviderOptions,
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: prompt },
-                {
-                  type: "file",
-                  mediaType: "audio/wav",
-                  data: wavBuffer,
-                },
-              ],
-            },
-          ],
-        });
-
-        const inTok = finalUsage?.inputTokens ?? 0;
-        const outTok = finalUsage?.outputTokens ?? 0;
-        const totalCost = addCostToAcc(this.costAccumulator, inTok, outTok, "audio", this.config.transcriptionProvider);
-        this.events.emit("cost-updated", totalCost);
-
-        if (this.config.debug) {
-          log("INFO", `Transcription response [${this.config.transcriptionProvider}]: ${Date.now() - startTime}ms, tokens: ${inTok}→${outTok}, queue: ${queue.length}`);
-          this.events.emit("status", `Response: ${Date.now() - startTime}ms | T: ${inTok}→${outTok}`);
-        }
-
-        transcript = (result as { transcript?: string }).transcript?.trim() ?? "";
-        translation = useTranslation
-          ? ((result as { translation?: string }).translation?.trim() ?? "")
-          : "";
-        detectedLang = (result as { sourceLanguage: string }).sourceLanguage as LanguageCode;
+      if (this.config.debug) {
+        log("INFO", `Audio buffer: ${(wavBuffer.byteLength / 1024).toFixed(0)}KB`);
       }
+
+      const prompt = useTranslation
+        ? buildAudioPromptForStructured(
+            this.config.direction,
+            this.config.sourceLang,
+            this.config.targetLang,
+          )
+        : buildAudioTranscriptionOnlyPrompt(
+            this.config.sourceLang,
+            this.config.targetLang,
+          );
+
+      const transcriptionProviderOptions =
+        this.config.transcriptionProvider === "google" || this.config.transcriptionProvider === "vertex"
+          ? { google: { thinkingConfig: { includeThoughts: false, thinkingBudget: 0 } } }
+          : undefined;
+
+      const { object: result, usage: finalUsage } = await generateStructuredObject({
+        model: this.transcriptionModel,
+        schema,
+        system: this.userContext || undefined,
+        temperature: 0,
+        maxRetries: 2,
+        providerOptions: transcriptionProviderOptions,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              {
+                type: "file",
+                mediaType: "audio/wav",
+                data: wavBuffer,
+              },
+            ],
+          },
+        ],
+      });
+
+      const inTok = finalUsage?.inputTokens ?? 0;
+      const outTok = finalUsage?.outputTokens ?? 0;
+      this.trackCost(inTok, outTok, "audio", this.config.transcriptionProvider);
+
+      if (this.config.debug) {
+        log("INFO", `Transcription response [${this.config.transcriptionProvider}]: ${Date.now() - startTime}ms, tokens: ${inTok}→${outTok}, queue: ${queue.length}`);
+        this.events.emit("status", `Response: ${Date.now() - startTime}ms | T: ${inTok}→${outTok}`);
+      }
+
+      transcript = (result as { transcript?: string }).transcript?.trim() ?? "";
+      translation = useTranslation
+        ? ((result as { translation?: string }).translation?.trim() ?? "")
+        : "";
+      detectedLang = (result as { sourceLanguage: string }).sourceLanguage as LanguageCode;
 
       if (!translation && !transcript) {
         return;
@@ -1777,7 +1369,7 @@ export class Session {
         if (transcript && hasTranslatableContent(transcript)) {
           recordContext(this.contextState, transcript);
         }
-        this.queueParagraphChunk(transcript, detectedLang, audioSource, capturedAt);
+        this.paragraphBuffer.queue(transcript, detectedLang, audioSource, capturedAt);
         this.scheduleAnalysis();
         return;
       }
@@ -1813,12 +1405,8 @@ export class Session {
       this.scheduleAnalysis();
     } catch (error) {
       const elapsed = Date.now() - startTime;
-      const isAbortError =
-        (error instanceof Error && error.name === "AbortError") ||
-        (error && typeof error === "object" && "name" in error && (error as { name: string }).name === "AbortError");
-      const isTimeout =
-        isAbortError ||
-        (error instanceof Error && error.name === "TimeoutError");
+      const errorName = error instanceof Error ? error.name : (error && typeof error === "object" && "name" in error ? (error as { name: string }).name : "");
+      const isTimeout = errorName === "AbortError" || errorName === "TimeoutError";
       const errorMsg = isTimeout ? `Timed out (${(elapsed / 1000).toFixed(1)}s)` : toReadableError(error);
       const fullError = error instanceof Error
         ? `${error.name}: ${error.message}${error.cause ? ` cause=${JSON.stringify(error.cause)}` : ""}`
@@ -1887,14 +1475,7 @@ export class Session {
         temperature: 0,
       });
 
-      const totalCost = addCostToAcc(
-        this.costAccumulator,
-        usage?.inputTokens ?? 0,
-        usage?.outputTokens ?? 0,
-        "text",
-        "openrouter"
-      );
-      this.events.emit("cost-updated", totalCost);
+      this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", "openrouter");
 
       return {
         sourceLanguage: (object as { sourceLanguage: LanguageCode }).sourceLanguage,
@@ -2045,14 +1626,7 @@ export class Session {
         });
 
         analysisElapsedMs = Date.now() - startTime;
-        const totalCost = addCostToAcc(
-          this.costAccumulator,
-          usage?.inputTokens ?? 0,
-          usage?.outputTokens ?? 0,
-          "text",
-          this.config.analysisProvider
-        );
-        this.events.emit("cost-updated", totalCost);
+        this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", this.config.analysisProvider);
         this.lastAnalysisBlockCount = analysisTargetBlockCount;
         analysisSucceeded = true;
 
@@ -2106,14 +1680,7 @@ export class Session {
             temperature: 0,
           });
 
-          const totalWithTask = addCostToAcc(
-            this.costAccumulator,
-            taskUsage?.inputTokens ?? 0,
-            taskUsage?.outputTokens ?? 0,
-            "text",
-            "openrouter"
-          );
-          this.events.emit("cost-updated", totalWithTask);
+          this.trackCost(taskUsage?.inputTokens ?? 0, taskUsage?.outputTokens ?? 0, "text", "openrouter");
           taskSuggestions = suggestionResult.suggestions
             .map((raw) => this.normalizeAgentSuggestion(raw))
             .filter((candidate): candidate is TaskSuggestionDraft => candidate !== null);

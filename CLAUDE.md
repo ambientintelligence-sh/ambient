@@ -20,7 +20,7 @@ Ambient is an Electron desktop app for real-time audio capture, transcription, a
 ### Core Layers
 
 - **Audio capture** — ScreenCaptureKit (macOS 14.2+) for system audio, optional mic input. VAD segments speech into chunks.
-- **Transcription** — ElevenLabs Scribe v2 (default) or Gemini. Produces transcript blocks with optional translation.
+- **Transcription** — Gemini (via OpenRouter, Google AI, or Vertex). Produces transcript blocks with optional translation.
 - **Analysis** — LLM-powered extraction of tasks, insights, key points, and summaries from transcript context.
 - **Agent fleet** — Autonomous agents that execute tasks with tool access (web search via Exa, MCP integrations for Notion/Linear, custom tools). Full conversation loop with thinking, planning, tool calls, and approval flows.
 
@@ -29,7 +29,7 @@ Ambient is an Electron desktop app for real-time audio capture, transcription, a
 - `src/core/session.ts` — Main orchestrator: audio → transcription → analysis → agent spawning (EventEmitter-based)
 - `src/core/agents/` — Agent runtime: `agent.ts` (core loop), `agent-manager.ts` (lifecycle), `external-tools.ts`, `learn.ts`
 - `src/core/audio/` — Audio capture, VAD, PCM→WAV conversion
-- `src/core/transcription/` — ElevenLabs provider
+- `src/core/transcription/` — Transcription utilities
 - `src/core/analysis/` — Prompt builders, Zod schemas for structured LLM outputs (tasks, insights, summaries)
 - `src/core/db/` — SQLite + Drizzle ORM: sessions, blocks, tasks, insights, agents
 - `src/core/types.ts` — Domain types (Agent, TranscriptBlock, Session, Project, etc.)
@@ -51,7 +51,6 @@ Ambient is an Electron desktop app for real-time audio capture, transcription, a
 
 See README.md for full list. Key variables:
 
-- `ELEVENLABS_API_KEY` — Transcription provider
 - `OPENROUTER_API_KEY` — Default LLM provider
 - `MCP_INTEGRATIONS_ENABLED` — Toggle Notion/Linear MCP connectors (default: enabled)
 - `context.md` file in root provides persistent context for sessions (speaker names, glossary, style)

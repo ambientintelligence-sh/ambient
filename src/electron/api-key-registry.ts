@@ -14,18 +14,6 @@ export const API_KEY_DEFINITIONS: readonly ApiKeyDefinition[] = [
     providers: ["google"],
   },
   {
-    envVar: "ELEVENLABS_API_KEY",
-    label: "ElevenLabs API Key",
-    placeholder: "sk_...",
-    providers: ["elevenlabs"],
-  },
-  {
-    envVar: "FIREWORKS_API_KEY",
-    label: "Fireworks AI API Key",
-    placeholder: "fw_...",
-    providers: ["fireworks"],
-  },
-  {
     envVar: "AWS_ACCESS_KEY_ID",
     label: "AWS Access Key ID",
     placeholder: "AKIA...",

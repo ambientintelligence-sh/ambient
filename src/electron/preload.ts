@@ -26,18 +26,19 @@ import type {
   AudioSource,
   ApiKeyDefinition,
 } from "@core/types";
+import type { SkillMetadata } from "@core/agents/skills";
 
 export type ElectronAPI = {
   wasSeeded: () => Promise<boolean>;
   getLanguages: () => Promise<Language[]>;
-  startSession: (sourceLang: LanguageCode, targetLang: LanguageCode, appConfig?: AppConfigOverrides, projectId?: string) => Promise<{ ok: boolean; sessionId?: string; error?: string }>;
+  startSession: (sourceLang: LanguageCode, targetLang: LanguageCode, appConfig?: AppConfigOverrides, projectId?: string, translationEnabled?: boolean) => Promise<{ ok: boolean; sessionId?: string; error?: string }>;
 
   getProjects: () => Promise<ProjectMeta[]>;
   createProject: (name: string, instructions?: string, context?: string) => Promise<{ ok: boolean; project?: ProjectMeta; error?: string }>;
   updateProject: (id: string, patch: { name?: string; instructions?: string; context?: string }) => Promise<{ ok: boolean; project?: ProjectMeta; error?: string }>;
   deleteProject: (id: string) => Promise<{ ok: boolean; error?: string }>;
   updateSessionProject: (sessionId: string, projectId: string | null) => Promise<{ ok: boolean; session?: SessionMeta; error?: string }>;
-  resumeSession: (sessionId: string, appConfig?: AppConfigOverrides) => Promise<{ ok: boolean; sessionId?: string; blocks?: TranscriptBlock[]; tasks?: TaskItem[]; insights?: Insight[]; agents?: Agent[]; error?: string }>;
+  resumeSession: (sessionId: string, appConfig?: AppConfigOverrides, translationEnabled?: boolean) => Promise<{ ok: boolean; sessionId?: string; blocks?: TranscriptBlock[]; tasks?: TaskItem[]; insights?: Insight[]; agents?: Agent[]; error?: string }>;
   startRecording: () => Promise<{ ok: boolean; error?: string }>;
   stopRecording: () => Promise<{ ok: boolean; error?: string }>;
   toggleRecording: () => Promise<{ ok: boolean; recording?: boolean; error?: string }>;
@@ -170,6 +171,11 @@ export type ElectronAPI = {
   onAgentTitleGenerated: (callback: (agentId: string, title: string) => void) => () => void;
   onSessionTitleGenerated: (callback: (sessionId: string, title: string) => void) => () => void;
 
+  discoverSkills: () => Promise<SkillMetadata[]>;
+
+  getLearnings: () => Promise<{ category: string; text: string }[]>;
+  deleteLearning: (category: string, text: string) => Promise<{ ok: boolean }>;
+  clearLearnings: () => Promise<{ ok: boolean }>;
 };
 
 function createListener<T>(channel: string) {
@@ -183,14 +189,14 @@ function createListener<T>(channel: string) {
 const api: ElectronAPI = {
   wasSeeded: () => ipcRenderer.invoke("was-seeded"),
   getLanguages: () => ipcRenderer.invoke("get-languages"),
-  startSession: (sourceLang, targetLang, appConfig, projectId) => ipcRenderer.invoke("start-session", sourceLang, targetLang, appConfig, projectId),
+  startSession: (sourceLang, targetLang, appConfig, projectId, translationEnabled) => ipcRenderer.invoke("start-session", sourceLang, targetLang, appConfig, projectId, translationEnabled),
 
   getProjects: () => ipcRenderer.invoke("get-projects"),
   createProject: (name, instructions, context) => ipcRenderer.invoke("create-project", name, instructions, context),
   updateProject: (id, patch) => ipcRenderer.invoke("update-project", id, patch),
   deleteProject: (id) => ipcRenderer.invoke("delete-project", id),
   updateSessionProject: (sessionId, projectId) => ipcRenderer.invoke("update-session-project", sessionId, projectId),
-  resumeSession: (sessionId, appConfig) => ipcRenderer.invoke("resume-session", sessionId, appConfig),
+  resumeSession: (sessionId, appConfig, translationEnabled) => ipcRenderer.invoke("resume-session", sessionId, appConfig, translationEnabled),
   startRecording: () => ipcRenderer.invoke("start-recording"),
   stopRecording: () => ipcRenderer.invoke("stop-recording"),
   toggleRecording: () => ipcRenderer.invoke("toggle-recording"),
@@ -322,6 +328,11 @@ const api: ElectronAPI = {
     return () => ipcRenderer.removeListener("session:title-generated", handler);
   },
 
+  discoverSkills: () => ipcRenderer.invoke("discover-skills"),
+
+  getLearnings: () => ipcRenderer.invoke("get-learnings"),
+  deleteLearning: (category, text) => ipcRenderer.invoke("delete-learning", category, text),
+  clearLearnings: () => ipcRenderer.invoke("clear-learnings"),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);

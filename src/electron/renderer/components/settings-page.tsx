@@ -2,19 +2,13 @@ import type {
   ApiKeyDefinition,
   AppConfig,
   CustomMcpStatus,
-  DarkVariant,
-  FontFamily,
-  FontSize,
   McpIntegrationStatus,
   McpProviderToolSummary,
   McpToolInfo,
-  Language,
-  LanguageCode,
-  LightVariant,
   ResponseLength,
-  ThemeMode,
   TranscriptionProvider,
 } from "@core/types";
+import type { SkillMetadata } from "@core/agents/skills";
 import { MODEL_CONFIG } from "@core/models";
 import { type ComponentType, type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -29,15 +23,15 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { WorkoutRunIcon } from "@hugeicons/core-free-icons";
 import {
   CheckCircleIcon,
   CpuIcon,
   EyeIcon,
   EyeOffIcon,
   KeyIcon,
-  Laptop2Icon,
   MicIcon,
-  MoonIcon,
   PaletteIcon,
   PlugIcon,
   RotateCcwIcon,
@@ -45,25 +39,45 @@ import {
   ShieldCheckIcon,
   BookOpenIcon,
   SlidersHorizontalIcon,
-  SunIcon,
   WrenchIcon,
   XIcon,
 } from "lucide-react";
 import { resolveProviderIcon, OpenAIIcon } from "./integration-icons";
-import {
-  SiOpenrouter,
-  SiGooglegemini,
-  SiElevenlabs,
-} from "@icons-pack/react-simple-icons";
 import { useIntegrationStore } from "../stores/integration-store";
+import {
+  THEME_OPTIONS,
+  LIGHT_VARIANT_OPTIONS,
+  DARK_VARIANT_OPTIONS,
+  FONT_SIZE_OPTIONS,
+  FONT_FAMILY_OPTIONS,
+  TRANSCRIPTION_PROVIDER_OPTIONS,
+  TRANSCRIPTION_PROVIDER_LABELS,
+  getTranscriptionProviderOption,
+  getTranscriptionModelOption,
+  ANALYSIS_PROVIDERS,
+  isProviderConfigured,
+  isKeyNeeded,
+  renderApiKeyIcon,
+} from "./settings-config";
+
+type SettingsTab = "general" | "transcription" | "models" | "api-keys" | "skills" | "memory" | "integrations";
+
+function AgentsTabIcon({ className }: { className?: string }) {
+  return <HugeiconsIcon icon={WorkoutRunIcon} className={className} />;
+}
+
+const SETTINGS_TABS: readonly { id: SettingsTab; label: string; icon: ComponentType<{ className?: string }> }[] = [
+  { id: "general", label: "General", icon: SlidersHorizontalIcon },
+  { id: "memory", label: "Agents", icon: AgentsTabIcon },
+  { id: "models", label: "Models", icon: CpuIcon },
+  { id: "transcription", label: "Transcription", icon: MicIcon },
+  { id: "api-keys", label: "API Keys", icon: KeyIcon },
+  { id: "integrations", label: "Integrations", icon: PlugIcon },
+  { id: "skills", label: "Skills", icon: BookOpenIcon },
+];
 
 type SettingsPageProps = {
   config: AppConfig;
-  languages: Language[];
-  sourceLang: LanguageCode;
-  targetLang: LanguageCode;
-  onSourceLangChange: (lang: LanguageCode) => void;
-  onTargetLangChange: (lang: LanguageCode) => void;
   isRecording: boolean;
   onConfigChange: (next: AppConfig) => void;
   onReset: () => void;
@@ -92,211 +106,74 @@ type SettingsPageProps = {
   apiKeyStatus: Record<string, boolean>;
   onSaveApiKey: (envVar: string, value: string) => Promise<{ ok: boolean; error?: string }>;
   onDeleteApiKey: (envVar: string) => Promise<{ ok: boolean; error?: string }>;
-  initialTab?: "general" | "api-keys";
+  initialTab?: SettingsTab;
   onShowTutorial?: () => void;
+  skills?: SkillMetadata[];
+  disabledSkillIds?: string[];
+  onToggleSkill?: (skillId: string, enabled: boolean) => void;
 };
 
-const THEME_OPTIONS: Array<{
-  value: ThemeMode;
-  label: string;
-  icon: ReactNode;
-}> = [
-  {
-    value: "system",
-    label: "System",
-    icon: <Laptop2Icon className="size-3.5" />,
-  },
-  { value: "light", label: "Light", icon: <SunIcon className="size-3.5" /> },
-  { value: "dark", label: "Dark", icon: <MoonIcon className="size-3.5" /> },
-];
-
-const LIGHT_VARIANT_OPTIONS: Array<{
-  value: LightVariant;
-  label: string;
-  swatch: string;
-}> = [
-  { value: "warm", label: "Warm", swatch: "oklch(0.985 0.002 90)" },
-  { value: "linen", label: "Linen", swatch: "#EEEEEE" },
-  { value: "ivory", label: "Ivory", swatch: "oklch(0.968 0.004 90)" },
-  { value: "petal", label: "Petal", swatch: "oklch(0.962 0.006 250)" },
-];
-
-const DARK_VARIANT_OPTIONS: Array<{
-  value: DarkVariant;
-  label: string;
-  swatch: string;
-}> = [
-  { value: "charcoal", label: "Charcoal", swatch: "oklch(0.145 0 0)" },
-  { value: "steel", label: "Steel", swatch: "oklch(0.2 0.004 260)" },
-  { value: "abyss", label: "Abyss", swatch: "oklch(0.185 0.02 264)" },
-  { value: "pitch-black", label: "Pitch Black", swatch: "oklch(0 0 0)" },
-];
-
-const SEGMENTED_GROUP_CLASS =
-  "inline-flex flex-wrap items-center justify-end gap-1 rounded-sm border border-border/70 bg-muted/35 p-1 max-w-[28rem]";
-
-function segmentedButtonClass(selected: boolean): string {
-  return `h-7 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 rounded-[6px] border transition-colors ${
-    selected
-      ? "border-border/85 bg-background text-foreground shadow-sm"
-      : "border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground"
-  }`;
-}
-
-const FONT_SIZE_OPTIONS: Array<{ value: FontSize; label: string }> = [
-  { value: "sm", label: "Small" },
-  { value: "md", label: "Default" },
-  { value: "lg", label: "Large" },
-];
-
-const FONT_FAMILY_OPTIONS: Array<{ value: FontFamily; label: string }> = [
-  { value: "sans", label: "Sans" },
-  { value: "serif", label: "Serif" },
-  { value: "mono", label: "Mono" },
-];
-
-type TranscriptionPreset = {
-  modelId: string;
-  label: string;
-  description: string;
-  defaultIntervalMs: number;
-};
-
-type TranscriptionProviderOption = {
-  value: TranscriptionProvider;
-  label: string;
-  description: string;
-  supportsTranslation: boolean;
-  models: TranscriptionPreset[];
-};
-
-const TRANSCRIPTION_PROVIDER_OPTIONS: TranscriptionProviderOption[] = [
-  {
-    value: "google",
-    label: "Google AI Studio",
-    description: "Gemini via API key auth",
-    supportsTranslation: true,
-    models: [
-      {
-        modelId: "gemini-3-flash-preview",
-        label: "Gemini 3 Flash",
-        description: "Best accuracy",
-        defaultIntervalMs: 8000,
-      },
-      {
-        modelId: "gemini-3.1-flash-lite-preview",
-        label: "Gemini 3.1 Flash Lite",
-        description: "Lowest Gemini cost",
-        defaultIntervalMs: 8000,
-      },
-    ],
-  },
-  {
-    value: "openrouter",
-    label: "OpenRouter",
-    description: "Gemini routed through OpenRouter",
-    supportsTranslation: true,
-    models: [
-      {
-        modelId: "google/gemini-3-flash-preview",
-        label: "Gemini 3 Flash",
-        description: "Best accuracy",
-        defaultIntervalMs: 8000,
-      },
-      {
-        modelId: "google/gemini-3.1-flash-lite-preview",
-        label: "Gemini 3.1 Flash Lite",
-        description: "Lowest Gemini cost",
-        defaultIntervalMs: 8000,
-      },
-    ],
-  },
-  {
-    value: "elevenlabs",
-    label: "ElevenLabs",
-    description: "Native speech-to-text",
-    supportsTranslation: false,
-    models: [
-      {
-        modelId: "scribe_v2_realtime",
-        label: "Scribe v2 Realtime",
-        description: "Fastest live transcription",
-        defaultIntervalMs: 2000,
-      },
-      {
-        modelId: "scribe_v2",
-        label: "Scribe v2",
-        description: "Fast transcription",
-        defaultIntervalMs: 2000,
-      },
-    ],
-  },
-  {
-    value: "fireworks",
-    label: "Fireworks AI",
-    description: "Whisper transcription API",
-    supportsTranslation: false,
-    models: [
-      {
-        modelId: "whisper-v3-turbo",
-        label: "Whisper v3 Turbo",
-        description: "Server-side VAD, transcription only",
-        defaultIntervalMs: 8000,
-      },
-    ],
-  },
-];
-
-const TRANSCRIPTION_PROVIDER_LABELS: Partial<Record<TranscriptionProvider, string>> = {
-  google: "Google AI Studio",
-  openrouter: "OpenRouter",
-  elevenlabs: "ElevenLabs",
-  fireworks: "Fireworks AI",
-};
-
-function getTranscriptionProviderOption(
-  provider: TranscriptionProvider,
-) {
+function SegmentedControl<O extends { readonly value: string; readonly label: string }>({
+  options,
+  value,
+  onChange,
+  renderOption,
+}: {
+  options: readonly O[];
+  value: O["value"];
+  onChange: (v: O["value"]) => void;
+  renderOption?: (option: O, selected: boolean) => ReactNode;
+}) {
   return (
-    TRANSCRIPTION_PROVIDER_OPTIONS.find((option) => option.value === provider) ??
-    TRANSCRIPTION_PROVIDER_OPTIONS[0]
+    <div className="inline-flex flex-wrap items-center justify-end gap-1 rounded-sm border border-border/70 bg-muted/35 p-1 max-w-[28rem]">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          className={`h-7 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 rounded-[6px] border transition-colors ${
+            value === option.value
+              ? "border-border/85 bg-background text-foreground shadow-sm"
+              : "border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground"
+          }`}
+          onClick={() => onChange(option.value)}
+        >
+          {renderOption ? renderOption(option, value === option.value) : option.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
-function getTranscriptionModelOption(
-  provider: TranscriptionProvider,
-  modelId: string,
-) {
-  const providerOption = getTranscriptionProviderOption(provider);
+function SettingsSection({
+  icon: Icon,
+  title,
+  description,
+  className,
+  children,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  title: string;
+  description?: string;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
-    providerOption.models.find((option) => option.modelId === modelId) ??
-    providerOption.models[0]
+    <section className={`relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md ${className ?? ""}`}>
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
+      <div className="flex items-center gap-2">
+        <Icon className="size-3.5 text-muted-foreground/70" />
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {title}
+        </h2>
+      </div>
+      {description && (
+        <p className="text-2xs text-muted-foreground mt-1 mb-3">{description}</p>
+      )}
+      <Separator className={description ? "mb-4" : "my-3"} />
+      {children}
+    </section>
   );
 }
-
-const ANALYSIS_PROVIDERS: Array<{ value: AppConfig["analysisProvider"]; label: string }> = [
-  { value: "openrouter", label: "OpenRouter" },
-  { value: "bedrock", label: "AWS Bedrock" },
-  { value: "fireworks", label: "Fireworks AI" },
-];
-
-const PROVIDER_REQUIRED_KEYS: Record<string, string[]> = {
-  openrouter: ["OPENROUTER_API_KEY"],
-  google: ["GEMINI_API_KEY"],
-  elevenlabs: ["ELEVENLABS_API_KEY"],
-  fireworks: ["FIREWORKS_API_KEY"],
-  bedrock: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
-};
-
-function isProviderConfigured(
-  provider: string,
-  apiKeyStatus: Record<string, boolean>,
-): boolean {
-  const required = PROVIDER_REQUIRED_KEYS[provider];
-  if (!required || required.length === 0) return true;
-  return required.every((key) => apiKeyStatus[key]);
-}
-
 
 function SettingRow({
   label,
@@ -318,33 +195,6 @@ function SettingRow({
       <div className="shrink-0">{control}</div>
     </div>
   );
-}
-
-function renderLanguageLabel(languages: Language[], code: LanguageCode) {
-  const lang = languages.find((item) => item.code === code);
-  return lang
-    ? `${lang.native} (${lang.code.toUpperCase()})`
-    : code.toUpperCase();
-}
-
-function isKeyNeeded(def: ApiKeyDefinition, config: AppConfig): boolean {
-  if (def.providers.length === 0) return true;
-  if (def.envVar === "OPENROUTER_API_KEY") return true;
-  return def.providers.some(
-    (p) => p === config.transcriptionProvider || p === config.analysisProvider,
-  );
-}
-
-const API_KEY_ICONS: Record<string, ComponentType<{ size?: number; className?: string }>> = {
-  OPENROUTER_API_KEY: SiOpenrouter,
-  GEMINI_API_KEY: SiGooglegemini,
-  ELEVENLABS_API_KEY: SiElevenlabs,
-};
-
-function renderApiKeyIcon(envVar: string) {
-  const Icon = API_KEY_ICONS[envVar];
-  if (Icon) return <Icon size={14} className="shrink-0" />;
-  return <KeyIcon className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />;
 }
 
 function ApiKeyRow({
@@ -469,18 +319,7 @@ function ApiKeysSection({
 
   return (
     <div className="space-y-5">
-      <section className="relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md">
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-        <div className="flex items-center gap-2">
-          <ShieldCheckIcon className="size-3.5 text-muted-foreground/70" />
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            API Keys
-          </h2>
-        </div>
-        <p className="text-2xs text-muted-foreground mt-1 mb-3">
-          Keys are encrypted and stored in your system keychain. They override .env values.
-        </p>
-        <Separator className="mb-4" />
+      <SettingsSection icon={ShieldCheckIcon} title="API Keys" description="Keys are encrypted and stored in your system keychain. They override .env values.">
 
         {needed.length > 0 && (
           <div className={other.length > 0 ? "mb-6" : ""}>
@@ -527,21 +366,10 @@ function ApiKeysSection({
             </div>
           </div>
         )}
-      </section>
+      </SettingsSection>
 
       {isProviderConfigured("bedrock", status) && (
-        <section className="relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-          <div className="flex items-center gap-2">
-            <ServerIcon className="size-3.5 text-muted-foreground/70" />
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              AWS Bedrock
-            </h2>
-          </div>
-          <p className="text-2xs text-muted-foreground mt-1 mb-3">
-            Configure the AWS region for Bedrock API calls.
-          </p>
-          <Separator className="mb-4" />
+        <SettingsSection icon={ServerIcon} title="AWS Bedrock" description="Configure the AWS region for Bedrock API calls.">
           <div className="space-y-1">
             <label className="text-2xs text-muted-foreground">
               Region
@@ -552,8 +380,132 @@ function ApiKeysSection({
               placeholder="us-east-1"
             />
           </div>
-        </section>
+        </SettingsSection>
       )}
+    </div>
+  );
+}
+
+function AgentsTab({
+  config,
+  onConfigChange,
+}: {
+  config: AppConfig;
+  onConfigChange: (next: AppConfig) => void;
+}) {
+  const [learnings, setLearnings] = useState<{ category: string; text: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const set = <K extends keyof AppConfig>(key: K, value: AppConfig[K]) =>
+    onConfigChange({ ...config, [key]: value });
+
+  useEffect(() => {
+    void window.electronAPI.getLearnings()
+      .then(setLearnings)
+      .catch(() => setLearnings([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const refresh = () => void window.electronAPI.getLearnings().then(setLearnings);
+
+  const grouped = learnings.reduce<Record<string, string[]>>((acc, item) => {
+    (acc[item.category] ??= []).push(item.text);
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-5">
+      <SettingsSection icon={SlidersHorizontalIcon} title="Behavior">
+        <SettingRow
+          label="Response Length"
+          description="Control how verbose agent responses are."
+          control={
+            <div className="inline-flex items-center border border-border rounded-sm overflow-hidden">
+              {([
+                { value: "concise", label: "Concise" },
+                { value: "standard", label: "Standard" },
+                { value: "detailed", label: "Detailed" },
+              ] as const).map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`h-8 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 transition-colors ${
+                    config.responseLength === option.value
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => set("responseLength", option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          }
+        />
+        <SettingRow
+          label="Auto-Approve"
+          description="Agents skip approval for safe creates. Updates, deletes, and archives still require confirmation."
+          control={<Switch checked={config.agentAutoApprove} onCheckedChange={(v) => set("agentAutoApprove", v)} />}
+        />
+        <SettingRow
+          label="Auto-Delegate"
+          description="Automatically launch agents for agent-classified tasks when a session summary is generated."
+          control={<Switch checked={config.autoDelegate} onCheckedChange={(v) => set("autoDelegate", v)} />}
+        />
+        <SettingRow
+          label="Codex"
+          description="Enable OpenAI Codex coding agent. Requires the codex CLI installed and logged in."
+          control={<Switch checked={config.codexEnabled} onCheckedChange={(v) => set("codexEnabled", v)} />}
+        />
+      </SettingsSection>
+
+      <SettingsSection icon={AgentsTabIcon} title="Memory" description="Agents extract learnings from completed tasks. Manage what they remember here.">
+        <SettingRow
+          label="Continual Learning"
+          description="Agents automatically learn your preferences and workspace facts after each task."
+          control={<Switch checked={config.learningEnabled} onCheckedChange={(v) => set("learningEnabled", v)} />}
+        />
+
+        <Separator className="my-4" />
+
+        {loading ? (
+          <p className="text-2xs text-muted-foreground">Loading...</p>
+        ) : learnings.length === 0 ? (
+          <p className="text-2xs text-muted-foreground/60 italic">
+            No learnings yet. Agents will start learning after completing tasks.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {Object.entries(grouped).map(([category, items]) => (
+              <div key={category}>
+                <p className="text-2xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-1.5">
+                  {category}
+                </p>
+                <ul className="space-y-1">
+                  {items.map((text) => (
+                    <li key={text} className="group flex items-start gap-2 text-xs text-foreground/80 py-1 px-2 rounded-sm hover:bg-muted/50 transition-colors">
+                      <span className="mt-1.5 size-1 rounded-full bg-muted-foreground/40 shrink-0" />
+                      <span className="flex-1 leading-relaxed">{text}</span>
+                      <button
+                        type="button"
+                        className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive cursor-pointer"
+                        onClick={() => { void window.electronAPI.deleteLearning(category, text).then(refresh); }}
+                        title="Remove"
+                      >
+                        <XIcon className="size-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            <div className="pt-2">
+              <Button variant="destructive" size="sm" onClick={() => { void window.electronAPI.clearLearnings().then(refresh); }}>
+                Clear All
+              </Button>
+            </div>
+          </div>
+        )}
+      </SettingsSection>
     </div>
   );
 }
@@ -592,11 +544,6 @@ function ToolList({ tools }: { tools: McpToolInfo[] }) {
 
 export function SettingsPage({
   config,
-  languages,
-  sourceLang,
-  targetLang,
-  onSourceLangChange,
-  onTargetLangChange,
   isRecording,
   onConfigChange,
   onReset,
@@ -616,8 +563,12 @@ export function SettingsPage({
   onDeleteApiKey,
   initialTab,
   onShowTutorial,
+  skills = [],
+  disabledSkillIds = [],
+  onToggleSkill,
 }: SettingsPageProps) {
   const codexConnected = useIntegrationStore((s) => s.codexConnected);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [systemPrefersDark, setSystemPrefersDark] = useState(() =>
     typeof globalThis.matchMedia === "function"
       ? globalThis.matchMedia("(prefers-color-scheme: dark)").matches
@@ -648,85 +599,79 @@ export function SettingsPage({
     return () => media.removeEventListener("change", handleChange);
   }, []);
 
-  const languagesLoading = languages.length === 0;
   const set = <K extends keyof AppConfig>(key: K, value: AppConfig[K]) => {
     onConfigChange({ ...config, [key]: value });
   };
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-background">
-      <div className="mx-auto w-full max-w-6xl px-6 py-6">
-        <Tabs defaultValue={initialTab ?? "general"}>
-          <div className="flex items-start justify-between gap-4 mb-6">
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
-              <p className="text-xs text-muted-foreground mt-1">
-                Control appearance and runtime behavior. Session changes apply
-                when you start or resume a session.
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <TabsList>
-                <TabsTrigger value="general">
-                  <SlidersHorizontalIcon className="size-3" />
-                  General
-                </TabsTrigger>
-                <TabsTrigger value="api-keys">
-                  <KeyIcon className="size-3" />
-                  API Keys
-                </TabsTrigger>
-              </TabsList>
-              {onShowTutorial && (
-                <Button variant="outline" size="sm" onClick={onShowTutorial}>
-                  <BookOpenIcon className="size-3.5" data-icon="inline-start" />
-                  Show Tutorial
-                </Button>
-              )}
-              <Button variant="outline" size="sm" onClick={onReset}>
-                <RotateCcwIcon className="size-3.5" data-icon="inline-start" />
-                Reset Defaults
-              </Button>
-            </div>
+    <div className="flex-1 min-h-0 flex flex-col bg-background">
+      {/* Header */}
+      <div className="shrink-0 px-6 pt-6 pb-4 border-b border-border/40">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
+            <p className="text-xs text-muted-foreground mt-1">
+              Control appearance and runtime behavior. Session changes apply
+              when you start or resume a session.
+            </p>
           </div>
+          <div className="flex items-center gap-3">
+            {onShowTutorial && (
+              <Button variant="outline" size="sm" onClick={onShowTutorial}>
+                <BookOpenIcon className="size-3.5" data-icon="inline-start" />
+                Show Tutorial
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={onReset}>
+              <RotateCcwIcon className="size-3.5" data-icon="inline-start" />
+              Reset Defaults
+            </Button>
+          </div>
+        </div>
+        {isRecording && (
+          <div className="mt-4 border border-amber-300/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 px-3 py-2 text-xs rounded-sm">
+            Currently recording. Configuration updates will apply to the next
+            session.
+          </div>
+        )}
+      </div>
 
-          {isRecording && (
-            <div className="mb-6 border border-amber-300/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 px-3 py-2 text-xs rounded-sm">
-              Currently recording. Configuration updates will apply to the next
-              session.
-            </div>
-          )}
+      {/* Sidebar + Content */}
+      <Tabs
+        defaultValue={initialTab ?? "general"}
+        orientation="vertical"
+        className="flex-1 min-h-0 flex flex-row gap-0"
+        onValueChange={() => contentRef.current?.scrollTo(0, 0)}
+      >
+        <TabsList className="w-[200px] shrink-0 flex flex-col items-stretch h-auto gap-0.5 rounded-none border-0 border-r border-border/40 bg-transparent p-3">
+          {SETTINGS_TABS.map((tab) => (
+            <TabsTrigger
+              key={tab.id}
+              value={tab.id}
+              className="justify-start w-full gap-2 rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:border-0 data-[state=active]:shadow-none border-0 shadow-none"
+            >
+              <tab.icon className="size-3.5" />
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <div ref={contentRef} className="flex-1 min-h-0 overflow-y-auto">
+          <div className="mx-auto w-full max-w-4xl px-8 py-6">
 
           <TabsContent value="general">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* ── Row 1: Appearance + Session ── */}
-          <section className="relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-            <div className="flex items-center gap-2">
-              <PaletteIcon className="size-3.5 text-muted-foreground/70" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Appearance
-              </h2>
-            </div>
-            <Separator className="my-3" />
+          <div className="space-y-5">
+          <SettingsSection icon={PaletteIcon} title="Appearance">
             <SettingRow
               label="Theme"
               description="Choose light, dark, or follow your system theme."
               control={
-                <div className={SEGMENTED_GROUP_CLASS}>
-                  {THEME_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className={segmentedButtonClass(
-                        config.themeMode === option.value
-                      )}
-                      onClick={() => set("themeMode", option.value)}
-                    >
-                      {option.icon}
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
+                <SegmentedControl
+                  options={THEME_OPTIONS}
+                  value={config.themeMode}
+                  onChange={(v) => set("themeMode", v)}
+                  renderOption={(o) => <>{o.icon}{o.label}</>}
+                />
               }
             />
             {showLightStyle && (
@@ -734,24 +679,15 @@ export function SettingsPage({
                 label="Light Style"
                 description="Color palette used in light mode."
                 control={
-                  <div className={SEGMENTED_GROUP_CLASS}>
-                    {LIGHT_VARIANT_OPTIONS.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={segmentedButtonClass(
-                          config.lightVariant === option.value
-                        )}
-                        onClick={() => set("lightVariant", option.value)}
-                      >
-                        <span
-                          className="size-3 rounded-sm border border-border/50 shrink-0"
-                          style={{ backgroundColor: option.swatch }}
-                        />
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
+                  <SegmentedControl
+                    options={LIGHT_VARIANT_OPTIONS}
+                    value={config.lightVariant}
+                    onChange={(v) => set("lightVariant", v)}
+                    renderOption={(o) => <>
+                      <span className="size-3 rounded-sm border border-border/50 shrink-0" style={{ backgroundColor: o.swatch }} />
+                      {o.label}
+                    </>}
+                  />
                 }
               />
             )}
@@ -760,24 +696,15 @@ export function SettingsPage({
                 label="Dark Style"
                 description="Color palette used in dark mode."
                 control={
-                  <div className={SEGMENTED_GROUP_CLASS}>
-                    {DARK_VARIANT_OPTIONS.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={segmentedButtonClass(
-                          config.darkVariant === option.value
-                        )}
-                        onClick={() => set("darkVariant", option.value)}
-                      >
-                        <span
-                          className="size-3 rounded-sm border border-border/50 shrink-0"
-                          style={{ backgroundColor: option.swatch }}
-                        />
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
+                  <SegmentedControl
+                    options={DARK_VARIANT_OPTIONS}
+                    value={config.darkVariant}
+                    onChange={(v) => set("darkVariant", v)}
+                    renderOption={(o) => <>
+                      <span className="size-3 rounded-sm border border-border/50 shrink-0" style={{ backgroundColor: o.swatch }} />
+                      {o.label}
+                    </>}
+                  />
                 }
               />
             )}
@@ -825,17 +752,9 @@ export function SettingsPage({
                 </div>
               }
             />
-          </section>
+          </SettingsSection>
 
-          <section className="relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-            <div className="flex items-center gap-2">
-              <SlidersHorizontalIcon className="size-3.5 text-muted-foreground/70" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Session
-              </h2>
-            </div>
-            <Separator className="my-3" />
+          <SettingsSection icon={SlidersHorizontalIcon} title="Session">
             <div className="space-y-1">
               <SettingRow
                 label="Response Length"
@@ -894,18 +813,37 @@ export function SettingsPage({
                 }
               />
             </div>
-          </section>
-
-          {/* ── Row 2: Transcription (full width) ── */}
-          <section className="relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md lg:col-span-2">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-            <div className="flex items-center gap-2">
-              <MicIcon className="size-3.5 text-muted-foreground/70" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Transcription
-              </h2>
+          </SettingsSection>
+          <SettingsSection icon={WrenchIcon} title="Advanced">
+            <div className="space-y-1">
+              <SettingRow
+                label="Debug Mode"
+                description="Enable extra logging and diagnostics."
+                control={
+                  <Switch
+                    checked={config.debug}
+                    onCheckedChange={(v) => set("debug", v)}
+                  />
+                }
+              />
+              <SettingRow
+                label="Legacy Audio"
+                description="Use the legacy ffmpeg loopback capture flow instead of ScreenCaptureKit."
+                control={
+                  <Switch
+                    checked={config.legacyAudio}
+                    onCheckedChange={(v) => set("legacyAudio", v)}
+                  />
+                }
+              />
             </div>
-            <Separator className="my-3" />
+          </SettingsSection>
+
+          </div>
+          </TabsContent>
+
+          <TabsContent value="transcription">
+          <SettingsSection icon={MicIcon} title="Transcription">
             {(() => {
               const providerOption = getTranscriptionProviderOption(
                 config.transcriptionProvider
@@ -917,7 +855,7 @@ export function SettingsPage({
               );
 
               return (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <label className="text-2xs text-muted-foreground">
                       Provider
@@ -934,9 +872,6 @@ export function SettingsPage({
                           transcriptionProvider: provider,
                           transcriptionModelId: nextModel.modelId,
                           intervalMs: nextModel.defaultIntervalMs,
-                          translationEnabled: nextProvider.supportsTranslation
-                            ? config.translationEnabled
-                            : false,
                         });
                       }}
                     >
@@ -1001,35 +936,6 @@ export function SettingsPage({
                   </div>
                   <div className="space-y-1">
                     <label className="text-2xs text-muted-foreground">
-                      Language
-                    </label>
-                    <Select
-                      value={sourceLang}
-                      onValueChange={(value) => {
-                        const next = value as LanguageCode;
-                        onSourceLangChange(next);
-                        if (next === targetLang) {
-                          onTargetLangChange(next === "en" ? "ko" : "en");
-                        }
-                      }}
-                      disabled={languagesLoading}
-                    >
-                      <SelectTrigger size="sm" className="w-full">
-                        <SelectValue>
-                          {renderLanguageLabel(languages, sourceLang)}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {languages.map((lang) => (
-                          <SelectItem key={lang.code} value={lang.code}>
-                            {lang.name} ({lang.native})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-2xs text-muted-foreground">
                       Chunk Interval (ms)
                     </label>
                     <Input
@@ -1053,23 +959,15 @@ export function SettingsPage({
                 </div>
               );
             })()}
-          </section>
+          </SettingsSection>
 
-          {/* Translation settings removed — use toolbar dropdown instead */}
+          </TabsContent>
 
-          {/* ── Row 4: Agent Models (full width) ── */}
-          <section className="relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md lg:col-span-2">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-            <div className="flex items-center gap-2">
-              <CpuIcon className="size-3.5 text-muted-foreground/70" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Model Roles
-              </h2>
-            </div>
-            <Separator className="my-3" />
+          <TabsContent value="models">
+          <SettingsSection icon={CpuIcon} title="Model Roles">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {(() => {
-                const providerKey = (config.analysisProvider === "openrouter" || config.analysisProvider === "bedrock" || config.analysisProvider === "fireworks")
+                const providerKey = (config.analysisProvider === "openrouter" || config.analysisProvider === "bedrock")
                   ? config.analysisProvider
                   : "openrouter" as const;
                 const providerConfig = MODEL_CONFIG[providerKey];
@@ -1084,7 +982,7 @@ export function SettingsPage({
                         value={config.analysisProvider}
                         onValueChange={(v) => {
                           const provider = v as AppConfig["analysisProvider"];
-                          const nextConfig = (provider === "openrouter" || provider === "bedrock" || provider === "fireworks")
+                          const nextConfig = (provider === "openrouter" || provider === "bedrock")
                             ? MODEL_CONFIG[provider]
                             : null;
                           const defs = nextConfig?.defaults;
@@ -1243,52 +1141,51 @@ export function SettingsPage({
                 );
               })()}
             </div>
-          </section>
+          </SettingsSection>
+          </TabsContent>
 
-          {/* ── Row 5: Advanced (full width) ── */}
-          <section className="relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md lg:col-span-2">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-            <div className="flex items-center gap-2">
-              <WrenchIcon className="size-3.5 text-muted-foreground/70" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Advanced
-              </h2>
-            </div>
-            <Separator className="my-3" />
-            <div className="space-y-1">
-              <SettingRow
-                label="Debug Mode"
-                description="Enable extra logging and diagnostics."
-                control={
-                  <Switch
-                    checked={config.debug}
-                    onCheckedChange={(v) => set("debug", v)}
-                  />
-                }
-              />
-              <SettingRow
-                label="Legacy Audio"
-                description="Use the legacy ffmpeg loopback capture flow instead of ScreenCaptureKit."
-                control={
-                  <Switch
-                    checked={config.legacyAudio}
-                    onCheckedChange={(v) => set("legacyAudio", v)}
-                  />
-                }
-              />
-            </div>
-          </section>
+          <TabsContent value="skills">
+          <SettingsSection icon={BookOpenIcon} title="Agent Skills">
+            <p className="text-2xs text-muted-foreground mb-3">
+              Extend agent capabilities with installed skills. Skills are discovered from{" "}
+              <code className="text-[10px] bg-muted px-1 py-0.5 rounded">.agents/skills/</code> (project) and{" "}
+              <code className="text-[10px] bg-muted px-1 py-0.5 rounded">~/.config/agents/skills/</code> (global).
+            </p>
+            {skills.length === 0 ? (
+              <p className="text-2xs text-muted-foreground/60 italic">
+                No skills installed. Run <code className="text-[10px] bg-muted px-1 py-0.5 rounded">npx skills</code> to browse and install skills.
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {skills.map((skill) => {
+                  const enabled = !disabledSkillIds.includes(skill.id);
+                  return (
+                    <SettingRow
+                      key={skill.id}
+                      label={skill.name}
+                      description={
+                        `${skill.description} · ${skill.source === "project" ? "Project" : "Global"}`
+                      }
+                      control={
+                        <Switch
+                          checked={enabled}
+                          onCheckedChange={(v) => onToggleSkill?.(skill.id, v)}
+                        />
+                      }
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </SettingsSection>
+          </TabsContent>
 
-          {/* ── Row 6: Integrations (full width) ── */}
-          <section className="relative overflow-hidden border border-border/60 bg-card px-5 py-4 rounded-md lg:col-span-2">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-            <div className="flex items-center gap-2">
-              <PlugIcon className="size-3.5 text-muted-foreground/70" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Integrations
-              </h2>
-            </div>
-            <Separator className="my-3" />
+          <TabsContent value="memory">
+            <AgentsTab config={config} onConfigChange={onConfigChange} />
+          </TabsContent>
+
+          <TabsContent value="integrations">
+          <SettingsSection icon={PlugIcon} title="Integrations">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {mcpIntegrations.map((status) => {
                 const ProviderIcon = resolveProviderIcon(status.mcpUrl ?? "");
@@ -1524,8 +1421,7 @@ export function SettingsPage({
                 </div>
               )}
             </div>
-          </section>
-          </div>
+          </SettingsSection>
           </TabsContent>
 
           <TabsContent value="api-keys">
@@ -1538,8 +1434,10 @@ export function SettingsPage({
               onDelete={onDeleteApiKey}
             />
           </TabsContent>
-        </Tabs>
-      </div>
+
+          </div>
+        </div>
+      </Tabs>
     </div>
   );
 }

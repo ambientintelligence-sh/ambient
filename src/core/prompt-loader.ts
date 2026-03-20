@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 
 const SUMMARY_PROMPT_PATH = path.join("prompts", "summary", "system.md");
-const INSIGHTS_PROMPT_PATH = path.join("prompts", "insights", "system.md");
 const ANALYSIS_REQUEST_PROMPT_PATH = path.join("prompts", "analysis", "request.md");
 const AGENT_SUGGESTION_PROMPT_PATH = path.join("prompts", "task", "extract.md");
 const TASK_FROM_SELECTION_PROMPT_PATH = path.join("prompts", "task", "from-selection.md");
@@ -25,28 +24,6 @@ Rules:
 - One sentence per key point.
 - Do not include filler like "they discussed several topics."
 - Keep points tightly tied to what was actually said.`;
-
-const DEFAULT_INSIGHTS_SYSTEM_PROMPT = `You generate educational insights that help explain topics mentioned in the transcript.
-
-Task:
-- Return 1-3 short educational insights.
-
-Rules:
-- Each insight must be directly related to entities or concepts explicitly mentioned.
-- Insights must teach context, definitions, facts, or practical tips.
-- Prefer at least one introspective insight when possible (for example: decision framing, hidden assumptions, tradeoffs, or risk-awareness).
-- Avoid repeating points already implied by prior summary bullets.
-- Do not summarize the conversation.
-- Do not speculate or invent unsupported claims.
-- If no meaningful topic is present, return an empty insights list.
-
-Good examples:
-- If they mention "Kubernetes": "Kubernetes is an open-source container orchestration platform originally developed at Google and now governed by CNCF."
-- If they mention "CAC": "Customer Acquisition Cost (CAC) is total sales and marketing spend divided by the number of newly acquired customers."
-
-Bad examples:
-- "They discussed Kubernetes." (summary, not educational)
-- "The conversation covered many topics." (filler)`;
 
 const DEFAULT_ANALYSIS_REQUEST_PROMPT = `{{summary_system_prompt}}
 
@@ -136,7 +113,9 @@ Rules:
 - Confidence must be between 0 and 1.
 - Reason must be concise (one short sentence).`;
 
-const DEFAULT_AGENT_SYSTEM_PROMPT = `You are a practical research assistant.
+const DEFAULT_AGENT_SYSTEM_PROMPT = `You are an Ambient agent — a versatile knowledge worker that executes tasks extracted from live conversations. You can research, draft, analyze, plan, and take action using web search, MCP integrations (Notion, Linear, etc.), coding tools, and more.
+
+You are part of an agent fleet — other agents may be running alongside you on related or independent tasks from the same conversation.
 
 Today is {{today}}.
 
@@ -153,8 +132,14 @@ Instructions:
 - Use searchWeb only when external facts are required (especially if the user asks for latest/current/today/recent information). Do not search for simple reasoning or writing tasks.
 - For time-sensitive information, verify with search and include concrete dates in the final answer.
 - Whenever you use searchWeb results in your answer, cite sources inline using numbered markers like [1], [2]. At the end of your response include a "Sources:" section listing each cited source as [N] Title — URL. Every factual claim drawn from a search result must have an inline citation.
-- Use getTranscriptContext when you need more local conversation context.
+- Use getTranscriptContext to read transcript blocks from the conversation when you need specific details. You can paginate with "last" (block count, default 10) and "offset" (skip from end) params. The response tells you how many blocks "remaining" so you can page backwards.
 - Keep the final answer concise and actionable.
+
+Fleet awareness:
+- You are one of potentially several agents working in parallel on tasks from the same conversation.
+- Use getFleetStatus to see what other agents are currently working on and what session tasks exist.
+- Avoid duplicating work another agent is already handling. If overlap exists, note it and differentiate your approach.
+- Do not attempt to coordinate with or instruct other agents — just be aware of them.
 
 Planning and progress tracking:
 - Use createPlan for non-trivial tasks (3+ steps) after investigation but before execution. It creates a collapsible plan card the user can reference. Content should be concise markdown. Call again to replace if the plan changes.
@@ -260,24 +245,44 @@ Return sourceLanguage and transcript.`;
 
 const TRANSCRIPT_POLISH_PROMPT_PATH = path.join("prompts", "transcription", "transcript-polish.md");
 
-const DEFAULT_TRANSCRIPT_POLISH_PROMPT = `You are cleaning up a short raw speech transcript (typically 1-2 sentences).
+const DEFAULT_TRANSCRIPT_POLISH_PROMPT = `You are cleaning up a raw speech transcript assembled from overlapping audio chunks.
 
-The input comes from overlapping audio chunks and may contain:
-- Repeated words or phrases from chunk overlap
-- Missing punctuation
-- Cut-off words at boundaries
-- Filler words and false starts
+Each audio chunk overlaps the previous one by ~1 second. When concatenated, this creates duplicate words/phrases at the seams. Your job: merge the overlaps into clean, continuous text.
+{{previous_transcript_section}}
 
 Raw transcript:
 """{{transcript}}"""
 
-Your task:
-1. Remove duplicate/repeated fragments from audio overlap.
-2. Add punctuation and fix cut-off words when obvious from context.
-3. Remove filler words (um, uh, like, you know) and false starts.
-4. Preserve all substantive content exactly. Do not add or reinterpret.
-5. Keep the original language. Do not translate.
-6. Return 1-2 clean sentences. Do not combine into longer paragraphs.`;
+OVERLAP PATTERNS TO FIX (these are the most common — remove the duplicate, keep the complete version):
+
+Pattern 1 — Exact repetition:
+  Input:  "get rid of this government. Get rid of this government. In Mexico"
+  Output: "Get rid of this government. In Mexico"
+
+Pattern 2 — Cut-off word then full word:
+  Input:  "would appear in inter. would appear in interviews"
+  Output: "would appear in interviews"
+
+Pattern 3 — Phrase repeated with more words after:
+  Input:  "from the country to gather from the country to gather up support"
+  Output: "from the country to gather up support"
+
+Pattern 4 — Sentence broken across chunks:
+  Input:  "relationship with. them would be a huge factor"
+  Output: "relationship with them would be a huge factor"
+
+Pattern 5 — Number/word fragment from chunk boundary:
+  Input:  "Batista 59, finally fled" (where "59" is from "1959" split across chunks)
+  Output: "Batista finally fled" (drop orphaned fragments that don't make sense)
+
+RULES:
+1. Scan for ANY phrase that appears twice in a row (exact or near-exact). Keep one occurrence — the more complete one.
+2. If "previously committed transcript" is provided above, the raw text may START with words that overlap the END of that previous text. Remove that leading overlap.
+3. Fix broken sentences: rejoin words split by periods/spaces at chunk boundaries.
+4. Remove filler words (um, uh, like, you know) and false starts.
+5. Add proper punctuation and capitalization.
+6. Preserve all substantive content. Do not add, summarize, or reinterpret.
+7. Keep the original language. Do not translate.`;
 
 function loadPrompt(relativePath: string, fallback: string): string {
   const fullPath = path.join(process.cwd(), relativePath);
@@ -304,10 +309,6 @@ export function renderPromptTemplate(
 
 export function getSummarySystemPrompt(): string {
   return loadPrompt(SUMMARY_PROMPT_PATH, DEFAULT_SUMMARY_SYSTEM_PROMPT);
-}
-
-export function getInsightsSystemPrompt(): string {
-  return loadPrompt(INSIGHTS_PROMPT_PATH, DEFAULT_INSIGHTS_SYSTEM_PROMPT);
 }
 
 export function getAnalysisRequestPromptTemplate(): string {
