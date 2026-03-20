@@ -1,5 +1,9 @@
 # Ambient
 
+[![CI](https://github.com/investor55/ambient/actions/workflows/ci.yml/badge.svg)](https://github.com/investor55/ambient/actions/workflows/ci.yml)
+[![Release](https://github.com/investor55/ambient/actions/workflows/release.yml/badge.svg)](https://github.com/investor55/ambient/actions/workflows/release.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+
 The end of work about work. You stay in the zone. Ambient picks up everything around it — the research, the action items, the loose threads — and handles them while you keep going.
 
 ## Features
