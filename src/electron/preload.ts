@@ -27,6 +27,7 @@ import type {
   ApiKeyDefinition,
 } from "@core/types";
 import type { SkillMetadata } from "@core/agents/skills";
+import type { UpdateInfo } from "@core/update-checker";
 
 export type ElectronAPI = {
   wasSeeded: () => Promise<boolean>;
@@ -176,6 +177,9 @@ export type ElectronAPI = {
   getLearnings: () => Promise<{ category: string; text: string }[]>;
   deleteLearning: (category: string, text: string) => Promise<{ ok: boolean }>;
   clearLearnings: () => Promise<{ ok: boolean }>;
+
+  checkForUpdate: () => Promise<UpdateInfo | null>;
+  onUpdateAvailable: (callback: (info: UpdateInfo) => void) => () => void;
 };
 
 function createListener<T>(channel: string) {
@@ -333,6 +337,9 @@ const api: ElectronAPI = {
   getLearnings: () => ipcRenderer.invoke("get-learnings"),
   deleteLearning: (category, text) => ipcRenderer.invoke("delete-learning", category, text),
   clearLearnings: () => ipcRenderer.invoke("clear-learnings"),
+
+  checkForUpdate: () => ipcRenderer.invoke("check-for-update"),
+  onUpdateAvailable: createListener<UpdateInfo>("app:update-available"),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);

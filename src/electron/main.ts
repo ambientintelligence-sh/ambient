@@ -6,6 +6,7 @@ import { createDatabase, type AppDatabase } from "@core/db/db";
 import { seedDemoData } from "@core/db/seed-demo";
 import { log } from "@core/logger";
 import { SecureCredentialStore } from "./integrations/secure-credential-store";
+import { checkForUpdate, type UpdateInfo } from "@core/update-checker";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -84,8 +85,19 @@ app.whenReady().then(async () => {
   }
 
   ipcMain.handle("was-seeded", () => wasSeeded);
+  ipcMain.handle("check-for-update", async (): Promise<UpdateInfo | null> => {
+    return checkForUpdate(app.getVersion(), "investor55/ambient");
+  });
   registerIpcHandlers(() => mainWindow, db);
   createWindow();
+
+  // Check for updates after renderer is ready
+  mainWindow?.webContents.once("did-finish-load", async () => {
+    const update = await checkForUpdate(app.getVersion(), "investor55/ambient");
+    if (update) {
+      mainWindow?.webContents.send("app:update-available", update);
+    }
+  });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
