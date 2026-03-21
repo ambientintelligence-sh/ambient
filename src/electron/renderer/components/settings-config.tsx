@@ -41,22 +41,24 @@ export const LIGHT_VARIANT_OPTIONS: Array<{
   value: LightVariant;
   label: string;
   swatch: string;
+  accent: string;
 }> = [
-  { value: "warm", label: "Warm", swatch: "oklch(0.985 0.002 90)" },
-  { value: "linen", label: "Linen", swatch: "#EEEEEE" },
-  { value: "ivory", label: "Ivory", swatch: "oklch(0.968 0.004 90)" },
-  { value: "petal", label: "Petal", swatch: "oklch(0.962 0.006 250)" },
+  { value: "linen", label: "Linen", swatch: "#EEEEEE", accent: "oklch(0.645 0.142 40)" },
+  { value: "ivory", label: "Ivory", swatch: "oklch(0.968 0.004 90)", accent: "oklch(0.43 0.026 252)" },
+  { value: "blossom", label: "Blossom", swatch: "#faf4ed", accent: "#d7827e" },
+  { value: "moss", label: "Moss", swatch: "#f5f3ed", accent: "#3d755d" },
 ];
 
 export const DARK_VARIANT_OPTIONS: Array<{
   value: DarkVariant;
   label: string;
   swatch: string;
+  accent: string;
 }> = [
-  { value: "charcoal", label: "Charcoal", swatch: "oklch(0.145 0 0)" },
-  { value: "steel", label: "Steel", swatch: "oklch(0.2 0.004 260)" },
-  { value: "abyss", label: "Abyss", swatch: "oklch(0.185 0.02 264)" },
-  { value: "pitch-black", label: "Pitch Black", swatch: "oklch(0 0 0)" },
+  { value: "papaya", label: "Papaya", swatch: "oklch(0.145 0 0)", accent: "oklch(0.66 0.19 36)" },
+  { value: "slate", label: "Slate", swatch: "oklch(0.2 0.004 260)", accent: "oklch(0.78 0.03 248)" },
+  { value: "abyss", label: "Abyss", swatch: "oklch(0.185 0.02 264)", accent: "oklch(0.74 0.08 248)" },
+  { value: "cyber-city", label: "Cyber City", swatch: "#1e1e2e", accent: "#cba6f7" },
 ];
 
 export const FONT_SIZE_OPTIONS: Array<{ value: FontSize; label: string }> = [

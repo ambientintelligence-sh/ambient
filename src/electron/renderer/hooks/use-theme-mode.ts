@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import type { DarkVariant, FontFamily, FontSize, LightVariant, ThemeMode } from "@core/types";
 import { applyThemeClass } from "../lib/theme";
 
-export function useThemeMode(themeMode: ThemeMode, lightVariant: LightVariant = "warm", darkVariant: DarkVariant = "charcoal", fontSize: FontSize = "md", fontFamily: FontFamily = "sans") {
+export function useThemeMode(themeMode: ThemeMode, lightVariant: LightVariant = "moss", darkVariant: DarkVariant = "papaya", fontSize: FontSize = "md", fontFamily: FontFamily = "sans") {
   useEffect(() => {
     const media =
       typeof globalThis.matchMedia === "function"

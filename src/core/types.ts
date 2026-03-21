@@ -42,8 +42,8 @@ export type Direction = "auto" | "source-target";
 export type Device = { index: number; name: string };
 export type AudioSource = "system" | "microphone" | "note";
 export type ThemeMode = "system" | "light" | "dark";
-export type LightVariant = "warm" | "linen" | "ivory" | "petal";
-export type DarkVariant = "charcoal" | "steel" | "pitch-black" | "abyss";
+export type LightVariant = "linen" | "ivory" | "blossom" | "moss";
+export type DarkVariant = "papaya" | "slate" | "abyss" | "cyber-city";
 
 export type TranscriptionProvider =
   | "openrouter"
@@ -313,8 +313,8 @@ export const DEFAULT_TASK_MODEL_ID =
   ENV?.TODO_MODEL_ID ?? "openai/gpt-oss-120b";
 export const DEFAULT_INTERVAL_MS = 8000;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
-export const DEFAULT_LIGHT_VARIANT: LightVariant = "warm";
-export const DEFAULT_DARK_VARIANT: DarkVariant = "charcoal";
+export const DEFAULT_LIGHT_VARIANT: LightVariant = "moss";
+export const DEFAULT_DARK_VARIANT: DarkVariant = "papaya";
 export const DEFAULT_FONT_SIZE: FontSize = "md";
 export const DEFAULT_FONT_FAMILY: FontFamily = "sans";
 export const DEFAULT_TASK_SUGGESTION_AGGRESSIVENESS: TaskSuggestionAggressiveness = "balanced";
@@ -324,17 +324,11 @@ function normalizeLightVariant(
   fallback: LightVariant
 ): LightVariant {
   switch (value) {
-    case "warm":
     case "linen":
     case "ivory":
-    case "petal":
+    case "blossom":
+    case "moss":
       return value;
-    case "aqua":
-      return "warm";
-    case "paper":
-      return "ivory";
-    case "rose":
-      return "petal";
     default:
       return fallback;
   }
@@ -345,19 +339,11 @@ function normalizeDarkVariant(
   fallback: DarkVariant
 ): DarkVariant {
   switch (value) {
-    case "charcoal":
-    case "steel":
-    case "pitch-black":
+    case "papaya":
+    case "slate":
     case "abyss":
+    case "cyber-city":
       return value;
-    case "dim":
-      return "charcoal";
-    case "zinc":
-      return "steel";
-    case "oled":
-      return "pitch-black";
-    case "midnight":
-      return "abyss";
     default:
       return fallback;
   }

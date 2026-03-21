@@ -131,10 +131,10 @@ function SegmentedControl<O extends { readonly value: string; readonly label: st
         <button
           key={option.value}
           type="button"
-          className={`h-7 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 rounded-[6px] border transition-colors ${
+          className={`h-7 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 rounded-[6px] border border-transparent transition-colors ${
             value === option.value
-              ? "border-border/85 bg-background text-foreground shadow-sm"
-              : "border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground"
+              ? "border-border/85 bg-muted text-foreground dark:bg-background"
+              : "bg-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground dark:hover:bg-background/70"
           }`}
           onClick={() => onChange(option.value)}
         >
@@ -708,7 +708,10 @@ export function SettingsPage({
                     value={config.lightVariant}
                     onChange={(v) => set("lightVariant", v)}
                     renderOption={(o) => <>
-                      <span className="size-3 rounded-sm border border-border/50 shrink-0" style={{ backgroundColor: o.swatch }} />
+                      <span
+                        className="size-3.5 rounded-full border-[1.5px] shrink-0"
+                        style={{ backgroundColor: o.swatch, borderColor: o.accent }}
+                      />
                       {o.label}
                     </>}
                   />
@@ -725,7 +728,10 @@ export function SettingsPage({
                     value={config.darkVariant}
                     onChange={(v) => set("darkVariant", v)}
                     renderOption={(o) => <>
-                      <span className="size-3 rounded-sm border border-border/50 shrink-0" style={{ backgroundColor: o.swatch }} />
+                      <span
+                        className="size-3.5 rounded-full border-[1.5px] shrink-0"
+                        style={{ backgroundColor: o.swatch, borderColor: o.accent }}
+                      />
                       {o.label}
                     </>}
                   />

@@ -20,29 +20,29 @@ const FONT_FAMILY_STACK: Record<FontFamily, string> = {
 
 const APP_CONFIG_STORAGE_KEY = "ambient-app-config";
 const LIGHT_BACKGROUND_BY_VARIANT: Record<LightVariant, string> = {
-  warm: "oklch(0.985 0.002 90)",
   linen: "oklch(0.939 0 0)",
   ivory: "oklch(0.968 0.004 90)",
-  petal: "oklch(0.938 0.008 192)",
+  blossom: "#faf4ed",
+  moss: "#f5f3ed",
 };
 
 const DARK_BACKGROUND_BY_VARIANT: Record<DarkVariant, string> = {
-  charcoal: "oklch(0.145 0 0)",
-  steel: "oklch(0.2 0.004 260)",
+  papaya: "oklch(0.145 0 0)",
+  slate: "oklch(0.2 0.004 260)",
   abyss: "oklch(0.185 0.02 264)",
-  "pitch-black": "oklch(0 0 0)",
+  "cyber-city": "#1e1e2e",
 };
 
 const LIGHT_VARIANT_CLASSES = [
   { variant: "linen", className: "light-linen" },
   { variant: "ivory", className: "light-ivory" },
-  { variant: "petal", className: "light-petal" },
+  { variant: "moss", className: "light-moss" },
 ] as const;
 
 const DARK_VARIANT_CLASSES = [
-  { variant: "steel", className: "dark-steel" },
+  { variant: "slate", className: "dark-slate" },
   { variant: "abyss", className: "dark-abyss" },
-  { variant: "pitch-black", className: "dark-pitch-black" },
+  { variant: "cyber-city", className: "dark-cyber-city" },
 ] as const;
 
 function isThemeMode(value: unknown): value is ThemeMode {
@@ -88,7 +88,7 @@ function applyVariantClasses(
   }
 }
 
-export function applyThemeClass(shouldUseDark: boolean, lightVariant: LightVariant = "warm", darkVariant: DarkVariant = "charcoal", fontSize: FontSize = "md", fontFamily: FontFamily = "sans") {
+export function applyThemeClass(shouldUseDark: boolean, lightVariant: LightVariant = "moss", darkVariant: DarkVariant = "papaya", fontSize: FontSize = "md", fontFamily: FontFamily = "sans") {
   const root = globalThis.document.documentElement;
   applyVariantClasses(root, shouldUseDark, lightVariant, darkVariant);
   root.style.colorScheme = shouldUseDark ? "dark" : "light";
