@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { TranscriptBlock, TaskItem, Agent } from "../types";
+import type { TranscriptBlock, TaskItem, Agent, TaskSuggestionAggressiveness } from "../types";
 import {
   getAgentSuggestionPromptTemplate,
   getAnalysisRequestPromptTemplate,
@@ -80,7 +80,7 @@ const todoItemSchema = z.object({
   ),
 });
 
-function extractTodoText(value: unknown): string | undefined {
+function extractNestedString(value: unknown, keys: readonly string[]): string | undefined {
   if (typeof value === "string") {
     const trimmed = value.trim();
     return trimmed || undefined;
@@ -88,7 +88,7 @@ function extractTodoText(value: unknown): string | undefined {
 
   if (Array.isArray(value)) {
     const parts = value
-      .map((item) => extractTodoText(item))
+      .map((item) => extractNestedString(item, keys))
       .filter((item): item is string => Boolean(item));
     if (parts.length === 0) return undefined;
     return parts.join(" ");
@@ -97,37 +97,23 @@ function extractTodoText(value: unknown): string | undefined {
   if (!value || typeof value !== "object") return undefined;
 
   const record = value as Record<string, unknown>;
-  for (const key of ["text", "todo", "task", "title", "value", "content", "description", "label", "item"]) {
-    const nested = extractTodoText(record[key]);
+  for (const key of keys) {
+    const nested = extractNestedString(record[key], keys);
     if (nested) return nested;
   }
 
   return undefined;
 }
 
+const TODO_KEYS = ["text", "todo", "task", "title", "value", "content", "description", "label", "item"] as const;
+const LOOSE_STRING_KEYS = ["text", "content", "value", "summary", "description", "label", "title", "narrative", "message"] as const;
+
+function extractTodoText(value: unknown): string | undefined {
+  return extractNestedString(value, TODO_KEYS);
+}
+
 function extractLooseString(value: unknown): string | undefined {
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed || undefined;
-  }
-
-  if (Array.isArray(value)) {
-    const parts = value
-      .map((item) => extractLooseString(item))
-      .filter((item): item is string => Boolean(item));
-    if (parts.length === 0) return undefined;
-    return parts.join(" ");
-  }
-
-  if (!value || typeof value !== "object") return undefined;
-
-  const record = value as Record<string, unknown>;
-  for (const key of ["text", "content", "value", "summary", "description", "label", "title", "narrative", "message"]) {
-    const nested = extractLooseString(record[key]);
-    if (nested) return nested;
-  }
-
-  return undefined;
+  return extractNestedString(value, LOOSE_STRING_KEYS);
 }
 
 function extractLooseArray(value: unknown): unknown[] | undefined {
@@ -371,6 +357,7 @@ export function buildAgentSuggestionPrompt(
   historicalSuggestions: readonly string[] = [],
   keyPoints: readonly string[] = [],
   educationalContext: readonly string[] = [],
+  aggressiveness: TaskSuggestionAggressiveness = "balanced",
 ): string {
   const transcript = recentBlocks
     .map((b) => {
@@ -412,6 +399,12 @@ export function buildAgentSuggestionPrompt(
   const educationalSection = educationalContext.length > 0
     ? `\n\nPrior educational insights (use to inform suggestions, do not repeat):\n${educationalContext.map((text) => `- ${text}`).join("\n")}`
     : "";
+  const aggressivenessSection =
+    aggressiveness === "conservative"
+      ? "\n\nSuggestion aggressiveness: conservative.\n- Only surface a suggestion when the transcript contains a fairly explicit follow-up, ask, deliverable, or risk.\n- Prefer silence over speculative suggestions."
+      : aggressiveness === "aggressive"
+        ? "\n\nSuggestion aggressiveness: aggressive.\n- Proactively surface implied next steps, research opportunities, drafting help, and decision support.\n- If there is plausible user-saving work to offer, prefer suggesting it."
+        : "\n\nSuggestion aggressiveness: balanced.\n- Surface explicit follow-ups and strong implied next steps.\n- Avoid weak or speculative suggestions.";
 
   return renderPromptTemplate(getAgentSuggestionPromptTemplate(), {
     transcript,
@@ -419,6 +412,7 @@ export function buildAgentSuggestionPrompt(
     historical_suggestions_section: historicalSuggestionsSection,
     key_points_section: keyPointsSection,
     educational_context_section: educationalSection,
+    suggestion_aggressiveness_section: aggressivenessSection,
   });
 }
 

@@ -1,5 +1,9 @@
 # Ambient
 
+[![CI](https://github.com/investor55/ambient/actions/workflows/ci.yml/badge.svg)](https://github.com/investor55/ambient/actions/workflows/ci.yml)
+[![Release](https://github.com/investor55/ambient/actions/workflows/release.yml/badge.svg)](https://github.com/investor55/ambient/actions/workflows/release.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+
 The end of work about work. You stay in the zone. Ambient picks up everything around it — the research, the action items, the loose threads — and handles them while you keep going.
 
 ## Features
@@ -110,8 +114,6 @@ Only `OPENROUTER_API_KEY` is required to get started. API keys can be configured
 Optional keys for alternative providers or extra features:
 
 - `GEMINI_API_KEY` — Use Google AI (Gemini) directly instead of via OpenRouter
-- `ELEVENLABS_API_KEY` — ElevenLabs Scribe transcription
-- `FIREWORKS_API_KEY` — Fireworks AI provider
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` — Amazon Bedrock
 - `EXA_API_KEY` — Web search for AI agents
 - `MCP_INTEGRATIONS_ENABLED=false` — Disable Notion/Linear MCP connectors (enabled by default)

@@ -12,13 +12,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { MoreHorizontal } from "lucide-react";
+import { ChevronRight, Folder, MoreHorizontal, PlusIcon } from "lucide-react";
 import { SectionLabel } from "@/components/ui/section-label";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Tick02Icon } from "@hugeicons/core-free-icons";
 
 type LeftSidebarProps = {
   rollingKeyPoints: string[];
   sessions: SessionMeta[];
   activeSessionId?: string | null;
+  onNewSession?: () => void;
   onSelectSession?: (sessionId: string) => void;
   onDeleteSession?: (sessionId: string) => void;
   projects: ProjectMeta[];
@@ -92,6 +95,7 @@ export function LeftSidebar({
   rollingKeyPoints,
   sessions,
   activeSessionId,
+  onNewSession,
   onSelectSession,
   onDeleteSession,
   projects,
@@ -104,6 +108,7 @@ export function LeftSidebar({
 }: LeftSidebarProps) {
   const [formMode, setFormMode] = useState<ProjectFormMode>({ kind: "none" });
   const [mode, setMode] = useLocalStorage<LeftRailMode>("ambient-left-rail-mode", "sessions");
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [formName, setFormName] = useState("");
   const [formInstructions, setFormInstructions] = useState("");
   const [formContext, setFormContext] = useState("");
@@ -114,6 +119,12 @@ export function LeftSidebar({
       nameInputRef.current?.focus();
     }
   }, [formMode.kind]);
+
+  useEffect(() => {
+    if (formMode.kind !== "none") {
+      setFormMode({ kind: "none" });
+    }
+  }, [activeProjectId]);
 
   const activeProject = activeProjectId ? projects.find((p) => p.id === activeProjectId) : null;
   const liveSummaryPoints = (() => {
@@ -150,11 +161,13 @@ export function LeftSidebar({
 
   function submitForm() {
     const name = formName.trim();
+    const instructions = formInstructions.trim();
+    const context = formContext.trim();
     if (!name) return;
     if (formMode.kind === "create") {
-      onCreateProject(name, formInstructions.trim(), formContext.trim());
+      onCreateProject(name, instructions, context);
     } else if (formMode.kind === "edit") {
-      onEditProject({ ...formMode.project, name, instructions: formInstructions.trim() || undefined, context: formContext.trim() || undefined });
+      onEditProject({ ...formMode.project, name, instructions, context });
     }
     setFormMode({ kind: "none" });
   }
@@ -164,30 +177,43 @@ export function LeftSidebar({
       {/* Project selector */}
       <div className="px-3 pt-2.5 pb-2 shrink-0">
         <div className="flex items-center gap-1">
-          <DropdownMenu>
+          <DropdownMenu open={projectMenuOpen} onOpenChange={setProjectMenuOpen}>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="sm"
                 className="flex-1 justify-between h-7 px-2 text-xs font-medium text-left truncate"
               >
-                <span className="truncate">{activeProject ? activeProject.name : "All Sessions"}</span>
-                <span className="text-muted-foreground ml-1 shrink-0">▾</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <Folder className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{activeProject ? activeProject.name : "All Sessions"}</span>
+                </span>
+                <ChevronRight className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${projectMenuOpen ? "rotate-90" : ""}`} />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-52">
               <DropdownMenuItem onSelect={() => onSelectProject(null)}>
-                All Sessions
+                <span className="flex flex-1 items-center">
+                  <span className="flex-1">All Sessions</span>
+                  {!activeProject && <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="size-4 text-muted-foreground" />}
+                </span>
               </DropdownMenuItem>
-              {projects.length > 0 && <DropdownMenuSeparator />}
               {projects.map((p) => (
                 <DropdownMenuItem key={p.id} onSelect={() => onSelectProject(p.id)}>
-                  <span className="flex-1 truncate">{p.name}</span>
+                  <span className="flex flex-1 items-center">
+                    <span className="flex-1 truncate">{p.name}</span>
+                    {activeProjectId === p.id && (
+                      <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="size-4 text-muted-foreground" />
+                    )}
+                  </span>
                 </DropdownMenuItem>
               ))}
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator className="mx-2" />
               <DropdownMenuItem onSelect={openCreateForm}>
-                New Project…
+                <span className="flex items-center gap-1.5">
+                  <PlusIcon className="size-3.5 shrink-0" />
+                  <span>New Folder…</span>
+                </span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -196,7 +222,7 @@ export function LeftSidebar({
               variant="ghost"
               size="sm"
               className="shrink-0 h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-              title="Edit project"
+              title="Edit folder"
               onClick={() => openEditForm(activeProject)}
             >
               ✎
@@ -206,39 +232,54 @@ export function LeftSidebar({
 
         {/* Inline project form */}
         {formMode.kind !== "none" && (
-          <div className="mt-2 space-y-1.5">
-            <Input
-              ref={nameInputRef}
-              value={formName}
-              onChange={(e) => setFormName(e.target.value)}
-              placeholder="Project name"
-              className="h-7 text-xs"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") submitForm();
-                if (e.key === "Escape") cancelForm();
-              }}
-            />
-            <textarea
-              value={formInstructions}
-              onChange={(e) => setFormInstructions(e.target.value)}
-              placeholder="Agent instructions (optional)"
-              rows={3}
-              className="w-full resize-none rounded-sm border border-input bg-background px-2 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              onKeyDown={(e) => {
-                if (e.key === "Escape") cancelForm();
-              }}
-            />
-            <textarea
-              value={formContext}
-              onChange={(e) => setFormContext(e.target.value)}
-              placeholder="Transcription context — names, glossary, style hints"
-              rows={3}
-              className="w-full resize-none rounded-sm border border-input bg-background px-2 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              onKeyDown={(e) => {
-                if (e.key === "Escape") cancelForm();
-              }}
-            />
-            <div className="flex gap-1.5">
+          <div className="mt-2">
+            <div className="space-y-1">
+              <label className="block text-[11px] font-medium text-muted-foreground">
+                Folder name
+              </label>
+              <Input
+                ref={nameInputRef}
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="Name this folder"
+                className="h-7 bg-background text-xs"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") submitForm();
+                  if (e.key === "Escape") cancelForm();
+                }}
+              />
+            </div>
+            <div className="mt-1.5 space-y-1">
+              <label className="block text-[11px] font-medium text-muted-foreground">
+                Agent instructions
+              </label>
+              <textarea
+                value={formInstructions}
+                onChange={(e) => setFormInstructions(e.target.value)}
+                placeholder="Additional instructions for agents on how to behave (optional)"
+                rows={3}
+                className="w-full resize-none rounded-sm border border-input bg-background px-2 py-1.5 text-xs leading-5 placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") cancelForm();
+                }}
+              />
+            </div>
+            <div className="mt-1.5 space-y-1">
+              <label className="block text-[11px] font-medium text-muted-foreground">
+                Transcription context
+              </label>
+              <textarea
+                value={formContext}
+                onChange={(e) => setFormContext(e.target.value)}
+                placeholder="Additional speech context, like names, glossary terms, or jargon (optional)"
+                rows={3}
+                className="w-full resize-none rounded-sm border border-input bg-background px-2 py-1.5 text-xs leading-5 placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") cancelForm();
+                }}
+              />
+            </div>
+            <div className="mt-2 flex gap-1.5">
               <Button size="sm" className="h-6 text-xs px-2" onClick={submitForm} disabled={!formName.trim()}>
                 {formMode.kind === "create" ? "Create" : "Save"}
               </Button>
@@ -260,7 +301,18 @@ export function LeftSidebar({
         )}
       </div>
 
-      <Separator />
+      <Separator className="mx-auto !w-[calc(100%-1rem)]" />
+
+      <div className="px-3 pt-3 pb-2 shrink-0">
+        <Button
+          size="sm"
+          className="w-full justify-center hover:bg-primary/90"
+          onClick={onNewSession}
+        >
+          <PlusIcon className="size-3.5" data-icon="inline-start" />
+          New Session
+        </Button>
+      </div>
 
       <div className="px-2 py-2 shrink-0">
         <div className="grid grid-cols-2 gap-1 rounded-md bg-foreground/[0.045] p-1 dark:bg-muted/50">
@@ -282,7 +334,7 @@ export function LeftSidebar({
           <div className="flex-1 min-h-0 flex flex-col">
             <section className="min-h-0 flex-1 flex flex-col">
               <SectionLabel className="mb-2">Live Summary</SectionLabel>
-              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+              <div className="min-h-0 flex-1 overflow-y-auto">
                 {liveSummaryPoints.length > 0 ? (
                   <ul className="space-y-1.5">
                     {liveSummaryPoints.map((point, i) => (
@@ -302,7 +354,7 @@ export function LeftSidebar({
           </div>
         ) : (
           <>
-            <SectionLabel className="mb-2 shrink-0">Session Timeline</SectionLabel>
+            <SectionLabel className="mb-2 shrink-0">Sessions</SectionLabel>
             <div className="flex-1 min-h-0 overflow-y-auto">
               {sessions.length > 0 ? (
                 <ul className="space-y-1">
@@ -320,9 +372,6 @@ export function LeftSidebar({
                             <span className="text-foreground font-medium truncate">
                               {session.title ?? "Untitled Session"}
                             </span>
-                            <span className="text-muted-foreground text-2xs font-mono shrink-0">
-                              {session.blockCount}
-                            </span>
                           </div>
                           <div className="text-muted-foreground text-2xs font-mono">
                             {formatDate(session.startedAt)} · {formatTime(session.startedAt)}
@@ -336,38 +385,37 @@ export function LeftSidebar({
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-6 w-6 p-0 text-muted-foreground opacity-60 transition-opacity hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+                                  className="h-6 w-6 p-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
                                   aria-label="Session actions"
                                 >
                                   <MoreHorizontal className="size-3.5" />
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-52">
-                                {onMoveSessionToProject && (
+                                {onMoveSessionToProject && projects.length > 0 && (
                                   <>
-                                    <DropdownMenuLabel>Move to project</DropdownMenuLabel>
-                                    <DropdownMenuItem
-                                      onSelect={() => onMoveSessionToProject(session.id, null)}
-                                      disabled={!session.projectId}
-                                    >
-                                      All Sessions
-                                    </DropdownMenuItem>
-                                    {projects.length > 0 && <DropdownMenuSeparator />}
+                                    <DropdownMenuLabel>Move to folder</DropdownMenuLabel>
                                     {projects.map((project) => (
                                       <DropdownMenuItem
                                         key={project.id}
-                                        onSelect={() => onMoveSessionToProject(session.id, project.id)}
-                                        disabled={session.projectId === project.id}
+                                        onSelect={() => onMoveSessionToProject(
+                                          session.id,
+                                          session.projectId === project.id ? null : project.id,
+                                        )}
                                       >
-                                        {project.name}
-                                        {session.projectId === project.id ? " (current)" : ""}
+                                        <span className="flex flex-1 items-center">
+                                          <span className="flex-1 truncate">{project.name}</span>
+                                          {session.projectId === project.id && (
+                                            <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="size-4 text-muted-foreground" />
+                                          )}
+                                        </span>
                                       </DropdownMenuItem>
                                     ))}
                                   </>
                                 )}
                                 {onDeleteSession && (
                                   <>
-                                    {onMoveSessionToProject && <DropdownMenuSeparator />}
+                                    {onMoveSessionToProject && projects.length > 0 && <DropdownMenuSeparator className="mx-2" />}
                                     <DropdownMenuItem
                                       variant="destructive"
                                       onSelect={() => onDeleteSession(session.id)}

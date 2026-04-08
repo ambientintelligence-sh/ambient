@@ -34,6 +34,7 @@ export function buildSessionConfig(
   sourceLang: LanguageCode,
   targetLang: LanguageCode,
   appConfig?: AppConfigOverrides,
+  translationEnabled = false,
 ): SessionConfig {
   const config = normalizeAppConfig(appConfig);
   return {
@@ -55,11 +56,14 @@ export function buildSessionConfig(
     vertexLocation: config.vertexLocation,
     bedrockRegion: config.bedrockRegion,
     responseLength: config.responseLength,
+    taskSuggestionAggressiveness: config.taskSuggestionAggressiveness,
     debug: config.debug,
     legacyAudio: config.legacyAudio,
-    translationEnabled: config.translationEnabled,
+    translationEnabled,
     agentAutoApprove: config.agentAutoApprove,
     codexEnabled: config.codexEnabled,
+    disabledSkillIds: config.disabledSkillIds,
+    learningEnabled: config.learningEnabled,
   };
 }
 

@@ -5,8 +5,6 @@ export function validateEnv(config: Pick<SessionConfig, "transcriptionProvider" 
 
   const needsGoogle = config.transcriptionProvider === "google" || config.analysisProvider === "google";
   const needsOpenRouter = config.transcriptionProvider === "openrouter" || config.analysisProvider === "openrouter";
-  const needsElevenLabs = config.transcriptionProvider === "elevenlabs";
-  const needsFireworks = config.transcriptionProvider === "fireworks" || config.analysisProvider === "fireworks";
   const needsBedrock = config.analysisProvider === "bedrock";
 
   if (needsBedrock) {
@@ -27,18 +25,6 @@ export function validateEnv(config: Pick<SessionConfig, "transcriptionProvider" 
   if (needsOpenRouter) {
     if (!process.env.OPENROUTER_API_KEY) {
       missing.push("OPENROUTER_API_KEY");
-    }
-  }
-
-  if (needsElevenLabs) {
-    if (!process.env.ELEVENLABS_API_KEY) {
-      missing.push("ELEVENLABS_API_KEY");
-    }
-  }
-
-  if (needsFireworks) {
-    if (!process.env.FIREWORKS_API_KEY) {
-      missing.push("FIREWORKS_API_KEY");
     }
   }
 

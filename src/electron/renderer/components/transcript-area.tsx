@@ -90,7 +90,6 @@ function Paragraph({ blocks, isLast, canTranslate, translationEnabled }: { block
 
   const sourceText = joinTexts(blocks, (b) => b.sourceText);
   const translationText = joinTexts(blocks, (b) => b.translation);
-  const hasPending = canTranslate && translationEnabled && blocks.some((b) => !b.translation);
   const isNonEnglishSource = first.sourceLabel !== "EN";
   const long = isNote && isLongNote(sourceText);
 
@@ -137,24 +136,9 @@ function Paragraph({ blocks, isLast, canTranslate, translationEnabled }: { block
           </div>
           {translationText ? (
             <div className="text-sm mt-0.5">
-              <span className="text-foreground">
-                {translationText}
-                {translationEnabled && canTranslate && hasPending && (
-                  <span className="text-muted-foreground ml-1 animate-pulse">
-                    Translating...
-                  </span>
-                )}
-              </span>
+              <span className="text-foreground">{translationText}</span>
             </div>
-          ) : (
-            translationEnabled && canTranslate && (
-              <div className="text-sm mt-0.5">
-                <span className="text-muted-foreground animate-pulse">
-                  Translating...
-                </span>
-              </div>
-            )
-          )}
+          ) : null}
         </>
       )}
     </div>
@@ -372,11 +356,17 @@ export const TranscriptArea = forwardRef<HTMLDivElement, TranscriptAreaProps>(
           {systemPartial && (
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground/50 italic animate-pulse">
               <span>{systemPartial}</span>
+              {translationEnabled && canTranslate && (
+                <span className="text-muted-foreground/70">Translating...</span>
+              )}
             </div>
           )}
           {micPartial && (
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground/50 italic animate-pulse">
               <span>{micPartial}</span>
+              {translationEnabled && canTranslate && (
+                <span className="text-muted-foreground/70">Translating...</span>
+              )}
             </div>
           )}
           <div ref={bottomRef} />

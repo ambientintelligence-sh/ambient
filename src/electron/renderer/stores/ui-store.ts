@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { FinalSummary } from "@core/types";
+import type { UpdateInfo } from "@core/update-checker";
 import type { SummaryModalState } from "../components/session-summary-modal";
 
 type OnboardingPhase = "settings" | "tour" | "done";
@@ -16,6 +16,8 @@ type UIState = {
   tourStep: number;
   finalSummaryState: SummaryModalState;
   demoMode: boolean;
+  updateAvailable: UpdateInfo | null;
+  updateDismissed: boolean;
 };
 
 type UIActions = {
@@ -32,6 +34,8 @@ type UIActions = {
   setFinalSummaryState: (state: SummaryModalState) => void;
   updateFinalSummary: (updater: (prev: SummaryModalState) => SummaryModalState) => void;
   setDemoMode: (v: boolean) => void;
+  setUpdateAvailable: (info: UpdateInfo | null) => void;
+  dismissUpdate: () => void;
 };
 
 export const useUIStore = create<UIState & UIActions>()(
@@ -48,6 +52,8 @@ export const useUIStore = create<UIState & UIActions>()(
       tourStep: 0,
       finalSummaryState: { kind: "idle" } as SummaryModalState,
       demoMode: false,
+      updateAvailable: null,
+      updateDismissed: false,
 
       // Actions
       setSplashDone: (done) => set({ splashDone: done }),
@@ -64,6 +70,8 @@ export const useUIStore = create<UIState & UIActions>()(
       updateFinalSummary: (updater) =>
         set((s) => ({ finalSummaryState: updater(s.finalSummaryState) })),
       setDemoMode: (v) => set({ demoMode: v }),
+      setUpdateAvailable: (info) => set({ updateAvailable: info, updateDismissed: false }),
+      dismissUpdate: () => set({ updateDismissed: true }),
     }),
     {
       name: "ambient-ui-store",

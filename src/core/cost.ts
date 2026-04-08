@@ -9,10 +9,8 @@ type ProviderPricing = {
 const PRICING: Record<TranscriptionProvider | AnalysisProvider, ProviderPricing> = {
   google:     { audioInputPerToken: 1.0 / 1_000_000,  textInputPerToken: 0.15 / 1_000_000, outputPerToken: 0.6 / 1_000_000 },
   vertex:     { audioInputPerToken: 1.0 / 1_000_000,  textInputPerToken: 0.5 / 1_000_000,  outputPerToken: 3.0 / 1_000_000 },
-  elevenlabs: { audioInputPerToken: 0,                 textInputPerToken: 0,                 outputPerToken: 0 },
   openrouter: { audioInputPerToken: 0,                 textInputPerToken: 0.6 / 1_000_000,  outputPerToken: 2.4 / 1_000_000 },
   bedrock:    { audioInputPerToken: 0,                 textInputPerToken: 0.8 / 1_000_000,  outputPerToken: 4.0 / 1_000_000 },
-  fireworks:  { audioInputPerToken: 0,                 textInputPerToken: 0.4 / 1_000_000,  outputPerToken: 1.6 / 1_000_000 },
 };
 
 export type CostAccumulator = {

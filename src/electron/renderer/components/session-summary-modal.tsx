@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { CheckIcon, PlusIcon, RefreshCwIcon, UserIcon, XIcon } from "lucide-react";
+import { CheckIcon, PlusIcon, RefreshCwIcon, UserIcon } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { WorkoutRunIcon } from "@hugeicons/core-free-icons";
 import type { FinalSummary, TodoItem } from "@core/types";
@@ -533,14 +533,6 @@ export function SessionSummaryPanel({ state, existingTaskTexts, onClose, onAccep
               <RefreshCwIcon className="size-3" />
             </button>
           )}
-          <button
-            type="button"
-            onClick={onClose}
-            className="cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-foreground"
-            aria-label="Close summary"
-          >
-            <XIcon className="size-3.5" />
-          </button>
         </div>
       </div>
 

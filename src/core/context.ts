@@ -87,22 +87,6 @@ export function loadAgentsMd(): string {
   return fs.readFileSync(agentsMdPath, "utf-8");
 }
 
-export function getProjectAgentsMdPath(dataDir: string, projectId: string): string {
-  return path.join(dataDir, "projects", projectId, "agents.md");
-}
-
-export function loadProjectAgentsMd(dataDir: string, projectId: string): string {
-  const filePath = getProjectAgentsMdPath(dataDir, projectId);
-  if (!fs.existsSync(filePath)) return "";
-  return fs.readFileSync(filePath, "utf-8");
-}
-
-export function writeProjectAgentsMd(dataDir: string, projectId: string, content: string) {
-  const filePath = getProjectAgentsMdPath(dataDir, projectId);
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, content, "utf-8");
-}
-
 export function writeSummaryLog(allKeyPoints: string[]) {
   if (allKeyPoints.length === 0) return;
   const summaryLogFile = path.join(process.cwd(), "summary.log");

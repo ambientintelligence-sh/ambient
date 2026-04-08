@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, ArrowRightLeftIcon, CircleIcon, MicIcon, MicOffIcon, MonitorSpeakerIcon, PlusIcon, Settings2Icon, SquareIcon } from "lucide-react";
+import { ArrowLeftIcon, ArrowRightLeftIcon, CircleIcon, MicIcon, MicOffIcon, Settings2Icon, SquareIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -24,15 +24,15 @@ type ToolbarHeaderProps = {
   onTargetLangChange: (lang: LanguageCode) => void;
   onTranslateToSelectionChange: (value: LanguageCode | "off") => void;
   sessionActive: boolean;
-  onStart: () => void;
-  onNewSession: () => void;
-  onTogglePause: () => void;
+  armedMicInput: boolean;
+  armedDeviceAudio: boolean;
+  onToggleMicInput: () => void;
+  onToggleDeviceAudio: () => void;
+  onRecordToggle: () => void;
   uiState: UIState | null;
   langError: string;
   onToggleTranslation?: () => void;
   onSetTranslationMode?: (direction: Direction | "off", targetLang?: LanguageCode) => void;
-  onToggleMic?: () => void;
-  onEndSession?: () => void;
   settingsOpen?: boolean;
   onToggleSettings?: () => void;
 };
@@ -40,25 +40,22 @@ type ToolbarHeaderProps = {
 function StatusBadge({ status }: { status: UIState["status"] }) {
   if (status === "recording" || status === "connecting") {
     return (
-      <Badge className="gap-1.5 font-normal bg-red-600 text-white hover:bg-red-600 dark:bg-red-500 dark:hover:bg-red-500 border-transparent">
+      <Badge className="gap-1.5 rounded-full bg-red-50 px-2.5 font-normal text-red-700 hover:bg-red-50 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/10">
         <span className="relative flex size-2">
-          <span className="absolute inset-0 rounded-full bg-white/40 animate-ping" />
-          <span className="relative inline-flex size-2 rounded-full bg-white" />
+          <span className="absolute inset-0 rounded-full bg-red-500/35 animate-ping" />
+          <span className="relative inline-flex size-2 rounded-full bg-red-500" />
         </span>
-        {status === "connecting" ? "Connecting..." : "Recording"}
+        <span className="animate-pulse">
+          {status === "connecting" ? "Connecting..." : "Recording"}
+        </span>
       </Badge>
     );
   }
 
-  const config = {
-    idle: { label: "Idle" },
-    paused: { label: "Paused" },
-  }[status];
-
   return (
-    <Badge variant="secondary" className="gap-1.5 font-normal">
+    <Badge variant="secondary" className="gap-1.5 rounded-full px-2.5 font-normal">
       <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground/40" />
-      {config.label}
+      Idle
     </Badge>
   );
 }
@@ -94,28 +91,31 @@ export function ToolbarHeader({
   onTargetLangChange,
   onTranslateToSelectionChange,
   sessionActive,
-  onStart,
-  onNewSession,
-  onTogglePause,
+  armedMicInput,
+  armedDeviceAudio,
+  onToggleMicInput,
+  onToggleDeviceAudio,
+  onRecordToggle,
   uiState,
   langError,
   onToggleTranslation: _onToggleTranslation,
   onSetTranslationMode,
-  onToggleMic,
-  onEndSession,
   settingsOpen,
   onToggleSettings,
 }: ToolbarHeaderProps) {
-  const isRecordingOrConnecting =
+  const isDeviceAudioActive =
     uiState?.status === "recording" || uiState?.status === "connecting";
-  const hasRecorded =
-    uiState?.status === "recording" || uiState?.status === "connecting" || uiState?.status === "paused";
+  const isMicActive = uiState?.micEnabled ?? false;
+  const isCapturing = isDeviceAudioActive || isMicActive;
   const loading = languages.length === 0;
   const canTranslate = uiState?.canTranslate ?? false;
   const translationEnabled = (uiState?.translationEnabled ?? false) && canTranslate;
   const currentDirection: Direction = uiState?.direction ?? "auto";
-  const micEnabled = uiState?.micEnabled ?? false;
   const logoUrl = new URL("../../../../assets/ambient-eclipse-filled.svg", import.meta.url).href;
+  const statusForBadge: UIState["status"] =
+    isCapturing
+      ? (uiState?.status === "connecting" ? "connecting" : "recording")
+      : "idle";
 
   const translateValue = translateToSelection;
 
@@ -171,7 +171,7 @@ export function ToolbarHeader({
                 onTargetLangChange(alt as LanguageCode);
               }
             }}
-            disabled={loading || isRecordingOrConnecting}
+            disabled={loading || isDeviceAudioActive}
           >
             <SelectTrigger size="sm" className="w-40">
               <SelectValue>
@@ -215,7 +215,7 @@ export function ToolbarHeader({
             </SelectTrigger>
             <SelectContent position="popper" align="start" sideOffset={4}>
               <SelectItem value="off">Translation off</SelectItem>
-              <SelectSeparator />
+              <SelectSeparator className="mx-2" />
               <SelectGroup>
                 <SelectLabel>Translate to</SelectLabel>
                 {availableTargetLanguages.map((lang) => (
@@ -230,96 +230,61 @@ export function ToolbarHeader({
 
         <Separator orientation="vertical" className="h-4" />
 
-        {/* Action buttons */}
+        {/* Recording controls */}
         <div className="flex items-center gap-1.5 titlebar-no-drag">
-          {!sessionActive ? (
-            <Button size="sm" onClick={onStart} disabled={loading}>
-              <PlusIcon className="size-3.5" data-icon="inline-start" />
-              New Session
-            </Button>
-          ) : (
-            <>
-              <Button variant="outline" size="sm" onClick={onNewSession}>
-                <PlusIcon className="size-3.5" data-icon="inline-start" />
-                New
-              </Button>
-              <Button variant="outline" size="sm" onClick={onEndSession} className="text-destructive hover:bg-destructive/10">
-                <SquareIcon className="size-3 fill-current" data-icon="inline-start" />
-                End
-              </Button>
-            </>
-          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onToggleMicInput}
+            className={armedMicInput
+              ? "gap-1.5 px-2 bg-muted text-foreground"
+              : "gap-1.5 px-2 text-muted-foreground"}
+            aria-pressed={armedMicInput}
+            aria-label={armedMicInput ? "Disable mic input" : "Enable mic input"}
+          >
+            <span className={`flex size-3.5 items-center justify-center rounded-[4px] border ${armedMicInput ? "border-primary/60 bg-primary/8" : "border-muted-foreground/40 bg-transparent"}`}>
+              <span className={`size-1.5 rounded-[2px] ${armedMicInput ? "bg-primary" : "bg-transparent"}`} />
+            </span>
+            {armedMicInput ? <MicIcon className="size-3.5" /> : <MicOffIcon className="size-3.5" />}
+            <span className="text-xs">Mic Input</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onToggleDeviceAudio}
+            className={armedDeviceAudio
+              ? "gap-1.5 px-2 bg-muted text-foreground"
+              : "gap-1.5 px-2 text-muted-foreground"}
+            aria-pressed={armedDeviceAudio}
+            aria-label={armedDeviceAudio ? "Disable device audio" : "Enable device audio"}
+          >
+            <span className={`flex size-3.5 items-center justify-center rounded-[4px] border ${armedDeviceAudio ? "border-primary/60 bg-primary/8" : "border-muted-foreground/40 bg-transparent"}`}>
+              <span className={`size-1.5 rounded-[2px] ${armedDeviceAudio ? "bg-primary" : "bg-transparent"}`} />
+            </span>
+            {armedDeviceAudio ? <Volume2Icon className="size-3.5" /> : <VolumeXIcon className="size-3.5" />}
+            <span className="text-xs">Device Audio</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onRecordToggle}
+            className={isCapturing ? "gap-1.5 border-destructive/50 text-destructive hover:bg-destructive/10" : "gap-1.5"}
+            aria-label={isCapturing ? "Stop recording" : "Start recording"}
+          >
+            {isCapturing ? (
+              <SquareIcon className="size-3 fill-current" data-icon="inline-start" />
+            ) : (
+              <CircleIcon className="size-3 fill-red-500 text-red-500 dark:fill-red-400 dark:text-red-400" data-icon="inline-start" />
+            )}
+            <span className="text-xs">{isCapturing ? "Stop" : "Record"}</span>
+          </Button>
         </div>
-
-        {/* Mode toggles */}
-        {sessionActive && (
-          <>
-            <Separator orientation="vertical" className="h-4" />
-            <div className="flex items-center gap-1.5 titlebar-no-drag">
-              {hasRecorded ? (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onTogglePause}
-                    className={isRecordingOrConnecting
-                      ? "bg-red-600 hover:bg-red-700 text-white border-red-600 dark:bg-red-500 dark:hover:bg-red-600 dark:border-red-500 gap-1.5"
-                      : "gap-1.5"}
-                    aria-label={isRecordingOrConnecting ? "Pause computer audio" : "Resume computer audio"}
-                  >
-                    {isRecordingOrConnecting && (
-                      <span className="relative flex size-2">
-                        <span className="absolute inset-0 rounded-full bg-white/60 mic-pulse-ring" />
-                        <span className="relative inline-flex size-2 rounded-full bg-white" />
-                      </span>
-                    )}
-                    <MonitorSpeakerIcon className="size-3.5" />
-                    <span className="text-xs">Computer Audio</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onToggleMic}
-                    className={micEnabled
-                      ? "bg-red-600 hover:bg-red-700 text-white border-red-600 dark:bg-red-500 dark:hover:bg-red-600 dark:border-red-500 gap-1.5"
-                      : "gap-1.5"}
-                    aria-label={micEnabled ? "Turn off microphone" : "Turn on microphone"}
-                  >
-                    {micEnabled ? (
-                      <>
-                        <span className="relative flex size-2">
-                          <span className="absolute inset-0 rounded-full bg-white/60 mic-pulse-ring" />
-                          <span className="relative inline-flex size-2 rounded-full bg-white" />
-                        </span>
-                        <MicIcon className="size-3.5" />
-                      </>
-                    ) : (
-                      <MicOffIcon className="size-3.5" />
-                    )}
-                    <span className="text-xs">My Voice</span>
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={onTogglePause}
-                  className="gap-1.5"
-                  aria-label="Start recording"
-                >
-                  <CircleIcon className="size-3 fill-red-500 text-red-500 dark:fill-red-400 dark:text-red-400" />
-                  <span className="text-xs">Record</span>
-                </Button>
-              )}
-            </div>
-          </>
-        )}
 
         {/* Status info (right-aligned) */}
         <div className="ml-auto flex items-center gap-2 titlebar-no-drag">
           {uiState && (
             <>
-              <StatusBadge status={uiState.status} />
+              <StatusBadge status={statusForBadge} />
               {uiState.cost != null && uiState.cost > 0 && (
                 <>
                   <Separator orientation="vertical" className="h-4" />

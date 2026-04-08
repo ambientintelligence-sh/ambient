@@ -42,16 +42,14 @@ export type Direction = "auto" | "source-target";
 export type Device = { index: number; name: string };
 export type AudioSource = "system" | "microphone" | "note";
 export type ThemeMode = "system" | "light" | "dark";
-export type LightVariant = "warm" | "linen" | "ivory" | "petal";
-export type DarkVariant = "charcoal" | "steel" | "pitch-black" | "abyss";
+export type LightVariant = "linen" | "ivory" | "blossom" | "moss";
+export type DarkVariant = "papaya" | "slate" | "abyss" | "cyber-city";
 
 export type TranscriptionProvider =
   | "openrouter"
   | "vertex"
-  | "google"
-  | "elevenlabs"
-  | "fireworks";
-export type AnalysisProvider = "openrouter" | "google" | "vertex" | "bedrock" | "fireworks";
+  | "google";
+export type AnalysisProvider = "openrouter" | "google" | "vertex" | "bedrock";
 export type { AnalysisModelPreset } from "./models";
 
 export type TranscriptBlock = {
@@ -202,17 +200,21 @@ export type SessionConfig = {
   vertexLocation: string;
   bedrockRegion: string;
   responseLength: ResponseLength;
+  taskSuggestionAggressiveness: TaskSuggestionAggressiveness;
   debug: boolean;
   legacyAudio: boolean;
   translationEnabled: boolean;
   agentAutoApprove: boolean;
   codexEnabled: boolean;
+  disabledSkillIds: string[];
+  learningEnabled: boolean;
   micDevice?: string;
 };
 
 export type FontSize = "sm" | "md" | "lg";
 export type FontFamily = "sans" | "serif" | "mono";
 export type ResponseLength = "concise" | "standard" | "detailed";
+export type TaskSuggestionAggressiveness = "conservative" | "balanced" | "aggressive";
 
 export type AppConfig = {
   themeMode: ThemeMode;
@@ -236,12 +238,14 @@ export type AppConfig = {
   vertexLocation: string;
   bedrockRegion: string;
   responseLength: ResponseLength;
+  taskSuggestionAggressiveness: TaskSuggestionAggressiveness;
   debug: boolean;
   legacyAudio: boolean;
-  translationEnabled: boolean;
   agentAutoApprove: boolean;
   autoDelegate: boolean;
   codexEnabled: boolean;
+  disabledSkillIds: string[];
+  learningEnabled: boolean;
 };
 
 export type AppConfigOverrides = Partial<AppConfig>;
@@ -309,27 +313,22 @@ export const DEFAULT_TASK_MODEL_ID =
   ENV?.TODO_MODEL_ID ?? "openai/gpt-oss-120b";
 export const DEFAULT_INTERVAL_MS = 8000;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
-export const DEFAULT_LIGHT_VARIANT: LightVariant = "warm";
-export const DEFAULT_DARK_VARIANT: DarkVariant = "charcoal";
+export const DEFAULT_LIGHT_VARIANT: LightVariant = "moss";
+export const DEFAULT_DARK_VARIANT: DarkVariant = "papaya";
 export const DEFAULT_FONT_SIZE: FontSize = "md";
 export const DEFAULT_FONT_FAMILY: FontFamily = "sans";
+export const DEFAULT_TASK_SUGGESTION_AGGRESSIVENESS: TaskSuggestionAggressiveness = "balanced";
 
 function normalizeLightVariant(
   value: unknown,
   fallback: LightVariant
 ): LightVariant {
   switch (value) {
-    case "warm":
     case "linen":
     case "ivory":
-    case "petal":
+    case "blossom":
+    case "moss":
       return value;
-    case "aqua":
-      return "warm";
-    case "paper":
-      return "ivory";
-    case "rose":
-      return "petal";
     default:
       return fallback;
   }
@@ -340,19 +339,11 @@ function normalizeDarkVariant(
   fallback: DarkVariant
 ): DarkVariant {
   switch (value) {
-    case "charcoal":
-    case "steel":
-    case "pitch-black":
+    case "papaya":
+    case "slate":
     case "abyss":
+    case "cyber-city":
       return value;
-    case "dim":
-      return "charcoal";
-    case "zinc":
-      return "steel";
-    case "oled":
-      return "pitch-black";
-    case "midnight":
-      return "abyss";
     default:
       return fallback;
   }
@@ -379,12 +370,14 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   vertexLocation: DEFAULT_VERTEX_LOCATION,
   bedrockRegion: DEFAULT_BEDROCK_REGION,
   responseLength: "standard",
+  taskSuggestionAggressiveness: DEFAULT_TASK_SUGGESTION_AGGRESSIVENESS,
   debug: !!ENV?.DEBUG,
   legacyAudio: false,
-  translationEnabled: true,
   agentAutoApprove: false,
   autoDelegate: false,
   codexEnabled: false,
+  disabledSkillIds: [],
+  learningEnabled: true,
 };
 
 export function normalizeAppConfig(
@@ -432,17 +425,14 @@ export function normalizeAppConfig(
   const transcriptionProvider: TranscriptionProvider =
     merged.transcriptionProvider === "openrouter" ||
     merged.transcriptionProvider === "vertex" ||
-    merged.transcriptionProvider === "google" ||
-    merged.transcriptionProvider === "elevenlabs" ||
-    merged.transcriptionProvider === "fireworks"
+    merged.transcriptionProvider === "google"
       ? merged.transcriptionProvider
       : DEFAULT_APP_CONFIG.transcriptionProvider;
   const analysisProvider: AnalysisProvider =
     merged.analysisProvider === "openrouter" ||
     merged.analysisProvider === "google" ||
     merged.analysisProvider === "vertex" ||
-    merged.analysisProvider === "bedrock" ||
-    merged.analysisProvider === "fireworks"
+    merged.analysisProvider === "bedrock"
       ? merged.analysisProvider
       : DEFAULT_APP_CONFIG.analysisProvider;
   const intervalMs =
@@ -466,6 +456,12 @@ export function normalizeAppConfig(
     merged.synthesisModelId?.trim() ||
     legacyMemoryModelId ||
     DEFAULT_APP_CONFIG.synthesisModelId;
+  const taskSuggestionAggressiveness: TaskSuggestionAggressiveness =
+    merged.taskSuggestionAggressiveness === "conservative" ||
+    merged.taskSuggestionAggressiveness === "aggressive" ||
+    merged.taskSuggestionAggressiveness === "balanced"
+      ? merged.taskSuggestionAggressiveness
+      : DEFAULT_APP_CONFIG.taskSuggestionAggressiveness;
 
   return {
     ...merged,
@@ -496,9 +492,9 @@ export function normalizeAppConfig(
         : (merged as unknown as { compact?: boolean }).compact
           ? "concise"
           : DEFAULT_APP_CONFIG.responseLength,
+    taskSuggestionAggressiveness,
     debug: !!merged.debug,
     legacyAudio: !!merged.legacyAudio,
-    translationEnabled: !!merged.translationEnabled,
     agentAutoApprove: !!merged.agentAutoApprove,
     autoDelegate: !!merged.autoDelegate,
     codexEnabled: !!merged.codexEnabled,
@@ -508,6 +504,10 @@ export function normalizeAppConfig(
       Array.isArray(merged.taskProviders) && merged.taskProviders.length > 0
         ? merged.taskProviders
         : DEFAULT_APP_CONFIG.taskProviders,
+    disabledSkillIds: Array.isArray(merged.disabledSkillIds)
+      ? merged.disabledSkillIds
+      : DEFAULT_APP_CONFIG.disabledSkillIds,
+    learningEnabled: merged.learningEnabled !== false,
   };
 }
 

@@ -6,6 +6,7 @@ import {
   XIcon,
   LoaderCircleIcon,
   PlayIcon,
+  PlusIcon,
   Trash2Icon,
   ZapIcon,
   SearchIcon,
@@ -30,7 +31,7 @@ import { useAgentsSummary } from "../hooks/use-agents-summary";
 import { SectionLabel } from "@/components/ui/section-label";
 import { useUIStore } from "../stores/ui-store";
 
-const SUGGESTION_TTL_MS = 60_000;
+const SUGGESTION_TTL_MS = 5 * 60_000;
 
 const SUGGESTION_KIND_ICONS: Record<SuggestionKind, typeof SearchIcon> = {
   research: SearchIcon,
@@ -40,6 +41,7 @@ const SUGGESTION_KIND_ICONS: Record<SuggestionKind, typeof SearchIcon> = {
   followup: ListChecksIcon,
 };
 type RightRailMode = "work" | "agents";
+const EMPTY_SESSION_TAB_KEY = "__empty__";
 
 type RightSidebarProps = {
   tasks: TaskItem[];
@@ -130,9 +132,9 @@ function SuggestionItem({
           type="button"
           onClick={onAccept}
           className="shrink-0 cursor-pointer p-0.5 text-primary transition-colors hover:text-primary/80"
-          aria-label="Go"
+          aria-label="Add to tasks"
         >
-          <PlayIcon className="size-3" />
+          <PlusIcon className="size-3" />
         </button>
         <button
           type="button"
@@ -371,11 +373,16 @@ export function RightSidebar({
   onRemoveTranscriptRef,
   onSubmitTaskInput,
 }: RightSidebarProps) {
-  const [mode, setMode] = useLocalStorage<RightRailMode>("ambient-right-rail-mode", "work");
+  const [modeBySession, setModeBySession] = useLocalStorage<Record<string, RightRailMode>>("ambient-right-rail-mode", {});
   const [completedOpen, setCompletedOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const lastAutoOpenedAgentIdRef = useRef<string | null>(null);
   const processingTaskIdSet = new Set(processingTaskIds);
+  const sessionTabKey = sessionId ?? EMPTY_SESSION_TAB_KEY;
+  const mode = modeBySession[sessionTabKey] ?? "work";
+  const setMode = (nextMode: RightRailMode) => {
+    setModeBySession((prev) => ({ ...prev, [sessionTabKey]: nextMode }));
+  };
 
   const { state: debriefState, generate: generateDebrief, canGenerate: canGenerateDebrief, preload: preloadDebrief } =
     useAgentsSummary(agents ?? [], sessionActive);
@@ -449,7 +456,7 @@ export function RightSidebar({
 
   return (
     <div className="w-full h-full shrink-0 border-l border-border flex flex-col min-h-0 bg-sidebar">
-      <div className="px-2 py-2 shrink-0 border-b border-border/70">
+      <div className="px-2 py-2 shrink-0">
         <div className="grid grid-cols-2 gap-1 rounded-md bg-foreground/[0.045] p-1 dark:bg-muted/50">
           <RailModeButton
             active={mode === "agents"}
@@ -466,97 +473,29 @@ export function RightSidebar({
       <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3">
         {mode === "work" ? (
           <>
-            {/* AI Suggestions */}
-            {suggestions.length > 0 && (
-              <div className="mb-3">
-                <SectionLabel className="sticky top-0 bg-sidebar z-10 -mx-3 px-3 py-1.5 block">Suggested</SectionLabel>
-                <ul className="space-y-1">
-                  {suggestions.map((s) => (
-                    <SuggestionItem
-                      key={s.id}
-                      suggestion={s}
-                      onAccept={() => onAcceptSuggestion?.(s)}
-                      onDismiss={() => onDismissSuggestion?.(s.id)}
-                    />
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Archived suggestions */}
-            {archivedSuggestions.length > 0 && (
-              <div className="mb-3">
-                <button
-                  type="button"
-                  onClick={() => setArchivedOpen((prev) => !prev)}
-                  className="flex cursor-pointer items-center gap-1 text-2xs font-medium text-muted-foreground uppercase tracking-wider transition-colors hover:text-foreground"
-                >
-                  <ChevronDownIcon
-                    className={`size-3 transition-transform ${archivedOpen ? "" : "-rotate-90"}`}
-                  />
-                  <ArchiveIcon className="size-3" />
-                  Archived ({archivedSuggestions.length})
-                </button>
-                {archivedOpen && (
-                  <ul className="mt-1.5 space-y-1">
-                    {archivedSuggestions.map((task) => {
-                      const KindIcon = task.suggestionKind ? SUGGESTION_KIND_ICONS[task.suggestionKind] : SearchIcon;
-                      return (
-                        <li
-                          key={task.id}
-                          className="border-l-2 border-l-muted-foreground/20 bg-muted/5 group"
-                        >
-                          <div className="flex items-start gap-2 min-h-7 py-1.5 px-2">
-                            <KindIcon className="size-3 shrink-0 text-muted-foreground/50 mt-0.5" />
-                            <span className="text-xs text-muted-foreground flex-1 break-words">
-                              {task.text}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => onAcceptArchivedTask?.(task)}
-                              className="shrink-0 cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-primary opacity-0 group-hover:opacity-100"
-                              aria-label="Restore as task"
-                            >
-                              <PlayIcon className="size-3" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onDeleteArchivedSuggestion?.(task.id)}
-                              className="shrink-0 cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-destructive opacity-0 group-hover:opacity-100"
-                              aria-label="Delete archived suggestion"
-                            >
-                              <Trash2Icon className="size-3" />
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            )}
-
             {/* Active tasks */}
             <div className="mb-3">
-              <div className="sticky top-0 bg-sidebar z-10 -mx-3 px-3 py-1.5 flex items-center justify-between mb-1.5">
+              <div className="sticky top-0 z-10 -mx-3 mb-1.5 bg-sidebar/95 px-3 py-1.5 backdrop-blur supports-[backdrop-filter]:bg-sidebar/85">
                 <SectionLabel as="span">
                   {pendingInAgentsCount > 0 ? `Tasks · ${pendingInAgentsCount} in agents` : "Tasks"}
                 </SectionLabel>
-                {(() => {
-                  const completedByAgent = activeTasks.filter(
-                    (t) => agentByTaskId.get(t.id)?.status === "completed"
-                  );
-                  if (completedByAgent.length === 0) return null;
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => completedByAgent.forEach((t) => onToggleTask?.(t.id))}
-                      className="cursor-pointer text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      Complete all ({completedByAgent.length})
-                    </button>
-                  );
-                })()}
+                <div className="mt-1 flex items-center justify-end">
+                  {(() => {
+                    const completedByAgent = activeTasks.filter(
+                      (t) => agentByTaskId.get(t.id)?.status === "completed"
+                    );
+                    if (completedByAgent.length === 0) return null;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => completedByAgent.forEach((t) => onToggleTask?.(t.id))}
+                        className="cursor-pointer text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        Complete all ({completedByAgent.length})
+                      </button>
+                    );
+                  })()}
+                </div>
               </div>
               {activeTasks.length > 0 ? (
                 <ul className="space-y-px">
@@ -576,76 +515,144 @@ export function RightSidebar({
                 </ul>
               ) : (
                 <p className="text-xs text-muted-foreground italic">
-                  No active tasks
+                  Added tasks will appear here
                 </p>
               )}
-            </div>
-
-            {/* Completed tasks */}
-            {completedTasks.length > 0 && (
-              <div>
+              {completedTasks.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setCompletedOpen((prev) => !prev)}
-                  className="flex cursor-pointer items-center gap-1 text-2xs font-medium text-muted-foreground uppercase tracking-wider transition-colors hover:text-foreground"
+                  className="mt-3 flex cursor-pointer items-center gap-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
                 >
                   <ChevronDownIcon
                     className={`size-3 transition-transform ${completedOpen ? "" : "-rotate-90"}`}
                   />
                   Completed ({completedTasks.length})
                 </button>
-                {completedOpen && (
-                  <ul className="mt-1.5 space-y-px">
-                    {completedTasks.map((task) => {
-                      const taskAgent = agentByTaskId.get(task.id);
-                      return (
-                        <li key={task.id} className="flex items-center gap-2 h-7 group px-1 -mx-1 rounded-sm hover:bg-muted/60 transition-colors cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked
-                            onChange={() => onToggleTask?.(task.id)}
-                            className="size-3 shrink-0 rounded-sm border-border accent-primary cursor-pointer"
-                          />
-                          {taskAgent && onSelectAgent ? (
+              )}
+              {completedTasks.length > 0 && completedOpen && (
+                <ul className="mt-1.5 space-y-px">
+                  {completedTasks.map((task) => {
+                    const taskAgent = agentByTaskId.get(task.id);
+                    return (
+                      <li key={task.id} className="flex items-center gap-2 h-7 group px-1 -mx-1 rounded-sm hover:bg-muted/60 transition-colors cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked
+                          onChange={() => onToggleTask?.(task.id)}
+                          className="size-3 shrink-0 rounded-sm border-border accent-primary cursor-pointer"
+                        />
+                        {taskAgent && onSelectAgent ? (
+                          <button
+                            type="button"
+                            onClick={() => onSelectAgent(taskAgent.id)}
+                            className="flex-1 cursor-pointer truncate text-left text-xs text-muted-foreground/60 line-through transition-colors hover:text-muted-foreground"
+                          >
+                            {task.text}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground/60 truncate flex-1 line-through">
+                            {task.text}
+                          </span>
+                        )}
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          {taskAgent && onSelectAgent && (
                             <button
                               type="button"
                               onClick={() => onSelectAgent(taskAgent.id)}
-                              className="flex-1 cursor-pointer truncate text-left text-xs text-muted-foreground/60 line-through transition-colors hover:text-muted-foreground"
+                              className="cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-primary"
+                              aria-label="View agent results"
                             >
-                              {task.text}
+                              <HugeiconsIcon icon={WorkoutRunIcon} className="size-3" />
                             </button>
-                          ) : (
-                            <span className="text-xs text-muted-foreground/60 truncate flex-1 line-through">
-                              {task.text}
-                            </span>
                           )}
-                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                            {taskAgent && onSelectAgent && (
-                              <button
-                                type="button"
-                                onClick={() => onSelectAgent(taskAgent.id)}
-                                className="cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-primary"
-                                aria-label="View agent results"
-                              >
-                                <HugeiconsIcon icon={WorkoutRunIcon} className="size-3" />
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => onDeleteTask?.(task.id)}
-                              className="cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-destructive"
-                              aria-label="Delete task"
-                            >
-                              <Trash2Icon className="size-3" />
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
+                          <button
+                            type="button"
+                            onClick={() => onDeleteTask?.(task.id)}
+                            className="cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-destructive"
+                            aria-label="Delete task"
+                          >
+                            <Trash2Icon className="size-3" />
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            {/* Suggestions */}
+            <div>
+              <div className="sticky top-0 z-10 -mx-3 mb-1.5 bg-sidebar/95 px-3 py-1.5 backdrop-blur supports-[backdrop-filter]:bg-sidebar/85">
+                <SectionLabel as="span">Suggested</SectionLabel>
               </div>
-            )}
+              {suggestions.length > 0 ? (
+                <ul className="space-y-1">
+                  {suggestions.map((s) => (
+                    <SuggestionItem
+                      key={s.id}
+                      suggestion={s}
+                      onAccept={() => onAcceptSuggestion?.(s)}
+                      onDismiss={() => onDismissSuggestion?.(s.id)}
+                    />
+                  ))}
+                </ul>
+              ) : archivedSuggestions.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">
+                  Suggested tasks will appear here
+                </p>
+              ) : null}
+              {archivedSuggestions.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setArchivedOpen((prev) => !prev)}
+                  className="mt-3 flex cursor-pointer items-center gap-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <ChevronDownIcon
+                    className={`size-3 transition-transform ${archivedOpen ? "" : "-rotate-90"}`}
+                  />
+                  <ArchiveIcon className="size-3" />
+                  Archived ({archivedSuggestions.length})
+                </button>
+              )}
+              {archivedSuggestions.length > 0 && archivedOpen && (
+                <ul className="mt-1.5 space-y-1">
+                  {archivedSuggestions.map((task) => {
+                    const KindIcon = task.suggestionKind ? SUGGESTION_KIND_ICONS[task.suggestionKind] : SearchIcon;
+                    return (
+                      <li
+                        key={task.id}
+                        className="border-l-2 border-l-muted-foreground/20 bg-muted/5 group"
+                      >
+                        <div className="flex items-start gap-2 min-h-7 py-1.5 px-2">
+                          <KindIcon className="size-3 shrink-0 text-muted-foreground/50 mt-0.5" />
+                          <span className="text-xs text-muted-foreground flex-1 break-words">
+                            {task.text}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => onAcceptArchivedTask?.(task)}
+                            className="shrink-0 cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-primary opacity-0 group-hover:opacity-100"
+                            aria-label="Add archived suggestion to tasks"
+                          >
+                            <PlusIcon className="size-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onDeleteArchivedSuggestion?.(task.id)}
+                            className="shrink-0 cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-destructive opacity-0 group-hover:opacity-100"
+                            aria-label="Delete archived suggestion"
+                          >
+                            <Trash2Icon className="size-3" />
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </>
         ) : (
           <div className="pt-2">

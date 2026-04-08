@@ -63,7 +63,16 @@ export function processAudioData(state: VadState, data: Buffer, options: VadProc
       if (state.speechStarted) {
         state.speechBuffer = Buffer.concat([state.speechBuffer, window]);
         state.silenceMs += VAD_WINDOW_MS;
-        if (state.silenceMs >= VAD_SILENCE_FLUSH_MS) {
+
+        if (maxChunkMs !== null) {
+          // Fixed-window mode: accumulate full duration, don't flush on silence gaps
+          const totalMs = (state.speechBuffer.length / (16000 * 2)) * 1000;
+          if (totalMs >= maxChunkMs) {
+            const flushed = flushVad(state);
+            if (flushed) chunks.push(flushed);
+          }
+        } else if (state.silenceMs >= VAD_SILENCE_FLUSH_MS) {
+          // Legacy mode (no maxChunkMs): flush on silence
           const flushed = flushVad(state);
           if (flushed) chunks.push(flushed);
         }
@@ -74,8 +83,8 @@ export function processAudioData(state: VadState, data: Buffer, options: VadProc
       state.silenceMs = 0;
 
       if (maxChunkMs !== null) {
-        const speechDurationMs = (state.speechBuffer.length / (16000 * 2)) * 1000;
-        if (speechDurationMs >= maxChunkMs) {
+        const totalMs = (state.speechBuffer.length / (16000 * 2)) * 1000;
+        if (totalMs >= maxChunkMs) {
           const flushed = flushVad(state);
           if (flushed) chunks.push(flushed);
         }

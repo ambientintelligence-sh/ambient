@@ -50,10 +50,6 @@ const config: ForgeConfig = {
           "better-sqlite3",
           "drizzle-orm",
           "exa-js",
-          "@elevenlabs/elevenlabs-js",
-          "ws",
-          "bufferutil",
-          "utf-8-validate",
         ];
 
         for (const mod of externalModules) {

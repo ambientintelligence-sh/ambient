@@ -2,15 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import type { LanguageModel } from "ai";
 import { z } from "zod";
-import { loadProjectAgentsMd, writeProjectAgentsMd } from "../context";
 import { log } from "../logger";
 import type { Agent, TranscriptBlock } from "../types";
 import { generateStructuredObject } from "../ai/structured-output";
 
-const AGENTS_MD_PATH = path.resolve(process.cwd(), "agents.md");
-
-const LEARNING_CATEGORIES = ["Learned User Preferences", "Learned Workspace Facts"] as const;
-type LearningCategory = (typeof LEARNING_CATEGORIES)[number];
+export const LEARNING_CATEGORIES = ["Learned User Preferences", "Learned Workspace Facts"] as const;
+export type LearningCategory = (typeof LEARNING_CATEGORIES)[number];
 
 const learningSchema = z.object({
   learnings: z.array(
@@ -21,16 +18,21 @@ const learningSchema = z.object({
   ),
 });
 
-function readAgentsMd(): string {
-  if (!fs.existsSync(AGENTS_MD_PATH)) return "";
-  return fs.readFileSync(AGENTS_MD_PATH, "utf-8");
+function getAgentsMdPath(): string {
+  return path.resolve(process.cwd(), "agents.md");
 }
 
-function writeAgentsMd(content: string) {
-  fs.writeFileSync(AGENTS_MD_PATH, content, "utf-8");
+export function readAgentsMd(): string {
+  const p = getAgentsMdPath();
+  if (!fs.existsSync(p)) return "";
+  return fs.readFileSync(p, "utf-8");
 }
 
-function parseSections(md: string): Map<LearningCategory, string[]> {
+export function writeAgentsMd(content: string) {
+  fs.writeFileSync(getAgentsMdPath(), content, "utf-8");
+}
+
+export function parseSections(md: string): Map<LearningCategory, string[]> {
   const sections = new Map<LearningCategory, string[]>();
   for (const cat of LEARNING_CATEGORIES) sections.set(cat, []);
 
@@ -73,7 +75,7 @@ function formatAgentConversation(agent: Agent): string {
   return lines.join("\n");
 }
 
-function renderAgentsMd(sections: Map<LearningCategory, string[]>): string {
+export function renderAgentsMd(sections: Map<LearningCategory, string[]>): string {
   const lines = ["# Agent Memory", "", "Durable learnings about user preferences and workspace facts. Used to improve future agent behavior.", ""];
   for (const cat of LEARNING_CATEGORIES) {
     lines.push(`## ${cat}`, "");
@@ -90,16 +92,12 @@ export async function extractAgentLearnings(
   model: LanguageModel,
   agent: Agent,
   recentBlocks: TranscriptBlock[],
-  projectId?: string,
-  dataDir?: string,
 ): Promise<void> {
   if (!agent.result) return;
 
-  log("INFO", `Learning extraction for agent ${agent.id} (project: ${projectId ?? "none"})`);
+  log("INFO", `Learning extraction for agent ${agent.id}`);
 
-  const existingMd = (projectId && dataDir)
-    ? loadProjectAgentsMd(dataDir, projectId)
-    : readAgentsMd();
+  const existingMd = readAgentsMd();
   const existingSections = parseSections(existingMd);
   const existingItems = new Set(
     [...existingSections.values()].flat().map((s) => s.toLowerCase().trim()),
@@ -166,13 +164,8 @@ ${conversation}`;
     }
 
     const rendered = renderAgentsMd(existingSections);
-    if (projectId && dataDir) {
-      writeProjectAgentsMd(dataDir, projectId, rendered);
-      log("INFO", `Extracted ${newLearnings.length} new learnings for project ${projectId}`);
-    } else {
-      writeAgentsMd(rendered);
-      log("INFO", `Extracted ${newLearnings.length} new learnings to agents.md`);
-    }
+    writeAgentsMd(rendered);
+    log("INFO", `Extracted ${newLearnings.length} new learnings to agents.md`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log("WARN", `Learning extraction failed: ${message}`);
