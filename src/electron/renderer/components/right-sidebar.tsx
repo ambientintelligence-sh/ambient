@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocalStorage } from "usehooks-ts";
 import type { TaskItem, TaskSuggestion, SuggestionKind, Agent } from "@core/types";
 import {
@@ -380,9 +380,12 @@ export function RightSidebar({
   const processingTaskIdSet = new Set(processingTaskIds);
   const sessionTabKey = sessionId ?? EMPTY_SESSION_TAB_KEY;
   const mode = modeBySession[sessionTabKey] ?? "work";
-  const setMode = (nextMode: RightRailMode) => {
-    setModeBySession((prev) => ({ ...prev, [sessionTabKey]: nextMode }));
-  };
+  const setMode = useCallback((nextMode: RightRailMode) => {
+    setModeBySession((prev) => {
+      if (prev[sessionTabKey] === nextMode) return prev;
+      return { ...prev, [sessionTabKey]: nextMode };
+    });
+  }, [sessionTabKey, setModeBySession]);
 
   const { state: debriefState, generate: generateDebrief, canGenerate: canGenerateDebrief, preload: preloadDebrief } =
     useAgentsSummary(agents ?? [], sessionActive);
@@ -407,12 +410,14 @@ export function RightSidebar({
 
   const activeTasks: TaskItem[] = [];
   const completedTasks: TaskItem[] = [];
+  let openTasksCount = 0;
   let pendingInAgentsCount = 0;
   for (const task of tasks) {
     if (task.completed) {
       completedTasks.push(task);
       continue;
     }
+    openTasksCount += 1;
     if (agentByTaskId.get(task.id)?.status === "running") {
       pendingInAgentsCount += 1;
       continue;
@@ -425,12 +430,13 @@ export function RightSidebar({
 
   // Consolidated tab-switching effect with priority: agent selection > work tab triggers > past-view defaults
   useEffect(() => {
-    if (selectedAgentId && selectedAgentId !== lastAutoOpenedAgentIdRef.current) {
+    if (selectedAgentId) {
       lastAutoOpenedAgentIdRef.current = selectedAgentId;
       setMode("agents");
       return;
     }
-    if (!selectedAgentId) lastAutoOpenedAgentIdRef.current = null;
+
+    lastAutoOpenedAgentIdRef.current = null;
     if (transcriptRefs.length > 0 || forceWorkTabKey > 0) setMode("work");
     if (isViewingPast && completedHaveAgents) setCompletedOpen(true);
   }, [selectedAgentId, transcriptRefs.length, forceWorkTabKey, isViewingPast, completedHaveAgents, setMode]);
@@ -452,7 +458,7 @@ export function RightSidebar({
   };
 
   const hasRefs = transcriptRefs.length > 0;
-  const runningAgentsCount = (agents ?? []).filter((agent) => agent.status === "running").length;
+  const totalAgentsCount = (agents ?? []).length;
 
   return (
     <div className="w-full h-full shrink-0 border-l border-border flex flex-col min-h-0 bg-sidebar">
@@ -461,12 +467,12 @@ export function RightSidebar({
           <RailModeButton
             active={mode === "agents"}
             onClick={() => setMode("agents")}
-            label={runningAgentsCount > 0 ? `Agents (${runningAgentsCount} live)` : `Agents (${(agents ?? []).length})`}
+            label={`Agents (${totalAgentsCount})`}
           />
           <RailModeButton
             active={mode === "work"}
             onClick={() => setMode("work")}
-            label={`Tasks (${activeTasks.length + suggestions.length})`}
+            label={`Tasks (${openTasksCount})`}
           />
         </div>
       </div>
@@ -475,11 +481,11 @@ export function RightSidebar({
           <>
             {/* Active tasks */}
             <div className="mb-3">
-              <div className="sticky top-0 z-10 -mx-3 mb-1.5 bg-sidebar/95 px-3 py-1.5 backdrop-blur supports-[backdrop-filter]:bg-sidebar/85">
+              <div className="sticky top-0 z-10 -mx-3 mb-1.5 flex items-center justify-between gap-3 bg-sidebar/95 px-3 py-1.5 backdrop-blur supports-[backdrop-filter]:bg-sidebar/85">
                 <SectionLabel as="span">
                   {pendingInAgentsCount > 0 ? `Tasks · ${pendingInAgentsCount} in agents` : "Tasks"}
                 </SectionLabel>
-                <div className="mt-1 flex items-center justify-end">
+                <div className="flex items-center justify-end">
                   {(() => {
                     const completedByAgent = activeTasks.filter(
                       (t) => agentByTaskId.get(t.id)?.status === "completed"

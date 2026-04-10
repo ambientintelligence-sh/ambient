@@ -10,6 +10,39 @@ const STUDY_SESSION_ID = "demo-study-session";
 const MEETING_SESSION_ID = "demo-meeting-session";
 const PM_SESSION_ID = "demo-pm-session";
 
+const DEMO_AGENT_TASK_IDS: Record<string, string[]> = {
+  [TRIP_SESSION_ID]: [
+    "trip-task-itinerary",
+    "trip-task-flights",
+    "trip-task-ryokan",
+    "trip-task-visa",
+  ],
+  [BRAIN_SESSION_ID]: [
+    "brain-task-prototype",
+    "brain-task-interviews",
+    "brain-task-domains",
+    "brain-task-spoonacular",
+  ],
+  [STUDY_SESSION_ID]: [
+    "study-task-comparison",
+    "study-task-practice",
+    "study-task-bft",
+    "study-task-uncommitted",
+  ],
+  [MEETING_SESSION_ID]: [
+    "meeting-task-dashboard-perf",
+    "meeting-task-postmortem",
+    "meeting-task-datadog-pricing",
+    "meeting-task-migration-guide",
+  ],
+  [PM_SESSION_ID]: [
+    "pm-task-linear-issues",
+    "pm-task-preferences-api",
+    "pm-task-batching-engine",
+    "pm-task-digest-design",
+  ],
+};
+
 const DEFAULT_STEP_MS = 4500;
 const STEP_REVEAL_MS = 400;
 
@@ -23,6 +56,7 @@ type DemoContext = {
   scrollTranscript: (pct: number) => void;
   selectAgent: (id: string | null) => void;
   forceWorkTab: () => void;
+  setAgentTasksCompleted: (sessionId: string, completed: boolean) => void;
   loadSummary: (sessionId: string) => void;
   injectSuggestions: (sessionId: string) => void;
 };
@@ -191,8 +225,8 @@ function buildSessionSteps(sessionId: string, ctx: DemoContext): DemoStep[] {
         { action: () => ctx.selectAgent("demo-agent-flights") },
         { action: () => ctx.selectAgent("demo-agent-ryokan") },
         { action: () => ctx.selectAgent("demo-agent-visa") },
+        { action: () => { ctx.setAgentTasksCompleted(TRIP_SESSION_ID, true); ctx.forceWorkTab(); } },
         { action: () => ctx.loadSummary(TRIP_SESSION_ID) },
-        { action: () => ctx.selectAgent("demo-agent-itinerary") }, // back to agents tab
         { action: () => {} }, // hold
       ];
 
@@ -206,8 +240,8 @@ function buildSessionSteps(sessionId: string, ctx: DemoContext): DemoStep[] {
         { action: () => ctx.selectAgent("demo-agent-mvp-spec") },
         { action: () => ctx.selectAgent("demo-agent-domains") },
         { action: () => ctx.selectAgent("demo-agent-interview-guide") },
+        { action: () => { ctx.setAgentTasksCompleted(BRAIN_SESSION_ID, true); ctx.forceWorkTab(); } },
         { action: () => ctx.loadSummary(BRAIN_SESSION_ID) },
-        { action: () => ctx.selectAgent("demo-agent-competitive") }, // back to agents tab
         { action: () => {} }, // hold
       ];
 
@@ -220,8 +254,8 @@ function buildSessionSteps(sessionId: string, ctx: DemoContext): DemoStep[] {
         { action: () => ctx.selectAgent("demo-agent-bft-review") },
         { action: () => ctx.selectAgent("demo-agent-uncommitted") },
         { action: () => ctx.selectAgent("demo-agent-practice") },
+        { action: () => { ctx.setAgentTasksCompleted(STUDY_SESSION_ID, true); ctx.forceWorkTab(); } },
         { action: () => ctx.loadSummary(STUDY_SESSION_ID) },
-        { action: () => ctx.selectAgent("demo-agent-study-guide") }, // back to agents tab
         { action: () => {} }, // hold
       ];
 
@@ -235,8 +269,8 @@ function buildSessionSteps(sessionId: string, ctx: DemoContext): DemoStep[] {
         { action: () => ctx.selectAgent("demo-agent-postmortem") },
         { action: () => ctx.selectAgent("demo-agent-monitoring") },
         { action: () => ctx.selectAgent("demo-agent-migration") },
+        { action: () => { ctx.setAgentTasksCompleted(MEETING_SESSION_ID, true); ctx.forceWorkTab(); } },
         { action: () => ctx.loadSummary(MEETING_SESSION_ID) },
-        { action: () => ctx.selectAgent("demo-agent-matviews") }, // back to agents tab
         { action: () => {} }, // hold
       ];
 
@@ -250,8 +284,8 @@ function buildSessionSteps(sessionId: string, ctx: DemoContext): DemoStep[] {
         { action: () => ctx.selectAgent("demo-agent-codex-api"), durationMs: 6500 }, // 14 steps
         { action: () => ctx.selectAgent("demo-agent-codex-batcher"), durationMs: 6500 }, // 14 steps
         { action: () => ctx.selectAgent("demo-agent-digest-design"), durationMs: 5500 }, // 11 steps
+        { action: () => { ctx.setAgentTasksCompleted(PM_SESSION_ID, true); ctx.forceWorkTab(); } },
         { action: () => ctx.loadSummary(PM_SESSION_ID) },
-        { action: () => ctx.selectAgent("demo-agent-codex-api") }, // back to agents tab
         { action: () => {} }, // hold
       ];
 
@@ -334,6 +368,7 @@ export function useDemoMode({
       selectAgentRef.current(null);
       ui().setFinalSummaryState({ kind: "idle" });
       await loadDemoSessionRef.current(id);
+      ctxRef.current.setAgentTasksCompleted(id, false);
       const el = transcriptRefRef.current.current;
       if (el) el.scrollTop = 0;
     },
@@ -394,6 +429,20 @@ export function useDemoMode({
       selectAgentRef.current(null);
       ts().bumpForceWorkTabKey();
     },
+    setAgentTasksCompleted: (sessionId: string, completed: boolean) => {
+      const taskIds = DEMO_AGENT_TASK_IDS[sessionId];
+      if (!taskIds || taskIds.length === 0) return;
+
+      const taskIdSet = new Set(taskIds);
+      ts().updateTasks((tasks) => tasks.map((task) => {
+        if (!taskIdSet.has(task.id)) return task;
+        return {
+          ...task,
+          completed,
+          completedAt: completed ? Date.now() : undefined,
+        };
+      }));
+    },
     loadSummary: (sessionId: string) => {
       selectAgentRef.current(null);
       void window.electronAPI.getFinalSummary(sessionId).then((result) => {
@@ -453,6 +502,10 @@ export function useDemoMode({
 
   const stopDemo = useCallback(() => {
     clearTimer();
+    const currentId = selectedSessionIdRef.current;
+    if (currentId) {
+      ctxRef.current.setAgentTasksCompleted(currentId, true);
+    }
     ui().setDemoMode(false);
   }, [clearTimer]); // eslint-disable-line react-hooks/exhaustive-deps
 

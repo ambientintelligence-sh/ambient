@@ -3,6 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { WorkoutRunIcon } from "@hugeicons/core-free-icons";
 import { CirclePauseIcon, PlusIcon } from "lucide-react";
 import { SectionLabel } from "@/components/ui/section-label";
+import { useUIStore } from "../stores/ui-store";
 
 type AgentListProps = {
   agents: Agent[];
@@ -52,6 +53,8 @@ export function AgentList({
   onSelectAgent,
   onNewAgent,
 }: AgentListProps) {
+  const demoMode = useUIStore((s) => s.demoMode);
+
   return (
     <section className="rounded-md border border-border/60 bg-background/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
       <div className="flex items-center justify-between px-2.5 py-2">
@@ -89,7 +92,9 @@ export function AgentList({
                     {agent.task}
                   </p>
                   <span className="text-2xs text-muted-foreground shrink-0 font-mono">
-                    {relativeTime(agent.completedAt ?? agent.createdAt)}
+                    {demoMode
+                      ? "just now"
+                      : relativeTime(agent.completedAt ?? agent.createdAt)}
                   </span>
                 </div>
               </button>
