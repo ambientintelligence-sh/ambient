@@ -250,7 +250,7 @@ export class Session {
   private readonly analysisHeartbeatMs = 5000;
   private readonly analysisRetryDelayMs = 2000;
   private readonly taskAnalysisIntervalMs = 60_000;
-  private readonly taskAnalysisMaxBlocks = 60;
+  private readonly taskAnalysisMaxBlocks = 20;
   private readonly taskAnalysisMinNewWords = 30;
   private recentSuggestedTaskTexts: string[] = [];
   private taskScanRequested = false;
@@ -1587,10 +1587,9 @@ export class Session {
       };
     }
 
-    // Send all blocks since last analysis, plus up to 10 earlier blocks for context continuity
+    // Send only new blocks since last analysis — key points provide continuity for older content
     const analysisTargetBlockCount = allBlocks.length;
-    const contextStart = Math.max(0, this.lastAnalysisBlockCount - 10);
-    const recentBlocks = shouldRunSummaryAnalysis ? allBlocks.slice(contextStart) : [];
+    const recentBlocks = shouldRunSummaryAnalysis ? allBlocks.slice(this.lastAnalysisBlockCount) : [];
 
     this.analysisInFlight = true;
     this.analysisRequested = false;
@@ -1661,12 +1660,11 @@ export class Session {
       if (shouldRunTaskAnalysis) {
         taskAnalysisRan = true;
         if (forceTaskAnalysis) {
-          taskBlocks = allBlocks;
+          taskBlocks = allBlocks.slice(-this.taskAnalysisMaxBlocks);
         } else {
           const taskContextStart = Math.max(
             0,
-            this.lastTaskAnalysisBlockCount - 10,
-            analysisTargetBlockCount - this.taskAnalysisMaxBlocks,
+            this.lastTaskAnalysisBlockCount - 5,
           );
           taskBlocks = allBlocks.slice(taskContextStart, analysisTargetBlockCount);
         }

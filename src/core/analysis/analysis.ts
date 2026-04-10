@@ -341,7 +341,7 @@ export function buildAnalysisPrompt(
 
   const keyPointsSection =
     previousKeyPoints.length > 0
-      ? `\n\nPrevious key points from this session:\n${previousKeyPoints.map((p) => `- ${p}`).join("\n")}`
+      ? `\n\nSummary of conversation so far:\n${previousKeyPoints.map((p) => `- ${p}`).join("\n")}`
       : "";
 
   return renderPromptTemplate(getAnalysisRequestPromptTemplate(), {
@@ -387,13 +387,13 @@ export function buildAgentSuggestionPrompt(
       historicalSuggestionsSet.add(key);
       return true;
     })
-    .slice(-50);
+    .slice(-30);
   const historicalSuggestionsSection = normalizedHistory.length > 0
     ? `\n\nHistorical suggestions already shown in this session (DO NOT repeat or rephrase any of these):\n${normalizedHistory.map((text) => `- ${text}`).join("\n")}`
     : "";
 
   const keyPointsSection = keyPoints.length > 0
-    ? `\n\nKey points from the conversation so far:\n${keyPoints.map((p) => `- ${p}`).join("\n")}`
+    ? `\n\nConversation context (key points from earlier in this meeting):\n${keyPoints.map((p) => `- ${p}`).join("\n")}`
     : "";
 
   const educationalSection = educationalContext.length > 0

@@ -26,14 +26,15 @@ Rules:
 - Keep points tightly tied to what was actually said.`;
 
 const DEFAULT_ANALYSIS_REQUEST_PROMPT = `{{summary_system_prompt}}
+{{previous_key_points_section}}
 
-Recent transcript:
-{{transcript}}{{previous_key_points_section}}
+New transcript since last analysis:
+{{transcript}}
 
 Grounding requirements:
-- Use only information from the transcript and previous key points from THIS session.
-- Do not use memory from prior sessions.
-- Avoid duplicating previous key points unless the new transcript adds materially new detail.
+- The key points above summarize everything discussed earlier in this session. Use them as context.
+- Extract key points ONLY from the new transcript. Do not re-state previous key points unless materially updated.
+- Use only information from this session. Do not use memory from prior sessions.
 - If transcript details are sparse, return fewer items rather than inventing details.`;
 
 const DEFAULT_TASK_CREATION_SHARED_PROMPT = `Shared task creation standard (applies to every task):
@@ -57,9 +58,10 @@ const DEFAULT_TASK_CREATION_SHARED_PROMPT = `Shared task creation standard (appl
 - If critical details are missing, state assumptions explicitly.`;
 
 const DEFAULT_AGENT_SUGGESTION_PROMPT = `You are an AI assistant watching a live conversation over someone's shoulder. Your job is to proactively offer to help — research, draft, flag risks, or follow up on loose threads.
+{{key_points_section}}
 
 Recent transcript:
-{{transcript}}{{existing_tasks_section}}{{historical_suggestions_section}}{{key_points_section}}{{educational_context_section}}{{suggestion_aggressiveness_section}}
+{{transcript}}{{existing_tasks_section}}{{historical_suggestions_section}}{{educational_context_section}}{{suggestion_aggressiveness_section}}
 
 Your role:
 - Watch the conversation and offer to DO things, not just observe.
