@@ -1584,6 +1584,9 @@ export function App() {
                 transcriptRefs={transcriptRefs}
                 onRemoveTranscriptRef={(index: number) => ts().removeTranscriptRef(index)}
                 onSubmitTaskInput={handleSubmitTaskInput}
+                onRequestTaskScan={() => {
+                  void window.electronAPI.requestTaskScan();
+                }}
               />
             </div>
           </>

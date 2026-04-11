@@ -49,6 +49,14 @@ export type ElectronAPI = {
   setSourceLanguage: (sourceLang: LanguageCode) => Promise<{ ok: boolean; error?: string }>;
   setTranslationMode: (direction: "off" | "auto" | "source-target", targetLang?: LanguageCode) => Promise<{ ok: boolean; error?: string }>;
   addContextNote: (text: string) => Promise<{ ok: boolean; block?: TranscriptBlock; error?: string }>;
+  requestTaskScan: () => Promise<{
+    ok: boolean;
+    queued?: boolean;
+    taskAnalysisRan?: boolean;
+    taskSuggestionsEmitted?: number;
+    suggestions?: TaskSuggestion[];
+    error?: string;
+  }>;
   listMicDevices: () => Promise<Device[]>;
   shutdownSession: () => Promise<{ ok: boolean }>;
   generateFinalSummary: () => Promise<{ ok: boolean; error?: string }>;
@@ -164,7 +172,13 @@ export type ElectronAPI = {
   onError: (callback: (text: string) => void) => () => void;
   onTaskAdded: (callback: (task: TaskItem) => void) => () => void;
   onTaskSuggested: (callback: (suggestion: TaskSuggestion) => void) => () => void;
-  onSuggestionProgress: (callback: (progress: { busy: boolean; wordsUntilNextScan: number; step?: string; lastScanEmpty?: boolean }) => void) => () => void;
+  onSuggestionProgress: (callback: (progress: {
+    busy: boolean;
+    wordsUntilNextScan: number;
+    liveWordsUntilNextScan?: number;
+    step?: string;
+    lastScanEmpty?: boolean;
+  }) => void) => () => void;
   onAgentStarted: (callback: (agent: Agent) => void) => () => void;
   onAgentStep: (callback: (agentId: string, step: AgentStep) => void) => () => void;
   onAgentCompleted: (callback: (agentId: string, result: string) => void) => () => void;
@@ -211,6 +225,7 @@ const api: ElectronAPI = {
   setSourceLanguage: (sourceLang) => ipcRenderer.invoke("set-source-language", sourceLang),
   setTranslationMode: (direction, targetLang) => ipcRenderer.invoke("set-translation-mode", direction, targetLang),
   addContextNote: (text) => ipcRenderer.invoke("add-context-note", text),
+  requestTaskScan: () => ipcRenderer.invoke("request-task-scan"),
   listMicDevices: () => ipcRenderer.invoke("list-mic-devices"),
   shutdownSession: () => ipcRenderer.invoke("shutdown-session"),
   generateFinalSummary: () => ipcRenderer.invoke("generate-final-summary"),
@@ -305,7 +320,13 @@ const api: ElectronAPI = {
   onError: createListener<string>("session:error"),
   onTaskAdded: createListener<TaskItem>("session:task-added"),
   onTaskSuggested: createListener<TaskSuggestion>("session:task-suggested"),
-  onSuggestionProgress: createListener<{ busy: boolean; wordsUntilNextScan: number; step?: string; lastScanEmpty?: boolean }>("session:suggestion-progress"),
+  onSuggestionProgress: createListener<{
+    busy: boolean;
+    wordsUntilNextScan: number;
+    liveWordsUntilNextScan?: number;
+    step?: string;
+    lastScanEmpty?: boolean;
+  }>("session:suggestion-progress"),
   onAgentStarted: createListener<Agent>("session:agent-started"),
   onAgentStep: (callback: (agentId: string, step: AgentStep) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, agentId: string, step: AgentStep) => callback(agentId, step);

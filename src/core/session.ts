@@ -249,7 +249,7 @@ export class Session {
   private readonly analysisHeartbeatMs = 5000;
   private readonly analysisRetryDelayMs = 2000;
   private readonly taskAnalysisMaxBlocks = 20;
-  private readonly taskAnalysisMinNewWords = 100;
+  private readonly taskAnalysisMinNewWords = 200;
   private recentSuggestedTaskTexts: string[] = [];
   private taskScanRequested = false;
   private suggestionScanInFlight = false;
@@ -291,16 +291,28 @@ export class Session {
 
   private emitIdleSuggestionProgress(lastScanEmpty = false): void {
     const allBlocks = [...this.contextState.transcriptBlocks.values()];
-    const currentWordCount = allBlocks.reduce(
+    const committedWordCount = allBlocks.reduce(
       (sum, b) => sum + b.sourceText.split(/\s+/).filter(Boolean).length,
       0,
     );
-    const newWords = Math.max(0, currentWordCount - this.lastTaskAnalysisWordCount);
-    const wordsUntilNextScan = Math.max(0, this.taskAnalysisMinNewWords - newWords);
+    const pendingWordCount = this.paragraphBuffer.pendingWordCount;
+    const liveWordCount = committedWordCount + pendingWordCount;
+    const committedNewWords = Math.max(0, committedWordCount - this.lastTaskAnalysisWordCount);
+    const liveNewWords = Math.max(0, liveWordCount - this.lastTaskAnalysisWordCount);
+    const wordsUntilNextScan = Math.max(0, this.taskAnalysisMinNewWords - committedNewWords);
+    const liveWordsUntilNextScan = Math.max(0, this.taskAnalysisMinNewWords - liveNewWords);
+    const committedWordsUntilNextScan = Math.max(0, this.taskAnalysisMinNewWords - committedNewWords);
     if (this.suggestionScanInFlight) {
       return;
     }
-    if (wordsUntilNextScan === 0 && this.isCapturing) {
+    if (committedWordsUntilNextScan === 0 && this.isCapturing) {
+      this.events.emit("suggestion-progress", {
+        busy: true,
+        wordsUntilNextScan: 0,
+        liveWordsUntilNextScan: 0,
+        step: "Preparing scan…",
+        lastScanEmpty,
+      });
       if (!this.analysisInFlight) {
         if (this.analysisTimer) {
           clearTimeout(this.analysisTimer);
@@ -312,11 +324,12 @@ export class Session {
     }
     log(
       "INFO",
-      `suggestion-progress: blocks=${allBlocks.length} words=${currentWordCount} lastScanWords=${this.lastTaskAnalysisWordCount} newWords=${newWords} remaining=${wordsUntilNextScan}`,
+      `suggestion-progress: blocks=${allBlocks.length} committedWords=${committedWordCount} pendingWords=${pendingWordCount} words=${liveWordCount} lastScanWords=${this.lastTaskAnalysisWordCount} committedNewWords=${committedNewWords} liveNewWords=${liveNewWords} remaining=${wordsUntilNextScan} liveRemaining=${liveWordsUntilNextScan}`,
     );
     this.events.emit("suggestion-progress", {
       busy: false,
       wordsUntilNextScan,
+      liveWordsUntilNextScan,
       lastScanEmpty,
     });
   }
@@ -339,7 +352,10 @@ export class Session {
     this.paragraphBuffer = new ParagraphBuffer({
       polishModel: this.taskModel,
       trackCost: this.trackCost.bind(this),
-      emitPartial: (source, text) => this.events.emit("partial", { source, text }),
+      emitPartial: (source, text) => {
+        this.events.emit("partial", { source, text });
+        this.emitIdleSuggestionProgress();
+      },
       commitTranscript: this.commitTranscript.bind(this),
       debug: config.debug,
     });
@@ -1606,11 +1622,11 @@ export class Session {
       hasNewAnalysisBlocks
       && !(forceTaskAnalysis && !this.isRecording);
     const hasNewTaskBlocks = allBlocks.length > this.lastTaskAnalysisBlockCount;
-    const currentWordCount = allBlocks.reduce(
+    const committedWordCount = allBlocks.reduce(
       (sum, b) => sum + b.sourceText.split(/\s+/).filter(Boolean).length,
       0,
     );
-    const newWords = currentWordCount - this.lastTaskAnalysisWordCount;
+    const newWords = committedWordCount - this.lastTaskAnalysisWordCount;
     const hasEnoughNewWords = newWords >= this.taskAnalysisMinNewWords;
     const shouldRunTaskAnalysis =
       (forceTaskAnalysis && allBlocks.length > 0)
@@ -1637,6 +1653,16 @@ export class Session {
     let taskAnalysisRan = false;
     let taskSuggestionsEmitted = 0;
     let emittedTaskSuggestions: TaskSuggestion[] = [];
+
+    if (shouldRunTaskAnalysis) {
+      this.suggestionScanInFlight = true;
+      this.events.emit("suggestion-progress", {
+        busy: true,
+        wordsUntilNextScan: 0,
+        liveWordsUntilNextScan: 0,
+        step: "Preparing scan…",
+      });
+    }
 
     try {
       const existingTasks = this.db
@@ -1696,10 +1722,10 @@ export class Session {
 
       if (shouldRunTaskAnalysis) {
         taskAnalysisRan = true;
-        this.suggestionScanInFlight = true;
         this.events.emit("suggestion-progress", {
           busy: true,
           wordsUntilNextScan: 0,
+          liveWordsUntilNextScan: 0,
           step: "Gathering context…",
         });
         if (forceTaskAnalysis) {
@@ -1712,7 +1738,7 @@ export class Session {
           taskBlocks = allBlocks.slice(taskContextStart, analysisTargetBlockCount);
         }
         this.lastTaskAnalysisAt = now;
-        this.lastTaskAnalysisWordCount = currentWordCount;
+        this.lastTaskAnalysisWordCount = committedWordCount;
         let lastScanEmpty = true;
 
         try {
@@ -1801,6 +1827,7 @@ export class Session {
     this.events.emit("suggestion-progress", {
       busy: true,
       wordsUntilNextScan: 0,
+      liveWordsUntilNextScan: 0,
       step: "Gathering context…",
     });
 
@@ -1819,6 +1846,7 @@ export class Session {
           this.events.emit("suggestion-progress", {
             busy: true,
             wordsUntilNextScan: 0,
+            liveWordsUntilNextScan: 0,
             step: label,
           });
         },

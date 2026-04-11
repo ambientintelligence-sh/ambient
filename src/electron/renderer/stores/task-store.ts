@@ -55,7 +55,13 @@ function archivedTaskToSuggestion(task: TaskItem): TaskSuggestion | null {
   };
 }
 
-type SuggestionProgress = { busy: boolean; wordsUntilNextScan: number; step?: string; lastScanEmpty?: boolean };
+type SuggestionProgress = {
+  busy: boolean;
+  wordsUntilNextScan: number;
+  liveWordsUntilNextScan?: number;
+  step?: string;
+  lastScanEmpty?: boolean;
+};
 
 type TaskState = {
   tasks: TaskItem[];
@@ -136,7 +142,7 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
   approvingLargeTask: false,
   forceWorkTabKey: 0,
   transcriptRefs: [],
-  suggestionProgress: { busy: false, wordsUntilNextScan: 100 },
+  suggestionProgress: { busy: false, wordsUntilNextScan: 200, liveWordsUntilNextScan: 200 },
   agentSteps: [],
 
   // Actions
@@ -306,7 +312,7 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
       approvingLargeTask: false,
       forceWorkTabKey: 0,
       transcriptRefs: [],
-      suggestionProgress: { busy: false, wordsUntilNextScan: 100 },
+      suggestionProgress: { busy: false, wordsUntilNextScan: 200, liveWordsUntilNextScan: 200 },
       agentSteps: [],
     }),
 

@@ -198,6 +198,11 @@ export function registerSessionHandlers({ db, getWindow, sessionRef, getExternal
     return { ok: true, block };
   });
 
+  ipcMain.handle("request-task-scan", async () => {
+    if (!sessionRef.current) return { ok: false, error: "No active session" };
+    return sessionRef.current.requestTaskScan();
+  });
+
   ipcMain.handle("list-mic-devices", async () => {
     try {
       return await listMicDevices();

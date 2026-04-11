@@ -43,7 +43,13 @@ const SUGGESTION_KIND_ICONS: Record<SuggestionKind, typeof SearchIcon> = {
 type RightRailMode = "work" | "agents";
 const EMPTY_SESSION_TAB_KEY = "__empty__";
 
-type SuggestionProgress = { busy: boolean; wordsUntilNextScan: number; step?: string; lastScanEmpty?: boolean };
+type SuggestionProgress = {
+  busy: boolean;
+  wordsUntilNextScan: number;
+  liveWordsUntilNextScan?: number;
+  step?: string;
+  lastScanEmpty?: boolean;
+};
 
 type RightSidebarProps = {
   tasks: TaskItem[];
@@ -71,6 +77,7 @@ type RightSidebarProps = {
   transcriptRefs?: string[];
   onRemoveTranscriptRef?: (index: number) => void;
   onSubmitTaskInput?: (text: string, refs: string[]) => void;
+  onRequestTaskScan?: () => void;
 };
 
 function isLineClamped(el: HTMLElement): boolean {
@@ -152,46 +159,78 @@ function SuggestionItem({
 const STEP_NOISE = new Set(["Thinking…", "Gathering context…", "Drafting suggestions…"]);
 
 function SuggestionCounterRow({ progress }: { progress: SuggestionProgress }) {
-  if (progress.busy) return null;
-  const SCAN_WORD_BUDGET = 100;
-  const accumulated = Math.max(0, Math.min(SCAN_WORD_BUDGET, SCAN_WORD_BUDGET - progress.wordsUntilNextScan));
-  const ratio = accumulated / SCAN_WORD_BUDGET;
-  const label = `Next scan in ${progress.wordsUntilNextScan} word${progress.wordsUntilNextScan === 1 ? "" : "s"}`;
+  const SCAN_WORD_BUDGET = 200;
+  const committedAccumulated = Math.max(0, Math.min(SCAN_WORD_BUDGET, SCAN_WORD_BUDGET - progress.wordsUntilNextScan));
+  const liveRemaining = progress.liveWordsUntilNextScan ?? progress.wordsUntilNextScan;
+  const liveAccumulated = Math.max(0, Math.min(SCAN_WORD_BUDGET, SCAN_WORD_BUDGET - liveRemaining));
+  const committedRatio = committedAccumulated / SCAN_WORD_BUDGET;
+  const liveRatio = liveAccumulated / SCAN_WORD_BUDGET;
+  const bufferedWords = Math.max(0, progress.wordsUntilNextScan - liveRemaining);
+  const label = progress.busy
+    ? "Next scan counter paused"
+    : `Next scan in ${progress.wordsUntilNextScan} word${progress.wordsUntilNextScan === 1 ? "" : "s"}`;
 
   return (
     <div className="mb-2 rounded-xl border border-border/60 bg-sidebar/60 px-2.5 py-2">
       <div className="flex items-center justify-between gap-3">
         <div className="text-[11px] font-medium text-foreground/75">{label}</div>
-        <div className="text-[10px] tabular-nums text-muted-foreground/70">{Math.round(ratio * 100)}%</div>
+        <div className="text-[10px] tabular-nums text-muted-foreground/70">{Math.round(committedRatio * 100)}%</div>
       </div>
-      <div className="mt-2 flex gap-1.5">
+      <div className="mt-2 relative flex gap-1.5">
         {Array.from({ length: 10 }, (_, index) => {
-          const filled = ratio * 10 >= index + 1;
-          const active = !filled && ratio * 10 > index;
+          const filled = committedRatio * 10 >= index + 1;
+          const active = !filled && committedRatio * 10 > index;
+          const buffered = !filled && liveRatio * 10 >= index + 1;
+          const bufferedActive = !filled && !buffered && liveRatio * 10 > index;
           return (
             <span
               key={index}
               className={`h-1.5 flex-1 rounded-full transition-colors ${
                 filled
                   ? "bg-primary/55"
+                  : buffered
+                  ? "bg-primary/20"
                   : active
                   ? "bg-primary/30"
+                  : bufferedActive
+                  ? "bg-primary/15"
                   : "bg-muted"
               }`}
             />
           );
         })}
       </div>
+      {bufferedWords > 0 && (
+        <div className="mt-1 text-[10px] text-muted-foreground/70">
+          {bufferedWords} live word{bufferedWords === 1 ? "" : "s"} waiting to commit
+        </div>
+      )}
     </div>
+  );
+}
+
+function ManualScanButton({ onRequestTaskScan }: { onRequestTaskScan?: () => void }) {
+  if (!onRequestTaskScan) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onRequestTaskScan()}
+      className="inline-flex h-6 items-center rounded-md border border-border/70 px-2 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+    >
+      Scan now
+    </button>
   );
 }
 
 function AgentActivityCard({
   progress,
   agentSteps,
+  onRequestTaskScan,
 }: {
   progress: SuggestionProgress;
   agentSteps: string[];
+  onRequestTaskScan?: () => void;
 }) {
   const DISMISS_MS = 5000;
   const [opacity, setOpacity] = useState(1);
@@ -243,14 +282,21 @@ function AgentActivityCard({
   const statusText = completedCount > 0
     ? `${completedCount} step${completedCount === 1 ? "" : "s"} completed`
     : "Agent gathering context";
+  const title = activeStep ?? "Agent gathering context";
+  const isWaiting = progress.busy && (progress.step === "Preparing scan…" || !progress.step);
 
   return (
     <li className="relative overflow-hidden rounded-xl border border-primary/35 bg-primary/6 px-2.5 py-2">
       <div className="flex items-start gap-2">
         <LoaderCircleIcon className="mt-0.5 size-3 shrink-0 animate-spin text-primary/70" />
         <div className="min-w-0 flex-1">
-          <div className="text-xs text-foreground/80">{activeStep ?? "Agent gathering context"}</div>
-          <div className="mt-1 text-2xs uppercase tracking-[0.14em] text-muted-foreground/60">{statusText}</div>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-foreground/80">{title}</div>
+              <div className="mt-1 text-2xs uppercase tracking-[0.14em] text-muted-foreground/60">{statusText}</div>
+            </div>
+            {isWaiting && <ManualScanButton onRequestTaskScan={onRequestTaskScan} />}
+          </div>
         </div>
       </div>
     </li>
@@ -479,6 +525,7 @@ export function RightSidebar({
   transcriptRefs = [],
   onRemoveTranscriptRef,
   onSubmitTaskInput,
+  onRequestTaskScan,
 }: RightSidebarProps) {
   const [modeBySession, setModeBySession] = useLocalStorage<Record<string, RightRailMode>>("ambient-right-rail-mode", {});
   const [completedOpen, setCompletedOpen] = useState(false);
@@ -700,7 +747,11 @@ export function RightSidebar({
               {(suggestions.length > 0 || (sessionActive && suggestionProgress)) ? (
                 <ul className="space-y-1">
                   {sessionActive && suggestionProgress && (
-                    <AgentActivityCard progress={suggestionProgress} agentSteps={agentSteps} />
+                    <AgentActivityCard
+                      progress={suggestionProgress}
+                      agentSteps={agentSteps}
+                      onRequestTaskScan={onRequestTaskScan}
+                    />
                   )}
                   {suggestions.map((s) => (
                     <SuggestionItem
