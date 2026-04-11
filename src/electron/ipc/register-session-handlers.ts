@@ -119,7 +119,12 @@ export function registerSessionHandlers({ db, getWindow, sessionRef, getExternal
 
   ipcMain.handle("stop-recording", () => {
     if (!sessionRef.current) return { ok: false, error: "No active session" };
-    sessionRef.current.stopRecording();
+    if (sessionRef.current.recording) {
+      sessionRef.current.stopRecording();
+    }
+    if (sessionRef.current.micEnabled) {
+      sessionRef.current.stopMic();
+    }
     return { ok: true };
   });
 

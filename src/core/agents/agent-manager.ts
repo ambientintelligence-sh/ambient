@@ -61,6 +61,7 @@ export type AgentManager = {
   getAgent: (id: string) => Readonly<Agent> | undefined;
   getAllAgents: () => ReadonlyArray<Readonly<Agent>>;
   getAgentsForSession: (sessionId: string) => Agent[];
+  getExaClient: () => InstanceType<typeof import("exa-js").default> | null;
 };
 
 const STEP_FLUSH_INTERVAL_MS = 2000;
@@ -822,5 +823,6 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
     getAgentsForSession: (sessionId) => {
       return deps.db?.getAgentsForSession(sessionId) ?? [];
     },
+    getExaClient: tryGetExa,
   };
 }

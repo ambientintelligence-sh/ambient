@@ -164,6 +164,7 @@ export type ElectronAPI = {
   onError: (callback: (text: string) => void) => () => void;
   onTaskAdded: (callback: (task: TaskItem) => void) => () => void;
   onTaskSuggested: (callback: (suggestion: TaskSuggestion) => void) => () => void;
+  onSuggestionProgress: (callback: (progress: { busy: boolean; wordsUntilNextScan: number; step?: string; lastScanEmpty?: boolean }) => void) => () => void;
   onAgentStarted: (callback: (agent: Agent) => void) => () => void;
   onAgentStep: (callback: (agentId: string, step: AgentStep) => void) => () => void;
   onAgentCompleted: (callback: (agentId: string, result: string) => void) => () => void;
@@ -304,6 +305,7 @@ const api: ElectronAPI = {
   onError: createListener<string>("session:error"),
   onTaskAdded: createListener<TaskItem>("session:task-added"),
   onTaskSuggested: createListener<TaskSuggestion>("session:task-suggested"),
+  onSuggestionProgress: createListener<{ busy: boolean; wordsUntilNextScan: number; step?: string; lastScanEmpty?: boolean }>("session:suggestion-progress"),
   onAgentStarted: createListener<Agent>("session:agent-started"),
   onAgentStep: (callback: (agentId: string, step: AgentStep) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, agentId: string, step: AgentStep) => callback(agentId, step);

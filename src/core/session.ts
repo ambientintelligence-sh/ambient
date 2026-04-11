@@ -28,15 +28,14 @@ import { pcmToWavBuffer, computeRms } from "./audio/audio-utils";
 import { toReadableError } from "./text/text-utils";
 import {
   analysisSchema,
-  agentSuggestionSchema,
   type AgentSuggestionItem,
   taskFromSelectionSchema,
   sessionTitleSchema,
   buildAnalysisPrompt,
-  buildAgentSuggestionPrompt,
   buildTaskFromSelectionPrompt,
   buildSessionTitlePrompt,
 } from "./analysis/analysis";
+import { runSuggestionAgent } from "./analysis/suggestion-agent";
 import { classifyTaskSize as classifyTaskSizeWithModel, type TaskSizeClassification } from "./analysis/task-size";
 import type { AppDatabase } from "./db/db";
 import {
@@ -249,11 +248,11 @@ export class Session {
   private readonly analysisDebounceMs = 300;
   private readonly analysisHeartbeatMs = 5000;
   private readonly analysisRetryDelayMs = 2000;
-  private readonly taskAnalysisIntervalMs = 60_000;
   private readonly taskAnalysisMaxBlocks = 20;
-  private readonly taskAnalysisMinNewWords = 30;
+  private readonly taskAnalysisMinNewWords = 100;
   private recentSuggestedTaskTexts: string[] = [];
   private taskScanRequested = false;
+  private suggestionScanInFlight = false;
   private lastTaskAnalysisAt = 0;
   private lastTaskAnalysisBlockCount = 0;
   private lastTaskAnalysisWordCount = 0;
@@ -288,6 +287,38 @@ export class Session {
 
   private ensureTranscriptContext(): void {
     this.hydrateTranscriptContextFromDb();
+  }
+
+  private emitIdleSuggestionProgress(lastScanEmpty = false): void {
+    const allBlocks = [...this.contextState.transcriptBlocks.values()];
+    const currentWordCount = allBlocks.reduce(
+      (sum, b) => sum + b.sourceText.split(/\s+/).filter(Boolean).length,
+      0,
+    );
+    const newWords = Math.max(0, currentWordCount - this.lastTaskAnalysisWordCount);
+    const wordsUntilNextScan = Math.max(0, this.taskAnalysisMinNewWords - newWords);
+    if (this.suggestionScanInFlight) {
+      return;
+    }
+    if (wordsUntilNextScan === 0 && this.isCapturing) {
+      if (!this.analysisInFlight) {
+        if (this.analysisTimer) {
+          clearTimeout(this.analysisTimer);
+          this.analysisTimer = null;
+        }
+        void this.generateAnalysis();
+      }
+      return;
+    }
+    log(
+      "INFO",
+      `suggestion-progress: blocks=${allBlocks.length} words=${currentWordCount} lastScanWords=${this.lastTaskAnalysisWordCount} newWords=${newWords} remaining=${wordsUntilNextScan}`,
+    );
+    this.events.emit("suggestion-progress", {
+      busy: false,
+      wordsUntilNextScan,
+      lastScanEmpty,
+    });
   }
 
   constructor(config: SessionConfig, db?: AppDatabase, sessionId?: string, externalDeps?: SessionExternalDeps) {
@@ -349,6 +380,10 @@ export class Session {
       }
     }
     log("INFO", `AgentManager initialized${process.env.EXA_API_KEY ? " (web search enabled)" : " (web search disabled — no EXA_API_KEY)"}`);
+
+    this.events.on("block-added", () => {
+      this.emitIdleSuggestionProgress();
+    });
 
     this.rebuildTranscriptionSchemas();
   }
@@ -1575,10 +1610,12 @@ export class Session {
       (sum, b) => sum + b.sourceText.split(/\s+/).filter(Boolean).length,
       0,
     );
-    const hasEnoughNewWords = currentWordCount - this.lastTaskAnalysisWordCount >= this.taskAnalysisMinNewWords;
+    const newWords = currentWordCount - this.lastTaskAnalysisWordCount;
+    const hasEnoughNewWords = newWords >= this.taskAnalysisMinNewWords;
     const shouldRunTaskAnalysis =
       (forceTaskAnalysis && allBlocks.length > 0)
       || (hasNewTaskBlocks && hasEnoughNewWords);
+
     if (!shouldRunSummaryAnalysis && !shouldRunTaskAnalysis) {
       return {
         taskAnalysisRan: false,
@@ -1659,6 +1696,12 @@ export class Session {
 
       if (shouldRunTaskAnalysis) {
         taskAnalysisRan = true;
+        this.suggestionScanInFlight = true;
+        this.events.emit("suggestion-progress", {
+          busy: true,
+          wordsUntilNextScan: 0,
+          step: "Gathering context…",
+        });
         if (forceTaskAnalysis) {
           taskBlocks = allBlocks.slice(-this.taskAnalysisMaxBlocks);
         } else {
@@ -1670,25 +1713,26 @@ export class Session {
         }
         this.lastTaskAnalysisAt = now;
         this.lastTaskAnalysisWordCount = currentWordCount;
+        let lastScanEmpty = true;
 
         try {
-          const suggestionPrompt = buildAgentSuggestionPrompt(
-            taskBlocks,
+          taskSuggestions = await this.generateTaskSuggestionsAgentic({
+            recentBlocks: taskBlocks,
             existingTasks,
-            this.recentSuggestedTaskTexts,
-            previousKeyPoints,
-            previousEducationalInsights.slice(-20),
-            this.config.taskSuggestionAggressiveness,
-          );
-          taskSuggestions = await this.generateTaskSuggestionsWithFallback(
-            suggestionPrompt,
-            taskBlocks.length,
-          );
+            historicalSuggestions: this.recentSuggestedTaskTexts,
+            keyPoints: previousKeyPoints,
+            educationalContext: previousEducationalInsights.slice(-20),
+            aggressiveness: this.config.taskSuggestionAggressiveness,
+          });
+          lastScanEmpty = taskSuggestions.length === 0;
           this.lastTaskAnalysisBlockCount = analysisTargetBlockCount;
         } catch (taskError) {
           if (this.config.debug) {
             log("WARN", `Agent suggestion generation failed: ${toReadableError(taskError)}`);
           }
+        } finally {
+          this.suggestionScanInFlight = false;
+          this.emitIdleSuggestionProgress(lastScanEmpty);
         }
       }
 
@@ -1748,49 +1792,59 @@ export class Session {
     };
   }
 
-  private async generateTaskSuggestionsWithFallback(
-    suggestionPrompt: string,
-    taskBlockCount: number,
+  private async generateTaskSuggestionsAgentic(
+    input: Parameters<typeof runSuggestionAgent>[0],
   ): Promise<TaskSuggestionDraft[]> {
-    const runAttempt = async (
-      model: LanguageModel,
-      costProvider: AnalysisProvider | TranscriptionProvider,
-    ): Promise<TaskSuggestionDraft[]> => {
-      const { object: suggestionResult, usage } = await generateStructuredObject({
-        model,
-        schema: agentSuggestionSchema,
-        prompt: suggestionPrompt,
-        temperature: 0,
-      });
+    const costProvider: AnalysisProvider | TranscriptionProvider =
+      this.config.analysisProvider === "bedrock" ? "bedrock" : "openrouter";
 
-      this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", costProvider);
-      return suggestionResult.suggestions
-        .map((raw) => this.normalizeAgentSuggestion(raw))
-        .filter((candidate): candidate is TaskSuggestionDraft => candidate !== null);
-    };
+    this.events.emit("suggestion-progress", {
+      busy: true,
+      wordsUntilNextScan: 0,
+      step: "Gathering context…",
+    });
 
+    const db = this.db;
+    let result: Awaited<ReturnType<typeof runSuggestionAgent>> | undefined;
     try {
-      const primarySuggestions = await runAttempt(this.taskModel, this.config.analysisProvider === "bedrock" ? "bedrock" : "openrouter");
-      if (primarySuggestions.length > 0 || this.taskModel === this.analysisModel) {
-        return primarySuggestions;
-      }
-
-      if (this.config.debug) {
-        log("INFO", `Task model returned no suggestions for ${taskBlockCount} block(s); retrying with analysis model.`);
-      }
-
-      return await runAttempt(this.analysisModel, this.config.analysisProvider);
-    } catch (primaryError) {
-      if (this.taskModel === this.analysisModel) {
-        throw primaryError;
-      }
-
-      if (this.config.debug) {
-        log("WARN", `Task model suggestion pass failed: ${toReadableError(primaryError)}. Retrying with analysis model.`);
-      }
-
-      return runAttempt(this.analysisModel, this.config.analysisProvider);
+      result = await runSuggestionAgent(input, {
+        model: this.analysisModel,
+        getTranscriptContext: (last?: number, offset?: number) =>
+          this.getTranscriptBlocks(last, offset),
+        searchTranscriptHistory: db
+          ? (q: string, l?: number) => db.searchBlocks(q, l)
+          : undefined,
+        exa: this.agentManager?.getExaClient() ?? null,
+        onStep: (label) => {
+          this.events.emit("suggestion-progress", {
+            busy: true,
+            wordsUntilNextScan: 0,
+            step: label,
+          });
+        },
+        debug: this.config.debug,
+      });
+    } catch (error) {
+      throw error;
     }
+
+    this.trackCost(
+      result.usage.inputTokens,
+      result.usage.outputTokens,
+      "text",
+      costProvider,
+    );
+
+    if (this.config.debug) {
+      log(
+        "INFO",
+        `Suggestion agent: steps=${result.steps}, candidates=${result.suggestions.length}`,
+      );
+    }
+
+    return result.suggestions
+      .map((raw) => this.normalizeAgentSuggestion(raw))
+      .filter((candidate): candidate is TaskSuggestionDraft => candidate !== null);
   }
 
   private tryEmitTaskSuggestion(

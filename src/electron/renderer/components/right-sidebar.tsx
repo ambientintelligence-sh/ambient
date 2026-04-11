@@ -43,9 +43,13 @@ const SUGGESTION_KIND_ICONS: Record<SuggestionKind, typeof SearchIcon> = {
 type RightRailMode = "work" | "agents";
 const EMPTY_SESSION_TAB_KEY = "__empty__";
 
+type SuggestionProgress = { busy: boolean; wordsUntilNextScan: number; step?: string; lastScanEmpty?: boolean };
+
 type RightSidebarProps = {
   tasks: TaskItem[];
   suggestions: TaskSuggestion[];
+  suggestionProgress?: SuggestionProgress;
+  agentSteps?: string[];
   agents?: Agent[];
   selectedAgentId?: string | null;
   forceWorkTabKey?: number;
@@ -140,6 +144,114 @@ function SuggestionItem({
       </div>
       <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-primary/5">
         <div className="h-full bg-primary/30 transition-none" style={{ width: `${progress}%` }} />
+      </div>
+    </li>
+  );
+}
+
+const STEP_NOISE = new Set(["Thinking…", "Gathering context…", "Drafting suggestions…"]);
+
+function SuggestionCounterRow({ progress }: { progress: SuggestionProgress }) {
+  if (progress.busy) return null;
+  const SCAN_WORD_BUDGET = 100;
+  const accumulated = Math.max(0, Math.min(SCAN_WORD_BUDGET, SCAN_WORD_BUDGET - progress.wordsUntilNextScan));
+  const ratio = accumulated / SCAN_WORD_BUDGET;
+  const label = `Next scan in ${progress.wordsUntilNextScan} word${progress.wordsUntilNextScan === 1 ? "" : "s"}`;
+
+  return (
+    <div className="mb-2 rounded-xl border border-border/60 bg-sidebar/60 px-2.5 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[11px] font-medium text-foreground/75">{label}</div>
+        <div className="text-[10px] tabular-nums text-muted-foreground/70">{Math.round(ratio * 100)}%</div>
+      </div>
+      <div className="mt-2 flex gap-1.5">
+        {Array.from({ length: 10 }, (_, index) => {
+          const filled = ratio * 10 >= index + 1;
+          const active = !filled && ratio * 10 > index;
+          return (
+            <span
+              key={index}
+              className={`h-1.5 flex-1 rounded-full transition-colors ${
+                filled
+                  ? "bg-primary/55"
+                  : active
+                  ? "bg-primary/30"
+                  : "bg-muted"
+              }`}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AgentActivityCard({
+  progress,
+  agentSteps,
+}: {
+  progress: SuggestionProgress;
+  agentSteps: string[];
+}) {
+  const DISMISS_MS = 5000;
+  const [opacity, setOpacity] = useState(1);
+  const [barPct, setBarPct] = useState(100);
+  const [dismissed, setDismissed] = useState(false);
+  const isNothingFound = !progress.busy && !!progress.lastScanEmpty;
+
+  useEffect(() => {
+    if (!isNothingFound) {
+      setOpacity(1);
+      setBarPct(100);
+      setDismissed(false);
+      return;
+    }
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+      const pct = Math.max(0, 1 - (Date.now() - startTime) / DISMISS_MS) * 100;
+      setBarPct(pct);
+    }, 100);
+    const fadeTimer = setTimeout(() => setOpacity(0), DISMISS_MS - 400);
+    const dismissTimer = setTimeout(() => setDismissed(true), DISMISS_MS);
+    return () => { clearInterval(interval); clearTimeout(fadeTimer); clearTimeout(dismissTimer); };
+  }, [isNothingFound]);
+
+  if (!progress.busy && !isNothingFound) return null;
+  if (dismissed) return null;
+
+  if (isNothingFound) {
+    return (
+      <li
+        className="relative overflow-hidden border-l-2 border-l-muted-foreground/20 bg-muted/20 transition-opacity duration-500"
+        style={{ opacity }}
+      >
+        <div className="flex items-center gap-2 min-h-7 py-1.5 px-2">
+          <span className="text-xs text-muted-foreground/60 italic flex-1">Nothing found this scan</span>
+        </div>
+        <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-muted/40">
+          <div className="h-full bg-muted-foreground/20" style={{ width: `${barPct}%`, transition: "width 100ms linear" }} />
+        </div>
+      </li>
+    );
+  }
+
+  const visibleSteps = agentSteps.filter((s) => !STEP_NOISE.has(s));
+  const activeStep = progress.step && !STEP_NOISE.has(progress.step) ? progress.step : undefined;
+  const completedCount = activeStep
+    ? Math.max(0, visibleSteps.lastIndexOf(activeStep))
+    : visibleSteps.length;
+  const statusText = completedCount > 0
+    ? `${completedCount} step${completedCount === 1 ? "" : "s"} completed`
+    : "Agent gathering context";
+
+  return (
+    <li className="relative overflow-hidden rounded-xl border border-primary/35 bg-primary/6 px-2.5 py-2">
+      <div className="flex items-start gap-2">
+        <LoaderCircleIcon className="mt-0.5 size-3 shrink-0 animate-spin text-primary/70" />
+        <div className="min-w-0 flex-1">
+          <div className="text-xs text-foreground/80">{activeStep ?? "Agent gathering context"}</div>
+          <div className="mt-1 text-2xs uppercase tracking-[0.14em] text-muted-foreground/60">{statusText}</div>
+        </div>
       </div>
     </li>
   );
@@ -344,6 +456,8 @@ function RailModeButton({
 export function RightSidebar({
   tasks,
   suggestions,
+  suggestionProgress,
+  agentSteps = [],
   agents,
   selectedAgentId,
   forceWorkTabKey = 0,
@@ -468,7 +582,7 @@ export function RightSidebar({
           <>
             {/* Active tasks */}
             <div className="mb-3">
-              <div className="sticky top-0 z-10 -mx-3 mb-1.5 bg-sidebar/95 px-3 py-1.5 backdrop-blur supports-[backdrop-filter]:bg-sidebar/85">
+              <div className="sticky top-0 z-20 -mx-3 mb-1.5 border-b border-sidebar-border/70 bg-sidebar px-3 py-1.5 shadow-[0_1px_0_0_hsl(var(--sidebar))]">
                 <SectionLabel as="span">
                   {pendingInAgentsCount > 0 ? `Tasks · ${pendingInAgentsCount} in agents` : "Tasks"}
                 </SectionLabel>
@@ -577,11 +691,17 @@ export function RightSidebar({
 
             {/* Suggestions */}
             <div>
-              <div className="sticky top-0 z-10 -mx-3 mb-1.5 bg-sidebar/95 px-3 py-1.5 backdrop-blur supports-[backdrop-filter]:bg-sidebar/85">
+              <div className="sticky top-0 z-20 -mx-3 mb-1.5 border-b border-sidebar-border/70 bg-sidebar px-3 py-1.5 shadow-[0_1px_0_0_hsl(var(--sidebar))]">
                 <SectionLabel as="span">Suggested</SectionLabel>
               </div>
-              {suggestions.length > 0 ? (
+              {sessionActive && suggestionProgress && (
+                <SuggestionCounterRow progress={suggestionProgress} />
+              )}
+              {(suggestions.length > 0 || (sessionActive && suggestionProgress)) ? (
                 <ul className="space-y-1">
+                  {sessionActive && suggestionProgress && (
+                    <AgentActivityCard progress={suggestionProgress} agentSteps={agentSteps} />
+                  )}
                   {suggestions.map((s) => (
                     <SuggestionItem
                       key={s.id}

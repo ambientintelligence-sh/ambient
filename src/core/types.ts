@@ -639,6 +639,7 @@ export type SessionEvents = {
   "task-added": [task: TaskItem];
   "task-updated": [task: TaskItem];
   "task-suggested": [suggestion: TaskSuggestion];
+  "suggestion-progress": [payload: { busy: boolean; wordsUntilNextScan: number; step?: string; lastScanEmpty?: boolean }];
   "agent-started": [agent: Agent];
   "agent-step": [agentId: string, step: AgentStep];
   "agent-completed": [agentId: string, result: string];

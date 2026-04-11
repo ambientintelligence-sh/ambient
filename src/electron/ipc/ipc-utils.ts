@@ -120,6 +120,10 @@ export function wireSessionEvents(
     if (!isCurrentSession()) return;
     sendToRenderer(getWindow, "session:task-suggested", suggestion);
   });
+  activeSession.events.on("suggestion-progress", (payload) => {
+    if (!isCurrentSession()) return;
+    sendToRenderer(getWindow, "session:suggestion-progress", payload);
+  });
   activeSession.events.on("agent-started", (agent: Agent) => {
     if (!isCurrentSession()) return;
     sendToRenderer(getWindow, "session:agent-started", agent);

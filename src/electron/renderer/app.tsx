@@ -132,6 +132,8 @@ export function App() {
 
   const tasks = useTaskStore((s) => s.tasks);
   const suggestions = useTaskStore((s) => s.suggestions);
+  const suggestionProgress = useTaskStore((s) => s.suggestionProgress);
+  const agentSteps = useTaskStore((s) => s.agentSteps);
   const archivedSuggestions = useTaskStore((s) => s.archivedSuggestions);
   const processingTaskIds = useTaskStore((s) => s.processingTaskIds);
   const pendingApprovalTask = useTaskStore((s) => s.pendingApprovalTask);
@@ -270,6 +272,9 @@ export function App() {
     const cleanups = [
       window.electronAPI.onTaskSuggested((suggestion) => {
         useTaskStore.getState().appendSuggestion(suggestion);
+      }),
+      window.electronAPI.onSuggestionProgress((progress) => {
+        useTaskStore.getState().setSuggestionProgress(progress);
       }),
       window.electronAPI.onFinalSummaryReady((summary) => {
         useUIStore.getState().setFinalSummaryState({ kind: "ready", summary });
@@ -1556,6 +1561,8 @@ export function App() {
               <RightSidebar
                 tasks={tasks}
                 suggestions={suggestions}
+                suggestionProgress={suggestionProgress}
+                agentSteps={agentSteps}
                 agents={agents}
                 selectedAgentId={selectedAgentId}
                 forceWorkTabKey={forceWorkTabKey}
