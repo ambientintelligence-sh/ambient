@@ -124,7 +124,7 @@ function SuggestionItem({
 
   return (
     <li
-      className="relative overflow-hidden border-l-2 border-l-primary/40 bg-primary/5 transition-opacity duration-500"
+      className="relative overflow-hidden rounded-xl border border-primary/12 bg-background/70 shadow-[inset_0_1px_0_hsl(var(--background)/0.7)] transition-opacity duration-500"
       style={{ opacity }}
     >
       <div className="flex items-start gap-2 min-h-7 py-1.5 px-2 relative z-10">
@@ -149,8 +149,8 @@ function SuggestionItem({
           <XIcon className="size-3" />
         </button>
       </div>
-      <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-primary/5">
-        <div className="h-full bg-primary/30 transition-none" style={{ width: `${progress}%` }} />
+      <div className="absolute inset-x-2 bottom-1 h-[2px] overflow-hidden rounded-full bg-primary/8">
+        <div className="h-full rounded-full bg-primary/28 transition-none" style={{ width: `${progress}%` }} />
       </div>
     </li>
   );
@@ -261,14 +261,14 @@ function AgentActivityCard({
   if (isNothingFound) {
     return (
       <li
-        className="relative overflow-hidden border-l-2 border-l-muted-foreground/20 bg-muted/20 transition-opacity duration-500"
+        className="relative overflow-hidden rounded-xl border border-border/50 bg-background/60 transition-opacity duration-500"
         style={{ opacity }}
       >
         <div className="flex items-center gap-2 min-h-7 py-1.5 px-2">
           <span className="text-xs text-muted-foreground/60 italic flex-1">Nothing found this scan</span>
         </div>
-        <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-muted/40">
-          <div className="h-full bg-muted-foreground/20" style={{ width: `${barPct}%`, transition: "width 100ms linear" }} />
+        <div className="absolute inset-x-2 bottom-1 h-[2px] overflow-hidden rounded-full bg-muted/45">
+          <div className="h-full rounded-full bg-muted-foreground/20" style={{ width: `${barPct}%`, transition: "width 100ms linear" }} />
         </div>
       </li>
     );
@@ -609,7 +609,7 @@ export function RightSidebar({
   const runningAgentsCount = (agents ?? []).filter((agent) => agent.status === "running").length;
 
   return (
-    <div className="w-full h-full shrink-0 border-l border-border flex flex-col min-h-0 bg-sidebar">
+    <div className="w-full h-full shrink-0 border-l border-sidebar-border/35 flex flex-col min-h-0 bg-sidebar/90">
       <div className="px-2 py-2 shrink-0">
         <div className="grid grid-cols-2 gap-1 rounded-md bg-foreground/[0.045] p-1 dark:bg-muted/50">
           <RailModeButton
@@ -629,7 +629,7 @@ export function RightSidebar({
           <>
             {/* Active tasks */}
             <div className="mb-3">
-              <div className="sticky top-0 z-20 -mx-3 mb-1.5 border-b border-sidebar-border/70 bg-sidebar px-3 py-1.5 shadow-[0_1px_0_0_hsl(var(--sidebar))]">
+              <div className="sticky top-0 z-20 -mx-1 mb-2 rounded-xl bg-sidebar/88 px-1 py-1 backdrop-blur supports-[backdrop-filter]:bg-sidebar/72">
                 <SectionLabel as="span">
                   {pendingInAgentsCount > 0 ? `Tasks · ${pendingInAgentsCount} in agents` : "Tasks"}
                 </SectionLabel>
@@ -738,7 +738,7 @@ export function RightSidebar({
 
             {/* Suggestions */}
             <div>
-              <div className="sticky top-0 z-20 -mx-3 mb-1.5 border-b border-sidebar-border/70 bg-sidebar px-3 py-1.5 shadow-[0_1px_0_0_hsl(var(--sidebar))]">
+              <div className="sticky top-0 z-20 -mx-1 mb-2 rounded-xl bg-sidebar/88 px-1 py-1 backdrop-blur supports-[backdrop-filter]:bg-sidebar/72">
                 <SectionLabel as="span">Suggested</SectionLabel>
               </div>
               {sessionActive && suggestionProgress && (
@@ -787,7 +787,7 @@ export function RightSidebar({
                     return (
                       <li
                         key={task.id}
-                        className="border-l-2 border-l-muted-foreground/20 bg-muted/5 group"
+                        className="group rounded-xl border border-border/45 bg-background/60"
                       >
                         <div className="flex items-start gap-2 min-h-7 py-1.5 px-2">
                           <KindIcon className="size-3 shrink-0 text-muted-foreground/50 mt-0.5" />
@@ -833,7 +833,7 @@ export function RightSidebar({
             )}
             {agents && onSelectAgent && agents.length > 0 && (
               <>
-                <div className="my-3 h-px bg-border/70" />
+                <div className="my-4 h-px bg-gradient-to-r from-transparent via-border/45 to-transparent" />
                 <AgentDebriefPanel
                   state={debriefState}
                   onGenerate={generateDebrief}
@@ -885,7 +885,7 @@ export function RightSidebar({
         </div>
       )}
       {onSubmitTaskInput && mode === "agents" && hasRefs && (
-        <div className="px-3 py-2 border-t border-border text-2xs text-muted-foreground">
+        <div className="mx-2 mb-2 rounded-xl bg-background/65 px-3 py-2 text-2xs text-muted-foreground shadow-[inset_0_1px_0_hsl(var(--background)/0.7)]">
           {transcriptRefs.length} selected snippet{transcriptRefs.length !== 1 ? "s" : ""} ready for task input.
           <button
             type="button"
