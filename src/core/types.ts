@@ -205,11 +205,13 @@ export type SessionConfig = {
   legacyAudio: boolean;
   translationEnabled: boolean;
   agentAutoApprove: boolean;
-  codexEnabled: boolean;
+  codingAgent: CodingAgentProvider;
   disabledSkillIds: string[];
   learningEnabled: boolean;
   micDevice?: string;
 };
+
+export type CodingAgentProvider = "codex" | "claude" | null;
 
 export type FontSize = "sm" | "md" | "lg";
 export type FontFamily = "sans" | "serif" | "mono";
@@ -243,7 +245,7 @@ export type AppConfig = {
   legacyAudio: boolean;
   agentAutoApprove: boolean;
   autoDelegate: boolean;
-  codexEnabled: boolean;
+  codingAgent: CodingAgentProvider;
   disabledSkillIds: string[];
   learningEnabled: boolean;
 };
@@ -375,10 +377,23 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   legacyAudio: false,
   agentAutoApprove: false,
   autoDelegate: false,
-  codexEnabled: false,
+  codingAgent: null,
   disabledSkillIds: [],
   learningEnabled: true,
 };
+
+function resolveCodingAgent(merged: Partial<AppConfig> & Record<string, unknown>): CodingAgentProvider {
+  // New field wins when explicitly set.
+  if (merged.codingAgent === "codex" || merged.codingAgent === "claude") {
+    return merged.codingAgent;
+  }
+  if (merged.codingAgent === null) return null;
+  // Legacy fields — migrate persisted state from the old dual-toggle design.
+  // Prefer claude if both were set (unlikely, but matches the user's explicit opt-in).
+  if (merged.claudeEnabled === true) return "claude";
+  if (merged.codexEnabled === true) return "codex";
+  return null;
+}
 
 export function normalizeAppConfig(
   input?: AppConfigOverrides | null
@@ -497,7 +512,7 @@ export function normalizeAppConfig(
     legacyAudio: !!merged.legacyAudio,
     agentAutoApprove: !!merged.agentAutoApprove,
     autoDelegate: !!merged.autoDelegate,
-    codexEnabled: !!merged.codexEnabled,
+    codingAgent: resolveCodingAgent(merged),
     analysisProviderOnly,
     analysisReasoning,
     taskProviders:
@@ -623,6 +638,35 @@ export type Agent = {
   archived?: boolean;
 };
 
+// Provider task types — shared by codex and claude-code background tasks
+export type ProviderKind = "codex" | "claude";
+
+export type ProviderTaskStatus = "running" | "completed" | "failed" | "cancelled";
+
+export type ProviderTaskEntry = Readonly<
+  | { type: "command"; command: string; exitCode?: number }
+  | { type: "file-change"; changes: ReadonlyArray<{ kind: string; path: string }> }
+  | { type: "reasoning"; text: string }
+  | { type: "message"; text: string }
+  | { type: "tool-call"; toolName: string; input?: string }
+  | { type: "raw"; text: string }
+>;
+
+export type ProviderTaskEventBase = Readonly<{
+  taskId: string;
+  provider: ProviderKind;
+  toolCallId?: string;
+  agentId?: string;
+  at: number;
+}>;
+
+export type ProviderTaskEvent =
+  | (ProviderTaskEventBase & { kind: "started"; prompt: string; cwd?: string; threadId?: string })
+  | (ProviderTaskEventBase & { kind: "progress"; entry: ProviderTaskEntry })
+  | (ProviderTaskEventBase & { kind: "completed"; summary: string; threadId?: string })
+  | (ProviderTaskEventBase & { kind: "failed"; error: string })
+  | (ProviderTaskEventBase & { kind: "cancelled" });
+
 // Session event types for EventEmitter
 export type SessionEvents = {
   "state-change": [state: UIState];
@@ -655,4 +699,5 @@ export type SessionEvents = {
   "agents-summary-error": [error: string];
   "session-title-generated": [sessionId: string, title: string];
   "agent-title-generated": [agentId: string, title: string];
+  "provider-task-event": [event: ProviderTaskEvent];
 };

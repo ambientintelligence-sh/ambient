@@ -12,6 +12,7 @@ type IntegrationState = {
   mcpIntegrations: McpIntegrationStatus[];
   customMcpServers: CustomMcpStatus[];
   codexConnected: boolean;
+  claudeConnected: boolean;
   mcpToolsByProvider: Record<string, McpProviderToolSummary>;
   mcpBusy: boolean;
   apiKeyDefinitions: ApiKeyDefinition[];
@@ -53,6 +54,7 @@ export const useIntegrationStore = create<IntegrationState & IntegrationActions>
       mcpIntegrations: [],
       customMcpServers: [],
       codexConnected: false,
+      claudeConnected: false,
       mcpToolsByProvider: {},
       mcpBusy: false,
       apiKeyDefinitions: [],
@@ -62,11 +64,12 @@ export const useIntegrationStore = create<IntegrationState & IntegrationActions>
 
       // Actions
       init: async () => {
-        const [integrations, servers, codexStatus, toolSummaries, definitions, keyStatus, projects] =
+        const [integrations, servers, codexStatus, claudeStatus, toolSummaries, definitions, keyStatus, projects] =
           await Promise.all([
             window.electronAPI.getMcpIntegrationsStatus(),
             window.electronAPI.getCustomMcpServersStatus(),
             window.electronAPI.getCodexStatus(),
+            window.electronAPI.getClaudeStatus(),
             window.electronAPI.getMcpToolsInfo(),
             window.electronAPI.getApiKeyDefinitions(),
             window.electronAPI.getApiKeyStatus(),
@@ -80,6 +83,7 @@ export const useIntegrationStore = create<IntegrationState & IntegrationActions>
           mcpIntegrations: integrations,
           customMcpServers: servers,
           codexConnected: codexStatus.connected,
+          claudeConnected: claudeStatus.connected,
           mcpToolsByProvider: byProvider,
           apiKeyDefinitions: definitions,
           apiKeyStatus: keyStatus,

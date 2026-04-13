@@ -42,6 +42,7 @@ type AgentManagerDeps = {
   searchAgentHistory?: (query: string, limit?: number) => unknown[];
   getExternalTools?: () => Promise<AgentExternalToolSet>;
   getCodexClient?: import("./codex-client").GetCodexClient;
+  getClaudeClient?: import("./claude-client").GetClaudeClient;
   getEnabledSkills?: () => SkillMetadata[];
   allowAutoApprove: boolean;
   db?: AppDatabase;
@@ -442,6 +443,8 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         searchAgentHistory: deps.searchAgentHistory,
         getExternalTools: deps.getExternalTools,
         getCodexClient: deps.getCodexClient,
+        getClaudeClient: deps.getClaudeClient,
+        emitProviderTaskEvent: (event) => deps.events.emit("provider-task-event", event),
         enabledSkills: deps.getEnabledSkills?.(),
         getFleetStatus: () => {
           const allAgents = [...agents.values()].map((a) => ({
@@ -518,6 +521,8 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         searchAgentHistory: deps.searchAgentHistory,
         getExternalTools: deps.getExternalTools,
         getCodexClient: deps.getCodexClient,
+        getClaudeClient: deps.getClaudeClient,
+        emitProviderTaskEvent: (event) => deps.events.emit("provider-task-event", event),
         enabledSkills: deps.getEnabledSkills?.(),
         getFleetStatus: () => {
           const allAgents = [...agents.values()].map((a) => ({
@@ -776,6 +781,8 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         searchAgentHistory: deps.searchAgentHistory,
         getExternalTools: deps.getExternalTools,
         getCodexClient: deps.getCodexClient,
+        getClaudeClient: deps.getClaudeClient,
+        emitProviderTaskEvent: (event) => deps.events.emit("provider-task-event", event),
         enabledSkills: deps.getEnabledSkills?.(),
         getFleetStatus: () => {
           const allAgents = [...agents.values()].map((a) => ({

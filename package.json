@@ -27,6 +27,7 @@
     "@ai-sdk/google": "^3.0.29",
     "@ai-sdk/google-vertex": "4.0.17",
     "@ai-sdk/mcp": "^1.0.12",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.104",
     "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",

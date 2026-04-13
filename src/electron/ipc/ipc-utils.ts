@@ -8,6 +8,7 @@ import type {
   AppConfigOverrides,
   FinalSummary,
   LanguageCode,
+  ProviderTaskEvent,
   SessionConfig,
   Summary,
   TaskItem,
@@ -61,7 +62,7 @@ export function buildSessionConfig(
     legacyAudio: config.legacyAudio,
     translationEnabled,
     agentAutoApprove: config.agentAutoApprove,
-    codexEnabled: config.codexEnabled,
+    codingAgent: config.codingAgent,
     disabledSkillIds: config.disabledSkillIds,
     learningEnabled: config.learningEnabled,
   };
@@ -166,6 +167,10 @@ export function wireSessionEvents(
   });
   activeSession.events.on("agent-title-generated", (agentId: string, title: string) => {
     sendToRenderer(getWindow, "session:agent-title-generated", agentId, title);
+  });
+  activeSession.events.on("provider-task-event", (event: ProviderTaskEvent) => {
+    if (!isCurrentSession()) return;
+    sendToRenderer(getWindow, "session:provider-task-event", event);
   });
 }
 

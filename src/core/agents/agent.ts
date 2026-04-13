@@ -12,13 +12,16 @@ import type {
   AgentPlanApprovalRequest,
   AgentPlanApprovalResponse,
   AgentTodoItem,
+  ProviderTaskEvent,
   TaskSize,
 } from "../types";
 import { log } from "../logger";
 import {
   getAgentInitialUserPromptTemplate,
   getAgentSystemPromptTemplate,
+  getClaudeInstructions,
   getCodexInstructions,
+  getCodingAgentIdentityInstructions,
   renderPromptTemplate,
 } from "../prompt-loader";
 import { normalizeProviderErrorMessage } from "../text/text-utils";
@@ -52,6 +55,8 @@ export type AgentDeps = {
   searchAgentHistory?: (query: string, limit?: number) => unknown[];
   getExternalTools?: () => Promise<AgentExternalToolSet>;
   getCodexClient?: import("./codex-client").GetCodexClient;
+  getClaudeClient?: import("./claude-client").GetClaudeClient;
+  emitProviderTaskEvent?: (event: ProviderTaskEvent) => void;
   enabledSkills?: SkillMetadata[];
   getFleetStatus?: () => {
     agents: Array<{ id: string; task: string; status: AgentStatus; isYou: boolean }>;
@@ -136,6 +141,7 @@ const buildSystemPrompt = (
   agentsMd?: string,
   responseLength?: import("../types").ResponseLength,
   codexEnabled?: boolean,
+  claudeEnabled?: boolean,
   enabledSkills?: SkillMetadata[],
 ) => {
   const base = renderPromptTemplate(getAgentSystemPromptTemplate(), {
@@ -152,8 +158,16 @@ const buildSystemPrompt = (
   }
   sections.push(base);
 
+  if (codexEnabled || claudeEnabled) {
+    sections.push(getCodingAgentIdentityInstructions());
+  }
+
   if (codexEnabled) {
     sections.push(getCodexInstructions());
+  }
+
+  if (claudeEnabled) {
+    sections.push(getClaudeInstructions());
   }
 
   if (enabledSkills && enabledSkills.length > 0) {
@@ -309,10 +323,13 @@ async function buildTools(
   onStep: AgentDeps["onStep"],
   allowAutoApprove: boolean,
   existingSteps: ReadonlyArray<AgentStep>,
+  agentId: string,
+  emitProviderTaskEvent?: AgentDeps["emitProviderTaskEvent"],
   getExternalTools?: AgentDeps["getExternalTools"],
   searchTranscriptHistory?: AgentDeps["searchTranscriptHistory"],
   searchAgentHistory?: AgentDeps["searchAgentHistory"],
   getCodexClient?: AgentDeps["getCodexClient"],
+  getClaudeClient?: AgentDeps["getClaudeClient"],
   getFleetStatus?: AgentDeps["getFleetStatus"],
   enabledSkills?: SkillMetadata[],
 ) {
@@ -795,16 +812,23 @@ async function buildTools(
 
     baseTools["codex"] = tool({
       description:
-        "Start a coding task using OpenAI Codex. Codex can read, write, and edit code in a repository. " +
-        "Returns a taskId and threadId immediately. Tell the user the task is running — " +
-        "do NOT call codexResult automatically. Wait for the user to ask for the result.",
+        "Dispatch a coding task to OpenAI Codex, a background coding agent CLI. " +
+        "This is the ONLY coding agent available in this session — route any user request to write, edit, review, or explore code here, even if the user named a different coding agent. " +
+        "Returns a taskId and threadId immediately; the user watches a live inline viewer in the UI that streams Codex's commands, file changes, and reasoning. " +
+        "Do NOT call codexResult automatically — only call it if the user explicitly asks about the status.",
       inputSchema: z.object({
         prompt: z.string().describe("The coding task or question for Codex"),
         threadId: z.string().optional().describe("Thread ID from a previous codex task to continue the conversation"),
         workingDirectory: z.string().optional().describe("Working directory for code operations"),
       }),
-      execute: async ({ prompt, threadId, workingDirectory }, { abortSignal }) => {
-        const { taskId, threadId: newThreadId } = await codexClient.startTask(prompt, { threadId, workingDirectory });
+      execute: async ({ prompt, threadId, workingDirectory }, { toolCallId, abortSignal }) => {
+        const { taskId, threadId: newThreadId } = await codexClient.startTask(prompt, {
+          threadId,
+          workingDirectory,
+          onEvent: emitProviderTaskEvent,
+          toolCallId,
+          agentId,
+        });
         // Forward agent cancellation to the background codex task
         if (abortSignal) {
           abortSignal.addEventListener("abort", () => codexClient.cancelTask(taskId), { once: true });
@@ -813,21 +837,19 @@ async function buildTools(
           taskId,
           threadId: newThreadId,
           status: "running" as const,
-          hint: "Task started. Tell the user Codex is working on it. Do NOT call codexResult now — wait for the user to ask.",
+          hint: "Task dispatched. The user can see live progress in the UI. Tell the user Codex is working on it and continue the conversation. Do NOT call codexResult unless the user explicitly asks.",
         };
       },
     });
 
     baseTools["codexResult"] = tool({
       description:
-        "Check the result of a Codex task. Only call this when the user asks about the status. " +
-        "Returns current status and progress. If still running, let the user know.",
+        "Read the current state of a previously started Codex task. Only call this when the user explicitly asks about the status or result of a Codex task. Returns immediately with a snapshot.",
       inputSchema: z.object({
         taskId: z.string().describe("The taskId returned by the codex tool"),
       }),
-      execute: async ({ taskId }, { abortSignal }) => {
-        // Brief wait (5s) — gives fast tasks a chance to finish before returning
-        const status = await codexClient.waitForTask(taskId, 5_000, abortSignal);
+      execute: async ({ taskId }) => {
+        const status = codexClient.getSnapshot(taskId);
 
         if (status.status === "completed" && status.result) {
           return {
@@ -847,6 +869,13 @@ async function buildTools(
           };
         }
 
+        if (status.status === "cancelled") {
+          return {
+            status: "cancelled" as const,
+            progress: status.progress,
+          };
+        }
+
         if (status.status === "not_found") {
           return {
             status: "not_found" as const,
@@ -857,7 +886,95 @@ async function buildTools(
         return {
           status: "running" as const,
           progress: status.progress,
-          hint: "Task is still running. Call codexResult again with the same taskId to continue waiting.",
+          hint: "Task is still running. Tell the user it's still in progress — do not call this tool again unless they ask.",
+        };
+      },
+    });
+  }
+
+  let claudeRegistered = false;
+  const claudeClient = getClaudeClient?.();
+  if (claudeClient?.isConnected) {
+    claudeRegistered = true;
+    log("INFO", "Registering claude + claudeResult tools in agent toolset");
+
+    baseTools["claude"] = tool({
+      description:
+        "Dispatch a coding task to Claude Code, a SEPARATE background coding agent CLI subprocess. " +
+        "CRITICAL: This tool is NOT you — do NOT skip it and attempt the coding work yourself. The claude CLI runs in its own process, has its own tools, and writes files independently. You MUST call this tool when the user asks for any coding work. " +
+        "This is the ONLY coding agent available in this session — route any user request to write, edit, review, or explore code here, even if the user named a different coding agent. " +
+        "Returns a taskId and sessionId immediately; the user watches a live inline viewer in the UI that streams Claude Code's tool calls and messages. " +
+        "Do NOT call claudeResult automatically — only call it if the user explicitly asks about the status.",
+      inputSchema: z.object({
+        prompt: z.string().describe("The coding task or question for Claude Code"),
+        sessionId: z.string().optional().describe("Session ID from a previous Claude Code task to resume the conversation"),
+        workingDirectory: z.string().optional().describe("Working directory for code operations"),
+      }),
+      execute: async ({ prompt, sessionId, workingDirectory }, { toolCallId, abortSignal }) => {
+        const { taskId, sessionId: newSessionId } = await claudeClient.startTask(prompt, {
+          sessionId,
+          workingDirectory,
+          onEvent: emitProviderTaskEvent,
+          toolCallId,
+          agentId,
+        });
+        if (abortSignal) {
+          abortSignal.addEventListener("abort", () => claudeClient.cancelTask(taskId), { once: true });
+        }
+        return {
+          taskId,
+          sessionId: newSessionId,
+          status: "running" as const,
+          hint: "Task dispatched. The user can see live progress in the UI. Tell the user Claude Code is working on it and continue the conversation. Do NOT call claudeResult unless the user explicitly asks.",
+        };
+      },
+    });
+
+    baseTools["claudeResult"] = tool({
+      description:
+        "Read the current state of a previously started Claude Code task. Only call this when the user explicitly asks about the status or result of a Claude Code task. Returns immediately with a snapshot.",
+      inputSchema: z.object({
+        taskId: z.string().describe("The taskId returned by the claude tool"),
+      }),
+      execute: async ({ taskId }) => {
+        const status = claudeClient.getSnapshot(taskId);
+
+        if (status.status === "completed" && status.result) {
+          return {
+            status: "completed" as const,
+            sessionId: status.result.sessionId,
+            response: status.result.result,
+            progress: status.progress,
+            hint: "Task complete. Use the sessionId in a new claude call for follow-up turns.",
+          };
+        }
+
+        if (status.status === "failed") {
+          return {
+            status: "failed" as const,
+            error: status.error,
+            progress: status.progress,
+          };
+        }
+
+        if (status.status === "cancelled") {
+          return {
+            status: "cancelled" as const,
+            progress: status.progress,
+          };
+        }
+
+        if (status.status === "not_found") {
+          return {
+            status: "not_found" as const,
+            error: "No task found with that taskId. Start a new task with the claude tool.",
+          };
+        }
+
+        return {
+          status: "running" as const,
+          progress: status.progress,
+          hint: "Task is still running. Tell the user it's still in progress — do not call this tool again unless they ask.",
         };
       },
     });
@@ -885,7 +1002,7 @@ async function buildTools(
     });
   }
 
-  return { tools: baseTools, externalTools, codexRegistered };
+  return { tools: baseTools, externalTools, codexRegistered, claudeRegistered };
 }
 
 function safeJson(value: unknown): string {
@@ -1112,6 +1229,8 @@ async function runAgentWithMessages(
     searchAgentHistory,
     getExternalTools,
     getCodexClient,
+    getClaudeClient,
+    emitProviderTaskEvent,
     enabledSkills,
     getFleetStatus,
     allowAutoApprove,
@@ -1128,7 +1247,7 @@ async function runAgentWithMessages(
   let streamError: string | null = null;
 
   try {
-    const { tools, codexRegistered } = await buildTools(
+    const { tools, codexRegistered, claudeRegistered } = await buildTools(
       exa,
       getTranscriptContext,
       requestClarification,
@@ -1137,10 +1256,13 @@ async function runAgentWithMessages(
       onStep,
       allowAutoApprove,
       agent.steps,
+      agent.id,
+      emitProviderTaskEvent,
       getExternalTools,
       searchTranscriptHistory,
       searchAgentHistory,
       getCodexClient,
+      getClaudeClient,
       getFleetStatus,
       enabledSkills,
     );
@@ -1150,6 +1272,7 @@ async function runAgentWithMessages(
       agentsMd,
       responseLength,
       codexRegistered,
+      claudeRegistered,
       enabledSkills,
     );
     // Track consecutive tool errors to circuit-break runaway retries

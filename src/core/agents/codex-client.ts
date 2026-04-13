@@ -1,4 +1,5 @@
 import { Codex } from "@openai/codex-sdk";
+import type { ProviderTaskEntry, ProviderTaskEvent } from "@core/types";
 
 type CodexState = "disconnected" | "connected";
 
@@ -25,12 +26,16 @@ export type CodexTaskResult = {
   items: CodexTurnItem[];
 };
 
+export type ProviderTaskEventSink = (event: ProviderTaskEvent) => void;
+
 export type CodexRunningTask = {
   taskId: string;
   threadId: string;
   prompt: string;
   progress: string[];
+  entries: ProviderTaskEntry[];
   done: boolean;
+  cancelled: boolean;
   result: CodexTaskResult | null;
   error: string | null;
   /** Resolves when the task completes or errors. */
@@ -38,6 +43,9 @@ export type CodexRunningTask = {
   abort: AbortController;
   /** Timestamp when the task completed (for eviction). */
   completedAt: number | null;
+  onEvent?: ProviderTaskEventSink;
+  toolCallId?: string;
+  agentId?: string;
 };
 
 let codexInstance: Codex | null = null;
@@ -58,6 +66,46 @@ function evictStaleTasks() {
   for (const [id] of completed.slice(MAX_COMPLETED_TASKS)) {
     runningTasks.delete(id);
   }
+}
+
+function emit(task: CodexRunningTask, kind: ProviderTaskEvent["kind"], extra: Record<string, unknown> = {}): void {
+  if (!task.onEvent) return;
+  const base = {
+    taskId: task.taskId,
+    provider: "codex" as const,
+    toolCallId: task.toolCallId,
+    agentId: task.agentId,
+    at: Date.now(),
+  };
+  try {
+    task.onEvent({ kind, ...base, ...extra } as ProviderTaskEvent);
+  } catch {
+    // never let downstream handlers break the task loop
+  }
+}
+
+function mapItemToEntry(item: CodexEventItem): ProviderTaskEntry | null {
+  if (item.type === "command_execution") {
+    return {
+      type: "command",
+      command: String(item.command ?? ""),
+      exitCode: typeof item.exit_code === "number" ? item.exit_code : undefined,
+    };
+  }
+  if (item.type === "file_change" && Array.isArray(item.changes)) {
+    const changes = (item.changes as Array<{ kind: string; path: string }>).map((c) => ({
+      kind: c.kind,
+      path: c.path,
+    }));
+    return { type: "file-change", changes };
+  }
+  if (item.type === "reasoning" && typeof item.text === "string") {
+    return { type: "reasoning", text: item.text };
+  }
+  if (item.type === "agent_message" && typeof item.text === "string") {
+    return { type: "message", text: item.text };
+  }
+  return null;
 }
 
 export function connectCodex(options?: CodexClientOptions): { ok: true } | { ok: false; error: string } {
@@ -86,17 +134,20 @@ export function isCodexConnected(): boolean {
 }
 
 /**
- * Start a Codex task in the background. Waits for the threadId from Codex
- * (arrives quickly via `thread.started` event), then returns immediately
- * while the task continues running.
+ * Start a Codex task in the background. Returns as soon as the Codex
+ * thread has started (usually <1s). The task keeps running; its
+ * lifecycle events stream through `onEvent` if provided.
  *
- * Use `waitForCodexTask` to check status when the user asks.
+ * Use `getCodexSnapshot` (or `waitForCodexTask`) to read current state.
  */
 export async function startCodexTask(
   prompt: string,
   options: {
     threadId?: string;
     workingDirectory?: string;
+    onEvent?: ProviderTaskEventSink;
+    toolCallId?: string;
+    agentId?: string;
   },
 ): Promise<{ taskId: string; threadId: string }> {
   if (!codexInstance) throw new Error("Codex not connected");
@@ -104,6 +155,7 @@ export async function startCodexTask(
   const taskId = crypto.randomUUID();
   const abort = new AbortController();
   const progress: string[] = [];
+  const entries: ProviderTaskEntry[] = [];
 
   // Deferred resolve for threadId — lets us return early once we have it
   let resolveThreadId!: (id: string) => void;
@@ -116,15 +168,26 @@ export async function startCodexTask(
     threadId: options.threadId ?? "",
     prompt,
     progress,
+    entries,
     done: false,
+    cancelled: false,
     result: null,
     error: null,
     promise: Promise.resolve(),
     abort,
     completedAt: null,
+    onEvent: options.onEvent,
+    toolCallId: options.toolCallId,
+    agentId: options.agentId,
   };
 
   const codex = codexInstance;
+
+  emit(task, "started", {
+    prompt,
+    cwd: options.workingDirectory,
+    threadId: options.threadId,
+  });
 
   task.promise = (async () => {
     try {
@@ -162,6 +225,12 @@ export async function startCodexTask(
           } else if (ev.item.type === "reasoning" && typeof ev.item.text === "string") {
             progress.push(`Thinking: ${ev.item.text.slice(0, 200)}`);
           }
+
+          const entry = mapItemToEntry(ev.item);
+          if (entry) {
+            entries.push(entry);
+            emit(task, "progress", { entry });
+          }
         }
       }
 
@@ -170,10 +239,17 @@ export async function startCodexTask(
       task.result = { threadId, result: finalResponse, items };
       task.done = true;
       task.completedAt = Date.now();
+      emit(task, "completed", { summary: finalResponse, threadId });
     } catch (error) {
-      task.error = error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
+      task.error = message;
       task.done = true;
       task.completedAt = Date.now();
+      if (task.cancelled || abort.signal.aborted) {
+        emit(task, "cancelled", {});
+      } else {
+        emit(task, "failed", { error: message });
+      }
       // Unblock threadId wait if we errored before getting one
       resolveThreadId(task.threadId || taskId);
     }
@@ -191,61 +267,49 @@ export async function startCodexTask(
   return { taskId, threadId };
 }
 
-/**
- * Wait for a Codex task to finish, up to `waitMs` milliseconds.
- * Returns the current status + result if done.
- */
-export async function waitForCodexTask(
-  taskId: string,
-  waitMs: number,
-  abortSignal?: AbortSignal,
-): Promise<{
-  status: "running" | "completed" | "failed" | "not_found";
+export type CodexSnapshot = {
+  status: "running" | "completed" | "failed" | "cancelled" | "not_found";
   progress: string[];
+  entries: ProviderTaskEntry[];
   result?: CodexTaskResult;
   error?: string;
-}> {
+};
+
+/**
+ * Read the current state of a Codex task without blocking.
+ * Returns immediately with whatever has arrived so far.
+ */
+export function getCodexSnapshot(taskId: string): CodexSnapshot {
   evictStaleTasks();
 
   const task = runningTasks.get(taskId);
   if (!task) {
-    return { status: "not_found", progress: [] };
+    return { status: "not_found", progress: [], entries: [] };
   }
 
   if (task.done) {
+    if (task.cancelled) {
+      return { status: "cancelled", progress: task.progress, entries: task.entries };
+    }
     return task.error
-      ? { status: "failed", progress: task.progress, error: task.error }
-      : { status: "completed", progress: task.progress, result: task.result! };
+      ? { status: "failed", progress: task.progress, entries: task.entries, error: task.error }
+      : { status: "completed", progress: task.progress, entries: task.entries, result: task.result! };
   }
 
-  // Wait for completion or timeout, whichever comes first
-  const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+  return { status: "running", progress: [...task.progress], entries: [...task.entries] };
+}
 
-  const abortPromise = abortSignal
-    ? new Promise<void>((_, reject) => {
-        if (abortSignal.aborted) { reject(new Error("Cancelled")); return; }
-        const onAbort = () => reject(new Error("Cancelled"));
-        abortSignal.addEventListener("abort", onAbort, { once: true });
-        // Clean up listener when race settles
-        void Promise.race([task.promise, timeoutPromise]).finally(() => {
-          abortSignal.removeEventListener("abort", onAbort);
-        });
-      })
-    : null;
-
-  await Promise.race(
-    [task.promise, timeoutPromise, abortPromise].filter(Boolean),
-  ).catch(() => {
-    // Timeout or abort — return current status below
-  });
-
-  if (task.done) {
-    return task.error
-      ? { status: "failed", progress: task.progress, error: task.error }
-      : { status: "completed", progress: task.progress, result: task.result! };
-  }
-
-  return { status: "running", progress: [...task.progress] };
+/**
+ * Legacy wrapper retained for callers that expect the old shape.
+ * The `waitMs` and `abortSignal` parameters are accepted but ignored —
+ * this always returns an instant snapshot.
+ */
+export async function waitForCodexTask(
+  taskId: string,
+  _waitMs?: number,
+  _abortSignal?: AbortSignal,
+): Promise<CodexSnapshot> {
+  return getCodexSnapshot(taskId);
 }
 
 /**
@@ -254,6 +318,7 @@ export async function waitForCodexTask(
 export function cancelCodexTask(taskId: string): boolean {
   const task = runningTasks.get(taskId);
   if (!task || task.done) return false;
+  task.cancelled = true;
   task.abort.abort();
   return true;
 }
@@ -263,6 +328,7 @@ export type CodexClient = {
   isConnected: boolean;
   startTask: typeof startCodexTask;
   waitForTask: typeof waitForCodexTask;
+  getSnapshot: typeof getCodexSnapshot;
   cancelTask: typeof cancelCodexTask;
 };
 

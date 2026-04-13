@@ -25,6 +25,8 @@ import type {
   McpProviderToolSummary,
   AudioSource,
   ApiKeyDefinition,
+  ProviderKind,
+  ProviderTaskEvent,
 } from "@core/types";
 import type { SkillMetadata } from "@core/agents/skills";
 import type { UpdateInfo } from "@core/update-checker";
@@ -155,6 +157,10 @@ export type ElectronAPI = {
   connectCodex: () => Promise<{ ok: boolean; error?: string }>;
   disconnectCodex: () => Promise<{ ok: boolean }>;
   getCodexStatus: () => Promise<{ connected: boolean }>;
+  connectClaude: () => Promise<{ ok: boolean; error?: string }>;
+  disconnectClaude: () => Promise<{ ok: boolean }>;
+  getClaudeStatus: () => Promise<{ connected: boolean }>;
+  cancelProviderTask: (taskId: string, provider: ProviderKind) => Promise<{ ok: boolean }>;
 
   getApiKeyDefinitions: () => Promise<ApiKeyDefinition[]>;
   getApiKeyStatus: () => Promise<Record<string, boolean>>;
@@ -186,6 +192,7 @@ export type ElectronAPI = {
   onAgentArchived: (callback: (agentId: string) => void) => () => void;
   onAgentTitleGenerated: (callback: (agentId: string, title: string) => void) => () => void;
   onSessionTitleGenerated: (callback: (sessionId: string, title: string) => void) => () => void;
+  onProviderTaskEvent: (callback: (event: ProviderTaskEvent) => void) => () => void;
 
   discoverSkills: () => Promise<SkillMetadata[]>;
 
@@ -303,6 +310,10 @@ const api: ElectronAPI = {
   connectCodex: () => ipcRenderer.invoke("connect-codex"),
   disconnectCodex: () => ipcRenderer.invoke("disconnect-codex"),
   getCodexStatus: () => ipcRenderer.invoke("get-codex-status"),
+  connectClaude: () => ipcRenderer.invoke("connect-claude"),
+  disconnectClaude: () => ipcRenderer.invoke("disconnect-claude"),
+  getClaudeStatus: () => ipcRenderer.invoke("get-claude-status"),
+  cancelProviderTask: (taskId, provider) => ipcRenderer.invoke("cancel-provider-task", taskId, provider),
 
   getApiKeyDefinitions: () => ipcRenderer.invoke("get-api-key-definitions"),
   getApiKeyStatus: () => ipcRenderer.invoke("get-api-key-status"),
@@ -354,6 +365,7 @@ const api: ElectronAPI = {
     ipcRenderer.on("session:title-generated", handler);
     return () => ipcRenderer.removeListener("session:title-generated", handler);
   },
+  onProviderTaskEvent: createListener<ProviderTaskEvent>("session:provider-task-event"),
 
   discoverSkills: () => ipcRenderer.invoke("discover-skills"),
 

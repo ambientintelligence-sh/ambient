@@ -186,6 +186,7 @@ function dedupeInsightHistory(texts: readonly string[]): string[] {
 export type SessionExternalDeps = {
   getExternalTools?: () => Promise<AgentExternalToolSet>;
   getCodexClient?: import("./agents/codex-client").GetCodexClient;
+  getClaudeClient?: import("./agents/claude-client").GetClaudeClient;
   dataDir?: string;
 };
 
@@ -264,6 +265,7 @@ export class Session {
   private agentManager: AgentManager | null = null;
   private getExternalTools?: () => Promise<AgentExternalToolSet>;
   private getCodexClient?: SessionExternalDeps["getCodexClient"];
+  private getClaudeClient?: SessionExternalDeps["getClaudeClient"];
   private dataDir?: string;
 
   private get sourceLangLabel(): string { return getLanguageLabel(this.config.sourceLang); }
@@ -340,6 +342,7 @@ export class Session {
     this.sessionId = sessionId ?? crypto.randomUUID();
     this.getExternalTools = externalDeps?.getExternalTools;
     this.getCodexClient = externalDeps?.getCodexClient;
+    this.getClaudeClient = externalDeps?.getClaudeClient;
     this.dataDir = externalDeps?.dataDir;
     this._translationEnabled = config.translationEnabled;
     this.userContext = this.loadProjectContext();
@@ -380,6 +383,7 @@ export class Session {
       searchAgentHistory: this.db ? (q: string, l?: number) => this.db!.searchAgents(q, l) : undefined,
       getExternalTools: this.getExternalTools,
       getCodexClient: this.getCodexClient,
+      getClaudeClient: this.getClaudeClient,
       getEnabledSkills: () => {
         const all = discoverSkills(process.cwd());
         const disabled = new Set(config.disabledSkillIds ?? []);

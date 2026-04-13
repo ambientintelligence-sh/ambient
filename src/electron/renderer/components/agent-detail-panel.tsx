@@ -81,6 +81,23 @@ import {
 import { AskQuestionPendingCard, AskQuestionResolvedCard } from "./ask-question-cards";
 import { AgentPlanCard } from "./agent-plan-card";
 import { ToolApprovalCard } from "./tool-approval-card";
+import { ProviderTaskViewer } from "./provider-task-viewer";
+
+const PROVIDER_TASK_TOOLS = new Set(["codex", "claude"]);
+
+function getProviderTaskCallIdsFromSteps(steps: AgentStep[]): string[] {
+  const ids = new Set<string>();
+  for (const step of steps) {
+    // Accept both tool-call and tool-result kinds: the AI SDK emits them with
+    // the same step id, so the reducer replaces the tool-call with the tool-result
+    // as soon as the (fire-and-forget) tool returns. Filtering on tool-call alone
+    // would make the viewer unmount seconds after mounting.
+    if (step.kind !== "tool-call" && step.kind !== "tool-result") continue;
+    if (!step.toolName || !PROVIDER_TASK_TOOLS.has(step.toolName)) continue;
+    if (step.id.startsWith("tool:")) ids.add(step.id.slice(5));
+  }
+  return [...ids];
+}
 
 type AgentDetailPanelProps = {
   agent: Agent;
@@ -322,6 +339,7 @@ function ActivitySummaryItem({
   const lastStep = steps[steps.length - 1];
   const activityDuration = getActivityDurationSecs(steps, isStreaming);
   const bounds = getActivityBounds(steps);
+  const providerTaskCallIds = getProviderTaskCallIdsFromSteps(steps);
 
   let headerLabel: string;
   if (hasThought) {
@@ -387,6 +405,9 @@ function ActivitySummaryItem({
           </div>
         </ChainOfThoughtContent>
       </ChainOfThought>
+      {providerTaskCallIds.map((callId) => (
+        <ProviderTaskViewer key={callId} toolCallId={callId} />
+      ))}
     </div>
   );
 }

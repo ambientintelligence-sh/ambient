@@ -1,6 +1,8 @@
 import { ipcMain } from "electron";
 import type { IntegrationManager } from "../integrations/types";
-import { connectCodex, disconnectCodex, isCodexConnected } from "@core/agents/codex-client";
+import { connectCodex, disconnectCodex, isCodexConnected, cancelCodexTask } from "@core/agents/codex-client";
+import { connectClaude, disconnectClaude, isClaudeConnected, cancelClaudeTask } from "@core/agents/claude-client";
+import type { ProviderKind } from "@core/types";
 
 export function registerIntegrationHandlers(integrations: IntegrationManager) {
   ipcMain.handle("get-mcp-integrations-status", async () => {
@@ -50,5 +52,28 @@ export function registerIntegrationHandlers(integrations: IntegrationManager) {
 
   ipcMain.handle("get-codex-status", async () => {
     return { connected: isCodexConnected() };
+  });
+
+  ipcMain.handle("connect-claude", async () => {
+    return connectClaude();
+  });
+
+  ipcMain.handle("disconnect-claude", async () => {
+    disconnectClaude();
+    return { ok: true };
+  });
+
+  ipcMain.handle("get-claude-status", async () => {
+    return { connected: isClaudeConnected() };
+  });
+
+  ipcMain.handle("cancel-provider-task", async (_event, taskId: string, provider: ProviderKind) => {
+    if (provider === "codex") {
+      return { ok: cancelCodexTask(taskId) };
+    }
+    if (provider === "claude") {
+      return { ok: cancelClaudeTask(taskId) };
+    }
+    return { ok: false };
   });
 }

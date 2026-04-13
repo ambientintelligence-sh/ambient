@@ -42,6 +42,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useIntegrationStore } from "./stores/integration-store";
+import { useProviderTaskStore } from "./stores/provider-task-store";
 import { useUIStore } from "./stores/ui-store";
 import { useTaskStore } from "./stores/task-store";
 import { useSessionListStore } from "./stores/session-list-store";
@@ -260,6 +261,7 @@ export function App() {
   // --- Init stores ---
   useEffect(() => {
     void ig().init();
+    useProviderTaskStore.getState().init();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
