@@ -42,6 +42,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useIntegrationStore } from "./stores/integration-store";
+import { useProviderTaskStore } from "./stores/provider-task-store";
 import { useUIStore } from "./stores/ui-store";
 import { useTaskStore } from "./stores/task-store";
 import { useSessionListStore } from "./stores/session-list-store";
@@ -132,6 +133,8 @@ export function App() {
 
   const tasks = useTaskStore((s) => s.tasks);
   const suggestions = useTaskStore((s) => s.suggestions);
+  const suggestionProgress = useTaskStore((s) => s.suggestionProgress);
+  const agentSteps = useTaskStore((s) => s.agentSteps);
   const archivedSuggestions = useTaskStore((s) => s.archivedSuggestions);
   const processingTaskIds = useTaskStore((s) => s.processingTaskIds);
   const pendingApprovalTask = useTaskStore((s) => s.pendingApprovalTask);
@@ -258,6 +261,7 @@ export function App() {
   // --- Init stores ---
   useEffect(() => {
     void ig().init();
+    useProviderTaskStore.getState().init();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -270,6 +274,9 @@ export function App() {
     const cleanups = [
       window.electronAPI.onTaskSuggested((suggestion) => {
         useTaskStore.getState().appendSuggestion(suggestion);
+      }),
+      window.electronAPI.onSuggestionProgress((progress) => {
+        useTaskStore.getState().setSuggestionProgress(progress);
       }),
       window.electronAPI.onFinalSummaryReady((summary) => {
         useUIStore.getState().setFinalSummaryState({ kind: "ready", summary });
@@ -1556,6 +1563,8 @@ export function App() {
               <RightSidebar
                 tasks={tasks}
                 suggestions={suggestions}
+                suggestionProgress={suggestionProgress}
+                agentSteps={agentSteps}
                 agents={agents}
                 selectedAgentId={selectedAgentId}
                 forceWorkTabKey={forceWorkTabKey}
@@ -1577,6 +1586,9 @@ export function App() {
                 transcriptRefs={transcriptRefs}
                 onRemoveTranscriptRef={(index: number) => ts().removeTranscriptRef(index)}
                 onSubmitTaskInput={handleSubmitTaskInput}
+                onRequestTaskScan={() => {
+                  void window.electronAPI.requestTaskScan();
+                }}
               />
             </div>
           </>

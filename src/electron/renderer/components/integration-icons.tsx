@@ -4,6 +4,7 @@ import {
   SiLinear,
   SiGoogle,
   SiGithub,
+  SiClaude,
 } from "@icons-pack/react-simple-icons";
 
 export type IconProps = { className?: string };
@@ -22,6 +23,7 @@ export const NotionIcon = wrapSimpleIcon(SiNotion);
 export const LinearIcon = wrapSimpleIcon(SiLinear, "#5E6AD2");
 export const GoogleIcon = wrapSimpleIcon(SiGoogle);
 export const GitHubIcon = wrapSimpleIcon(SiGithub);
+export const ClaudeIcon = wrapSimpleIcon(SiClaude, "#D97757");
 
 export function SlackIcon({ className }: IconProps) {
   return (

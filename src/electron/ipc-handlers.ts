@@ -5,7 +5,7 @@ import { validateEnv } from "@core/config";
 import { log } from "@core/logger";
 import { Session } from "@core/session";
 import { toReadableError } from "@core/text/text-utils";
-import type { AppConfigOverrides } from "@core/types";
+import type { AppConfigOverrides, SessionConfig } from "@core/types";
 import { registerAgentHandlers } from "./ipc/register-agent-handlers";
 import { registerProjectHandlers } from "./ipc/register-project-handlers";
 import { registerSessionHandlers } from "./ipc/register-session-handlers";
@@ -19,8 +19,18 @@ import type { EnsureSession, SessionRef } from "./ipc/types";
 import { createIntegrationManager } from "./integrations";
 import { SecureCredentialStore } from "./integrations/secure-credential-store";
 import type { IntegrationManager } from "./integrations/types";
-import { connectCodex, isCodexConnected, startCodexTask, waitForCodexTask, cancelCodexTask } from "@core/agents/codex-client";
+import { connectCodex, disconnectCodex, isCodexConnected, startCodexTask, waitForCodexTask, getCodexSnapshot, cancelCodexTask } from "@core/agents/codex-client";
 import type { CodexClient } from "@core/agents/codex-client";
+import {
+  connectClaude,
+  disconnectClaude,
+  isClaudeConnected,
+  startClaudeTask,
+  waitForClaudeTask,
+  getClaudeSnapshot,
+  cancelClaudeTask,
+} from "@core/agents/claude-client";
+import type { ClaudeClient } from "@core/agents/claude-client";
 
 function getCodexClient(): CodexClient | null {
   if (!isCodexConnected()) {
@@ -31,7 +41,47 @@ function getCodexClient(): CodexClient | null {
     }
     log("INFO", "Codex auto-connected on first agent launch");
   }
-  return { isConnected: true, startTask: startCodexTask, waitForTask: waitForCodexTask, cancelTask: cancelCodexTask };
+  return {
+    isConnected: true,
+    startTask: startCodexTask,
+    waitForTask: waitForCodexTask,
+    getSnapshot: getCodexSnapshot,
+    cancelTask: cancelCodexTask,
+  };
+}
+
+function getClaudeClient(): ClaudeClient | null {
+  if (!isClaudeConnected()) {
+    const result = connectClaude();
+    if (result.ok === false) {
+      log("WARN", `Claude Code auto-connect failed: ${result.error}`);
+      return null;
+    }
+    log("INFO", "Claude Code auto-connected on first agent launch");
+  }
+  return {
+    isConnected: true,
+    startTask: startClaudeTask,
+    waitForTask: waitForClaudeTask,
+    getSnapshot: getClaudeSnapshot,
+    cancelTask: cancelClaudeTask,
+  };
+}
+
+/**
+ * Produce the per-session coding-agent getters based on the user's selection.
+ * Only one provider is ever active — the other getter is intentionally
+ * undefined so the agent tool registration skips it entirely. This removes
+ * the "two tools in scope → model picks wrong one" failure mode and keeps
+ * the model identity unambiguous.
+ */
+function codingAgentGetters(config: SessionConfig): {
+  getCodexClient?: typeof getCodexClient;
+  getClaudeClient?: typeof getClaudeClient;
+} {
+  if (config.codingAgent === "codex") return { getCodexClient };
+  if (config.codingAgent === "claude") return { getClaudeClient };
+  return {};
 }
 
 const sessionRef: SessionRef = { current: null };
@@ -42,6 +92,10 @@ export function shutdownSessionOnAppQuit() {
   if (!registeredDb) return;
   void shutdownCurrentSession(sessionRef, registeredDb);
   void integrationManager?.dispose();
+  // Force-terminate any in-flight coding-agent tasks so their CLI subprocesses
+  // don't orphan past app exit.
+  try { disconnectCodex(); } catch { /* noop */ }
+  try { disconnectClaude(); } catch { /* noop */ }
 }
 
 export function registerIpcHandlers(getWindow: () => BrowserWindow | null, db: AppDatabase) {
@@ -90,7 +144,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null, db: A
 
       const activeSession = new Session(desiredConfig, db, sessionId, {
         getExternalTools: manager.getExternalTools,
-        getCodexClient,
+        ...codingAgentGetters(desiredConfig),
         dataDir: app.getPath("userData"),
       });
       sessionRef.current = activeSession;
@@ -124,6 +178,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null, db: A
 
     const activeSession = new Session(config, db, sessionId, {
       getExternalTools: manager.getExternalTools,
+      ...codingAgentGetters(config),
       dataDir: app.getPath("userData"),
     });
     sessionRef.current = activeSession;

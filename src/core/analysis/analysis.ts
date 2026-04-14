@@ -21,10 +21,10 @@ export const agentSuggestionSchema = z.object({
       z.object({
         kind: z
           .enum(["research", "action", "insight", "flag", "followup"])
-          .describe("research = offer to look something up; action = offer to draft/create/do; insight = share a relevant fact as a question; flag = highlight a conflict or risk; followup = remind about a loose thread"),
+          .describe("research = share a concrete fact you looked up; action = offer to draft/create/do something specific; insight = point out something the speakers didn't notice; flag = highlight a conflict, mistake, or risk; followup = remind about a loose thread"),
         text: z
           .string()
-          .describe("Conversational offer phrased as a question the agent can act on (e.g. 'Want me to look up X?', 'Should I draft Y?')."),
+          .describe("Short, natural, first-person observation from a friend listening in. Leads with the concrete finding (specific number, date, decision, contradiction) — not a generic offer. Good: 'They said 45M, but the March UN report said 38M — flag it?'. Bad: 'Want me to compare the figures and identify any discrepancies?'"),
         details: z
           .string()
           .describe("Brief context or rationale for the suggestion.")
@@ -35,7 +35,7 @@ export const agentSuggestionSchema = z.object({
           .optional(),
       }),
     )
-    .describe("0-3 proactive agent suggestions. Each must be something the agent can actually DO if accepted."),
+    .describe("0-3 grounded observations. Each must lead with a concrete thing the agent actually found, not a generic offer to do research."),
 });
 
 export const taskFromSelectionSchema = z.object({
@@ -341,7 +341,7 @@ export function buildAnalysisPrompt(
 
   const keyPointsSection =
     previousKeyPoints.length > 0
-      ? `\n\nPrevious key points from this session:\n${previousKeyPoints.map((p) => `- ${p}`).join("\n")}`
+      ? `\n\nSummary of conversation so far:\n${previousKeyPoints.map((p) => `- ${p}`).join("\n")}`
       : "";
 
   return renderPromptTemplate(getAnalysisRequestPromptTemplate(), {
@@ -387,13 +387,13 @@ export function buildAgentSuggestionPrompt(
       historicalSuggestionsSet.add(key);
       return true;
     })
-    .slice(-50);
+    .slice(-30);
   const historicalSuggestionsSection = normalizedHistory.length > 0
     ? `\n\nHistorical suggestions already shown in this session (DO NOT repeat or rephrase any of these):\n${normalizedHistory.map((text) => `- ${text}`).join("\n")}`
     : "";
 
   const keyPointsSection = keyPoints.length > 0
-    ? `\n\nKey points from the conversation so far:\n${keyPoints.map((p) => `- ${p}`).join("\n")}`
+    ? `\n\nConversation context (key points from earlier in this meeting):\n${keyPoints.map((p) => `- ${p}`).join("\n")}`
     : "";
 
   const educationalSection = educationalContext.length > 0

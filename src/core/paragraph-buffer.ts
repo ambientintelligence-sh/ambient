@@ -135,6 +135,40 @@ export class ParagraphBuffer {
     return this.pendingParagraphs.size;
   }
 
+  get pendingWordCount(): number {
+    return [...this.pendingParagraphs.values()].reduce(
+      (sum, pending) => sum + pending.transcript.split(/\s+/).filter(Boolean).length,
+      0,
+    );
+  }
+
+  private normalizeOverlapWord(word: string): string {
+    return word.trim().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "").toLocaleLowerCase();
+  }
+
+  private getWordOverlapSize(existingWords: string[], incomingWords: string[]): number {
+    const maxOverlap = Math.min(existingWords.length, incomingWords.length, 24);
+    for (let size = maxOverlap; size >= 1; size -= 1) {
+      const existingSuffix = existingWords
+        .slice(-size)
+        .map((word) => this.normalizeOverlapWord(word));
+      const incomingPrefix = incomingWords
+        .slice(0, size)
+        .map((word) => this.normalizeOverlapWord(word));
+
+      if (existingSuffix.some((word) => !word) || incomingPrefix.some((word) => !word)) {
+        continue;
+      }
+      if (size === 1 && existingSuffix[0].length < 4) {
+        continue;
+      }
+      if (existingSuffix.every((word, index) => word === incomingPrefix[index])) {
+        return size;
+      }
+    }
+    return 0;
+  }
+
   private mergeParagraphTranscript(existing: string, incoming: string): string {
     const a = existing.trim();
     const b = incoming.trim();
@@ -142,6 +176,14 @@ export class ParagraphBuffer {
     if (!b) return a;
     if (a.endsWith(b)) return a;
     if (b.startsWith(a)) return b;
+
+    const existingWords = a.split(/\s+/).filter(Boolean);
+    const incomingWords = b.split(/\s+/).filter(Boolean);
+    const overlapSize = this.getWordOverlapSize(existingWords, incomingWords);
+    if (overlapSize > 0) {
+      return [...existingWords, ...incomingWords.slice(overlapSize)].join(" ");
+    }
+
     return `${a} ${b}`.replace(/\s+/g, " ").trim();
   }
 

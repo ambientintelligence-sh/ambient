@@ -55,6 +55,14 @@ function archivedTaskToSuggestion(task: TaskItem): TaskSuggestion | null {
   };
 }
 
+type SuggestionProgress = {
+  busy: boolean;
+  wordsUntilNextScan: number;
+  liveWordsUntilNextScan?: number;
+  step?: string;
+  lastScanEmpty?: boolean;
+};
+
 type TaskState = {
   tasks: TaskItem[];
   suggestions: TaskSuggestion[];
@@ -64,6 +72,8 @@ type TaskState = {
   approvingLargeTask: boolean;
   forceWorkTabKey: number;
   transcriptRefs: string[];
+  suggestionProgress: SuggestionProgress;
+  agentSteps: string[];
 };
 
 type TaskActions = {
@@ -75,6 +85,8 @@ type TaskActions = {
   markTaskCompleted: (taskId: string) => void;
   updateTaskText: (id: string, text: string) => void;
   replaceTask: (id: string, task: TaskItem) => void;
+
+  setSuggestionProgress: (progress: SuggestionProgress) => void;
 
   setSuggestions: (suggestions: TaskSuggestion[]) => void;
   appendSuggestion: (suggestion: TaskSuggestion) => void;
@@ -130,8 +142,30 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
   approvingLargeTask: false,
   forceWorkTabKey: 0,
   transcriptRefs: [],
+  suggestionProgress: { busy: false, wordsUntilNextScan: 200, liveWordsUntilNextScan: 200 },
+  agentSteps: [],
 
   // Actions
+  setSuggestionProgress: (suggestionProgress) =>
+    set((s) => {
+      let agentSteps = s.agentSteps;
+
+      if (suggestionProgress.busy) {
+        if (!s.suggestionProgress.busy) {
+          agentSteps = [];
+        }
+        if (suggestionProgress.step && agentSteps[agentSteps.length - 1] !== suggestionProgress.step) {
+          agentSteps = [...agentSteps, suggestionProgress.step];
+        }
+      } else {
+        agentSteps = [];
+      }
+
+      return {
+        suggestionProgress,
+        agentSteps,
+      };
+    }),
   setTasks: (tasks) => set({ tasks }),
   updateTasks: (updater) => set((s) => ({ tasks: updater(s.tasks) })),
   addTask: (task) => set((s) => ({ tasks: [task, ...s.tasks] })),
@@ -278,6 +312,8 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
       approvingLargeTask: false,
       forceWorkTabKey: 0,
       transcriptRefs: [],
+      suggestionProgress: { busy: false, wordsUntilNextScan: 200, liveWordsUntilNextScan: 200 },
+      agentSteps: [],
     }),
 
   persistTask: async ({ targetSessionId, text, details, source, size = "large", id, createdAt, appConfig }) => {

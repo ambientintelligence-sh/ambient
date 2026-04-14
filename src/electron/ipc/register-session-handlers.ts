@@ -119,7 +119,12 @@ export function registerSessionHandlers({ db, getWindow, sessionRef, getExternal
 
   ipcMain.handle("stop-recording", () => {
     if (!sessionRef.current) return { ok: false, error: "No active session" };
-    sessionRef.current.stopRecording();
+    if (sessionRef.current.recording) {
+      sessionRef.current.stopRecording();
+    }
+    if (sessionRef.current.micEnabled) {
+      sessionRef.current.stopMic();
+    }
     return { ok: true };
   });
 
@@ -191,6 +196,11 @@ export function registerSessionHandlers({ db, getWindow, sessionRef, getExternal
     if (!trimmed) return { ok: false, error: "Empty note" };
     const block = sessionRef.current.addNote(trimmed);
     return { ok: true, block };
+  });
+
+  ipcMain.handle("request-task-scan", async () => {
+    if (!sessionRef.current) return { ok: false, error: "No active session" };
+    return sessionRef.current.requestTaskScan();
   });
 
   ipcMain.handle("list-mic-devices", async () => {

@@ -42,7 +42,7 @@ import {
   WrenchIcon,
   XIcon,
 } from "lucide-react";
-import { resolveProviderIcon, OpenAIIcon } from "./integration-icons";
+import { resolveProviderIcon, OpenAIIcon, ClaudeIcon } from "./integration-icons";
 import { useIntegrationStore } from "../stores/integration-store";
 import {
   THEME_OPTIONS,
@@ -476,9 +476,30 @@ function AgentsTab({
           control={<Switch checked={config.autoDelegate} onCheckedChange={(v) => set("autoDelegate", v)} />}
         />
         <SettingRow
-          label="Codex"
-          description="Enable OpenAI Codex coding agent. Requires the codex CLI installed and logged in."
-          control={<Switch checked={config.codexEnabled} onCheckedChange={(v) => set("codexEnabled", v)} />}
+          label="Coding Agent"
+          description="Pick a background coding agent to make available in this session. Only one can be active at a time — the agent you pick is dispatched via a tool and streams live progress into the chat. Requires the matching CLI installed and logged in."
+          control={
+            <div className="inline-flex items-center border border-border rounded-sm overflow-hidden">
+              {([
+                { value: null, label: "None" },
+                { value: "codex", label: "Codex" },
+                { value: "claude", label: "Claude Code" },
+              ] as const).map((option) => (
+                <button
+                  key={option.label}
+                  type="button"
+                  className={`h-8 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 transition-colors ${
+                    config.codingAgent === option.value
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => set("codingAgent", option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          }
         />
       </SettingsSection>
 
@@ -592,6 +613,7 @@ export function SettingsPage({
   onToggleSkill,
 }: SettingsPageProps) {
   const codexConnected = useIntegrationStore((s) => s.codexConnected);
+  const claudeConnected = useIntegrationStore((s) => s.claudeConnected);
   const contentRef = useRef<HTMLDivElement>(null);
   const [systemPrefersDark, setSystemPrefersDark] = useState(() =>
     typeof globalThis.matchMedia === "function"
@@ -1210,25 +1232,46 @@ export function SettingsPage({
               })}
             </div>
 
-            {/* ── Codex ── */}
-            {config.codexEnabled && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+            {/* ── Coding Agent ── */}
+            {config.codingAgent !== null && (
+              <div className="mt-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  Coding Agent
+                </p>
                 <div className="border border-border/70 bg-background px-3 py-3 rounded-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <OpenAIIcon className="w-4 h-4 shrink-0" />
-                      <p className="text-xs font-semibold text-foreground">
-                        Codex
+                  {config.codingAgent === "codex" ? (
+                    <>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <OpenAIIcon className="w-4 h-4 shrink-0" />
+                          <p className="text-xs font-semibold text-foreground">Codex</p>
+                        </div>
+                        <span className="text-2xs text-muted-foreground">
+                          {codexConnected ? "connected" : "ready"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-2xs text-muted-foreground leading-relaxed">
+                        Runs via the <code>codex</code> CLI. Requires it installed and logged in
+                        (<code>codex login</code>). Auto-connects on first use.
                       </p>
-                    </div>
-                    <span className="text-2xs text-muted-foreground">
-                      {codexConnected ? "connected" : "ready"}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-2xs text-muted-foreground leading-relaxed">
-                    Local coding agent. Auto-connects when an agent needs it.
-                    Requires <code>codex</code> CLI installed and logged in (<code>codex login</code>).
-                  </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <ClaudeIcon className="w-4 h-4 shrink-0" />
+                          <p className="text-xs font-semibold text-foreground">Claude Code</p>
+                        </div>
+                        <span className="text-2xs text-muted-foreground">
+                          {claudeConnected ? "connected" : "ready"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-2xs text-muted-foreground leading-relaxed">
+                        Runs via the <code>claude</code> CLI. Requires it installed and logged in
+                        (Claude.ai subscription or <code>ANTHROPIC_API_KEY</code>). Auto-connects on first use.
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             )}

@@ -43,9 +43,19 @@ const SUGGESTION_KIND_ICONS: Record<SuggestionKind, typeof SearchIcon> = {
 type RightRailMode = "work" | "agents";
 const EMPTY_SESSION_TAB_KEY = "__empty__";
 
+type SuggestionProgress = {
+  busy: boolean;
+  wordsUntilNextScan: number;
+  liveWordsUntilNextScan?: number;
+  step?: string;
+  lastScanEmpty?: boolean;
+};
+
 type RightSidebarProps = {
   tasks: TaskItem[];
   suggestions: TaskSuggestion[];
+  suggestionProgress?: SuggestionProgress;
+  agentSteps?: string[];
   agents?: Agent[];
   selectedAgentId?: string | null;
   forceWorkTabKey?: number;
@@ -67,6 +77,7 @@ type RightSidebarProps = {
   transcriptRefs?: string[];
   onRemoveTranscriptRef?: (index: number) => void;
   onSubmitTaskInput?: (text: string, refs: string[]) => void;
+  onRequestTaskScan?: () => void;
 };
 
 function isLineClamped(el: HTMLElement): boolean {
@@ -113,7 +124,7 @@ function SuggestionItem({
 
   return (
     <li
-      className="relative overflow-hidden border-l-2 border-l-primary/40 bg-primary/5 transition-opacity duration-500"
+      className="relative overflow-hidden rounded-xl border border-primary/12 bg-background/70 shadow-[inset_0_1px_0_hsl(var(--background)/0.7)] transition-opacity duration-500"
       style={{ opacity }}
     >
       <div className="flex items-start gap-2 min-h-7 py-1.5 px-2 relative z-10">
@@ -138,8 +149,155 @@ function SuggestionItem({
           <XIcon className="size-3" />
         </button>
       </div>
-      <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-primary/5">
-        <div className="h-full bg-primary/30 transition-none" style={{ width: `${progress}%` }} />
+      <div className="absolute inset-x-2 bottom-1 h-[2px] overflow-hidden rounded-full bg-primary/8">
+        <div className="h-full rounded-full bg-primary/28 transition-none" style={{ width: `${progress}%` }} />
+      </div>
+    </li>
+  );
+}
+
+const STEP_NOISE = new Set(["Thinking…", "Gathering context…", "Drafting suggestions…"]);
+
+function SuggestionCounterRow({ progress }: { progress: SuggestionProgress }) {
+  const SCAN_WORD_BUDGET = 200;
+  const committedAccumulated = Math.max(0, Math.min(SCAN_WORD_BUDGET, SCAN_WORD_BUDGET - progress.wordsUntilNextScan));
+  const liveRemaining = progress.liveWordsUntilNextScan ?? progress.wordsUntilNextScan;
+  const liveAccumulated = Math.max(0, Math.min(SCAN_WORD_BUDGET, SCAN_WORD_BUDGET - liveRemaining));
+  const committedRatio = committedAccumulated / SCAN_WORD_BUDGET;
+  const liveRatio = liveAccumulated / SCAN_WORD_BUDGET;
+  const bufferedWords = Math.max(0, progress.wordsUntilNextScan - liveRemaining);
+  const label = progress.busy
+    ? "Next scan counter paused"
+    : `Next scan in ${progress.wordsUntilNextScan} word${progress.wordsUntilNextScan === 1 ? "" : "s"}`;
+
+  return (
+    <div className="mb-2 rounded-xl border border-border/60 bg-sidebar/60 px-2.5 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[11px] font-medium text-foreground/75">{label}</div>
+        <div className="text-[10px] tabular-nums text-muted-foreground/70">{Math.round(committedRatio * 100)}%</div>
+      </div>
+      <div className="mt-2 relative flex gap-1.5">
+        {Array.from({ length: 10 }, (_, index) => {
+          const filled = committedRatio * 10 >= index + 1;
+          const active = !filled && committedRatio * 10 > index;
+          const buffered = !filled && liveRatio * 10 >= index + 1;
+          const bufferedActive = !filled && !buffered && liveRatio * 10 > index;
+          return (
+            <span
+              key={index}
+              className={`h-1.5 flex-1 rounded-full transition-colors ${
+                filled
+                  ? "bg-primary/55"
+                  : buffered
+                  ? "bg-primary/20"
+                  : active
+                  ? "bg-primary/30"
+                  : bufferedActive
+                  ? "bg-primary/15"
+                  : "bg-muted"
+              }`}
+            />
+          );
+        })}
+      </div>
+      {bufferedWords > 0 && (
+        <div className="mt-1 text-[10px] text-muted-foreground/70">
+          {bufferedWords} live word{bufferedWords === 1 ? "" : "s"} waiting to commit
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ManualScanButton({ onRequestTaskScan }: { onRequestTaskScan?: () => void }) {
+  if (!onRequestTaskScan) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onRequestTaskScan()}
+      className="inline-flex h-6 items-center rounded-md border border-border/70 px-2 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+    >
+      Scan now
+    </button>
+  );
+}
+
+function AgentActivityCard({
+  progress,
+  agentSteps,
+  onRequestTaskScan,
+}: {
+  progress: SuggestionProgress;
+  agentSteps: string[];
+  onRequestTaskScan?: () => void;
+}) {
+  const DISMISS_MS = 5000;
+  const [opacity, setOpacity] = useState(1);
+  const [barPct, setBarPct] = useState(100);
+  const [dismissed, setDismissed] = useState(false);
+  const isNothingFound = !progress.busy && !!progress.lastScanEmpty;
+
+  useEffect(() => {
+    if (!isNothingFound) {
+      setOpacity(1);
+      setBarPct(100);
+      setDismissed(false);
+      return;
+    }
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+      const pct = Math.max(0, 1 - (Date.now() - startTime) / DISMISS_MS) * 100;
+      setBarPct(pct);
+    }, 100);
+    const fadeTimer = setTimeout(() => setOpacity(0), DISMISS_MS - 400);
+    const dismissTimer = setTimeout(() => setDismissed(true), DISMISS_MS);
+    return () => { clearInterval(interval); clearTimeout(fadeTimer); clearTimeout(dismissTimer); };
+  }, [isNothingFound]);
+
+  if (!progress.busy && !isNothingFound) return null;
+  if (dismissed) return null;
+
+  if (isNothingFound) {
+    return (
+      <li
+        className="relative overflow-hidden rounded-xl border border-border/50 bg-background/60 transition-opacity duration-500"
+        style={{ opacity }}
+      >
+        <div className="flex items-center gap-2 min-h-7 py-1.5 px-2">
+          <span className="text-xs text-muted-foreground/60 italic flex-1">Nothing found this scan</span>
+        </div>
+        <div className="absolute inset-x-2 bottom-1 h-[2px] overflow-hidden rounded-full bg-muted/45">
+          <div className="h-full rounded-full bg-muted-foreground/20" style={{ width: `${barPct}%`, transition: "width 100ms linear" }} />
+        </div>
+      </li>
+    );
+  }
+
+  const visibleSteps = agentSteps.filter((s) => !STEP_NOISE.has(s));
+  const activeStep = progress.step && !STEP_NOISE.has(progress.step) ? progress.step : undefined;
+  const completedCount = activeStep
+    ? Math.max(0, visibleSteps.lastIndexOf(activeStep))
+    : visibleSteps.length;
+  const statusText = completedCount > 0
+    ? `${completedCount} step${completedCount === 1 ? "" : "s"} completed`
+    : "Agent gathering context";
+  const title = activeStep ?? "Agent gathering context";
+  const isWaiting = progress.busy && (progress.step === "Preparing scan…" || !progress.step);
+
+  return (
+    <li className="relative overflow-hidden rounded-xl border border-primary/35 bg-primary/6 px-2.5 py-2">
+      <div className="flex items-start gap-2">
+        <LoaderCircleIcon className="mt-0.5 size-3 shrink-0 animate-spin text-primary/70" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-foreground/80">{title}</div>
+              <div className="mt-1 text-2xs uppercase tracking-[0.14em] text-muted-foreground/60">{statusText}</div>
+            </div>
+            {isWaiting && <ManualScanButton onRequestTaskScan={onRequestTaskScan} />}
+          </div>
+        </div>
       </div>
     </li>
   );
@@ -344,6 +502,8 @@ function RailModeButton({
 export function RightSidebar({
   tasks,
   suggestions,
+  suggestionProgress,
+  agentSteps = [],
   agents,
   selectedAgentId,
   forceWorkTabKey = 0,
@@ -365,6 +525,7 @@ export function RightSidebar({
   transcriptRefs = [],
   onRemoveTranscriptRef,
   onSubmitTaskInput,
+  onRequestTaskScan,
 }: RightSidebarProps) {
   const [modeBySession, setModeBySession] = useLocalStorage<Record<string, RightRailMode>>("ambient-right-rail-mode", {});
   const [completedOpen, setCompletedOpen] = useState(false);
@@ -450,7 +611,7 @@ export function RightSidebar({
   const totalAgentsCount = (agents ?? []).length;
 
   return (
-    <div className="w-full h-full shrink-0 border-l border-border flex flex-col min-h-0 bg-sidebar">
+    <div className="w-full h-full shrink-0 border-l border-sidebar-border/35 flex flex-col min-h-0 bg-sidebar/90">
       <div className="px-2 py-2 shrink-0">
         <div className="grid grid-cols-2 gap-1 rounded-md bg-foreground/[0.045] p-1 dark:bg-muted/50">
           <RailModeButton
@@ -470,7 +631,7 @@ export function RightSidebar({
           <>
             {/* Active tasks */}
             <div className="mb-3">
-              <div className="sticky top-0 z-10 -mx-3 mb-1.5 flex items-center justify-between gap-3 bg-sidebar/95 px-3 py-1.5 backdrop-blur supports-[backdrop-filter]:bg-sidebar/85">
+              <div className="sticky top-0 z-20 -mx-1 mb-2 flex items-center justify-between gap-3 rounded-xl bg-sidebar/88 px-1 py-1 backdrop-blur supports-[backdrop-filter]:bg-sidebar/72">
                 <SectionLabel as="span">
                   {pendingInAgentsCount > 0 ? `Tasks · ${pendingInAgentsCount} in agents` : "Tasks"}
                 </SectionLabel>
@@ -579,11 +740,21 @@ export function RightSidebar({
 
             {/* Suggestions */}
             <div>
-              <div className="sticky top-0 z-10 -mx-3 mb-1.5 bg-sidebar/95 px-3 py-1.5 backdrop-blur supports-[backdrop-filter]:bg-sidebar/85">
+              <div className="sticky top-0 z-20 -mx-1 mb-2 rounded-xl bg-sidebar/88 px-1 py-1 backdrop-blur supports-[backdrop-filter]:bg-sidebar/72">
                 <SectionLabel as="span">Suggested</SectionLabel>
               </div>
-              {suggestions.length > 0 ? (
+              {sessionActive && suggestionProgress && (
+                <SuggestionCounterRow progress={suggestionProgress} />
+              )}
+              {(suggestions.length > 0 || (sessionActive && suggestionProgress)) ? (
                 <ul className="space-y-1">
+                  {sessionActive && suggestionProgress && (
+                    <AgentActivityCard
+                      progress={suggestionProgress}
+                      agentSteps={agentSteps}
+                      onRequestTaskScan={onRequestTaskScan}
+                    />
+                  )}
                   {suggestions.map((s) => (
                     <SuggestionItem
                       key={s.id}
@@ -618,7 +789,7 @@ export function RightSidebar({
                     return (
                       <li
                         key={task.id}
-                        className="border-l-2 border-l-muted-foreground/20 bg-muted/5 group"
+                        className="group rounded-xl border border-border/45 bg-background/60"
                       >
                         <div className="flex items-start gap-2 min-h-7 py-1.5 px-2">
                           <KindIcon className="size-3 shrink-0 text-muted-foreground/50 mt-0.5" />
@@ -664,7 +835,7 @@ export function RightSidebar({
             )}
             {agents && onSelectAgent && agents.length > 0 && (
               <>
-                <div className="my-3 h-px bg-border/70" />
+                <div className="my-4 h-px bg-gradient-to-r from-transparent via-border/45 to-transparent" />
                 <AgentDebriefPanel
                   state={debriefState}
                   onGenerate={generateDebrief}
@@ -716,7 +887,7 @@ export function RightSidebar({
         </div>
       )}
       {onSubmitTaskInput && mode === "agents" && hasRefs && (
-        <div className="px-3 py-2 border-t border-border text-2xs text-muted-foreground">
+        <div className="mx-2 mb-2 rounded-xl bg-background/65 px-3 py-2 text-2xs text-muted-foreground shadow-[inset_0_1px_0_hsl(var(--background)/0.7)]">
           {transcriptRefs.length} selected snippet{transcriptRefs.length !== 1 ? "s" : ""} ready for task input.
           <button
             type="button"

@@ -28,7 +28,7 @@ describe("buildAnalysisPrompt", () => {
       ["Plan trip dates"],
     );
     expect(prompt).toContain("[system] I want to visit Austin next month.");
-    expect(prompt).toContain("Previous key points from this session:");
+    expect(prompt).toContain("Summary of conversation so far:");
     expect(prompt).toContain("Grounding requirements:");
     expect(prompt).toContain("Do not use memory from prior sessions.");
   });
@@ -40,9 +40,6 @@ describe("buildAgentSuggestionPrompt", () => {
     expect(prompt).toContain("[system] I want to visit Austin next month.");
     expect(prompt).toContain("Existing tasks:");
     expect(prompt).toContain("[ ] Book flights");
-    expect(prompt).toContain("kind");
-    expect(prompt).toContain("text");
-    expect(prompt).toContain("transcriptExcerpt");
   });
 
   it("includes historical suggestions context", () => {
@@ -64,7 +61,7 @@ describe("buildAgentSuggestionPrompt", () => {
       ["Plan trip dates"],
       ["Austin has major events that can affect hotel prices"],
     );
-    expect(prompt).toContain("Key points from the conversation so far:");
+    expect(prompt).toContain("Conversation context (key points from earlier in this meeting):");
     expect(prompt).toContain("- Plan trip dates");
     expect(prompt).toContain("Prior educational insights");
     expect(prompt).toContain("- Austin has major events that can affect hotel prices");
