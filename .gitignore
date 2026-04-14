@@ -142,3 +142,5 @@ agents.md
 /framer-components/*
 /actual-agents/*
 docs/*
+!docs/media/
+!docs/media/**
