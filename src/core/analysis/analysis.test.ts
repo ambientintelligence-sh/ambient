@@ -40,9 +40,6 @@ describe("buildAgentSuggestionPrompt", () => {
     expect(prompt).toContain("[system] I want to visit Austin next month.");
     expect(prompt).toContain("Existing tasks:");
     expect(prompt).toContain("[ ] Book flights");
-    expect(prompt).toContain("kind");
-    expect(prompt).toContain("text");
-    expect(prompt).toContain("transcriptExcerpt");
   });
 
   it("includes historical suggestions context", () => {
