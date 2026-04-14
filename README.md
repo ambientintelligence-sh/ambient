@@ -55,7 +55,7 @@ Flights get mentioned. Hotels are debated. Someone says, "I'll look into it."
 
 Ambient captures destinations, dates, and ideas as your group discusses. Then generates a structured plan with flight research, hotel options, and an itinerary pushed to Notion before the conversation even ends.
 
-https://github.com/ambientintelligence-sh/ambient/raw/main/docs/media/ambient-trip-planning.webm
+<video src="https://github.com/ambientintelligence-sh/ambient/raw/main/docs/media/ambient-trip-planning.webm" controls muted loop playsinline width="100%"></video>
 
 ### Research & Brainstorming
 
@@ -65,7 +65,7 @@ Ideas move fast. Insights get buried. Action items are implied but never written
 
 You think out loud, Ambient turns it into momentum. Structuring thoughts into organized notes, research summaries, and next steps while you stay in creative flow.
 
-https://github.com/ambientintelligence-sh/ambient/raw/main/docs/media/ambient-project.webm
+<video src="https://github.com/ambientintelligence-sh/ambient/raw/main/docs/media/ambient-project.webm" controls muted loop playsinline width="100%"></video>
 
 ### Study Sessions
 
@@ -75,7 +75,7 @@ Concepts are explained. Deadlines are mentioned. Assignments are clarified.
 
 Ambient captures the discussion and turns it into summaries, flashcards, and key takeaways like a study partner that remembers everything you covered.
 
-https://github.com/ambientintelligence-sh/ambient/raw/main/docs/media/ambient-study.webm
+<video src="https://github.com/ambientintelligence-sh/ambient/raw/main/docs/media/ambient-study.webm" controls muted loop playsinline width="100%"></video>
 
 ### Team Meetings
 
@@ -85,7 +85,7 @@ Ideas are discussed. Decisions get made. Someone says, "Let's circle back."
 
 Ambient captures action items, owners, and decisions in real time. Then sends structured notes and tasks to your tools before the meeting even ends.
 
-https://github.com/ambientintelligence-sh/ambient/raw/main/docs/media/ambient-meeting.webm
+<video src="https://github.com/ambientintelligence-sh/ambient/raw/main/docs/media/ambient-meeting.webm" controls muted loop playsinline width="100%"></video>
 
 ### Native Codex
 
@@ -95,7 +95,7 @@ A problem is described. Context is scattered. You want action, not another doc t
 
 Ambient captures coding conversations, implementation decisions, and follow-up work as you build. It keeps the thread of what changed, why it changed, and what still needs attention without pulling you out of flow.
 
-https://github.com/ambientintelligence-sh/ambient/raw/main/docs/media/ambient-codex.webm
+<video src="https://github.com/ambientintelligence-sh/ambient/raw/main/docs/media/ambient-codex.webm" controls muted loop playsinline width="100%"></video>
 
 ## Customize
 
