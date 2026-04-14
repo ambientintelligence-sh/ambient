@@ -64,13 +64,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          shopt -s globstar nullglob
-          files=(out/make/**/*.dmg out/make/**/*.zip)
-          if [ ${#files[@]} -eq 0 ]; then
+          artifacts=$(find out/make -type f \( -name '*.dmg' -o -name '*.zip' \))
+          if [ -z "$artifacts" ]; then
             echo "::error::No artifacts found under out/make/"
             ls -lR out/make || true
             exit 1
           fi
-          printf 'Uploading to %s:\n' "$TAG_NAME"
-          printf '  %s\n' "${files[@]}"
-          gh release upload "$TAG_NAME" "${files[@]}" --clobber
+          echo "Uploading to $TAG_NAME:"
+          echo "$artifacts"
+          find out/make -type f \( -name '*.dmg' -o -name '*.zip' \) -print0 \
+            | xargs -0 gh release upload "$TAG_NAME" --clobber
