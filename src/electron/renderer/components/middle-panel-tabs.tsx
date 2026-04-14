@@ -37,14 +37,17 @@ function TabButton({
   label,
   onClick,
   onClose,
+  tabRef,
 }: {
   active: boolean;
   label: string;
   onClick: () => void;
   onClose?: () => void;
+  tabRef?: React.RefObject<HTMLButtonElement | null>;
 }) {
   return (
     <button
+      ref={tabRef}
       type="button"
       role="tab"
       aria-selected={active}
@@ -110,6 +113,11 @@ export function MiddlePanelTabs({
 }: MiddlePanelTabsProps) {
   const [activeTabBySession, setActiveTabBySession] = useState<Record<string, TabId>>({});
   const prevSummaryKindRef = useRef(summaryState.kind);
+  const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({
+    transcript: null,
+    summary: null,
+    "new-agent": null,
+  });
   const sessionTabKey = sessionId ?? EMPTY_SESSION_TAB_KEY;
   const activeTab = activeTabBySession[sessionTabKey] ?? "transcript";
 
@@ -133,7 +141,6 @@ export function MiddlePanelTabs({
     }
   }, [activeTab, validTab, sessionTabKey]);
 
-  // Consolidated tab auto-switch: new agent > selected agent > summary transition
   useEffect(() => {
     if (newAgentMode) { setActiveTab("new-agent"); return; }
     if (selectedAgentId) { setActiveTab(getAgentTabId(selectedAgentId)); return; }
@@ -141,19 +148,49 @@ export function MiddlePanelTabs({
     prevSummaryKindRef.current = summaryState.kind;
   }, [agentSelectionNonce, selectedAgentId, newAgentMode, summaryState.kind, sessionTabKey]);
 
+  useEffect(() => {
+    const activeTabElement = tabRefs.current[validTab];
+    if (!activeTabElement) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      activeTabElement.scrollIntoView({
+        behavior: "smooth",
+        inline: "center",
+        block: "nearest",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [validTab, sessionTabKey, openAgentIds, agentSelectionNonce]);
+
   return (
     <main className="flex-1 flex flex-col min-h-0 min-w-0 relative">
-      {/* Tab bar */}
       <div
         role="tablist"
         className="no-scrollbar shrink-0 flex items-center h-9 border-b border-border bg-background px-1 gap-0.5 overflow-x-auto"
       >
         <TabButton
+          tabRef={{
+            get current() {
+              return tabRefs.current.transcript;
+            },
+            set current(value: HTMLButtonElement | null) {
+              tabRefs.current.transcript = value;
+            },
+          }}
           active={validTab === "transcript"}
           label="Transcript"
           onClick={() => setActiveTab("transcript")}
         />
         <TabButton
+          tabRef={{
+            get current() {
+              return tabRefs.current.summary;
+            },
+            set current(value: HTMLButtonElement | null) {
+              tabRefs.current.summary = value;
+            },
+          }}
           active={validTab === "summary"}
           label="Summary"
           onClick={() => {
@@ -165,6 +202,14 @@ export function MiddlePanelTabs({
         />
         {newAgentMode && (
           <TabButton
+            tabRef={{
+              get current() {
+                return tabRefs.current["new-agent"];
+              },
+              set current(value: HTMLButtonElement | null) {
+                tabRefs.current["new-agent"] = value;
+              },
+            }}
             active={validTab === "new-agent"}
             label="New Agent"
             onClick={() => setActiveTab("new-agent")}
@@ -180,6 +225,14 @@ export function MiddlePanelTabs({
           return (
             <TabButton
               key={agentId}
+              tabRef={{
+                get current() {
+                  return tabRefs.current[tabId];
+                },
+                set current(value: HTMLButtonElement | null) {
+                  tabRefs.current[tabId] = value;
+                },
+              }}
               active={validTab === tabId}
               label={label}
               onClick={() => {
@@ -192,17 +245,14 @@ export function MiddlePanelTabs({
         })}
       </div>
 
-      {/* Transcript — always mounted, hidden via CSS to preserve scroll */}
       <div className={`flex-1 flex flex-col min-h-0 ${validTab === "transcript" ? "" : "hidden"}`}>
         {transcriptContent}
       </div>
 
-      {/* Summary — always mounted, hidden via CSS to preserve scroll */}
       <div className={`flex-1 flex flex-col min-h-0 ${validTab === "summary" ? "" : "hidden"}`}>
         {summaryContent}
       </div>
 
-      {/* Agent — conditionally rendered */}
       {(newAgentMode || showAgentTabs) && (validTab === "new-agent" || isAgentTab(validTab)) && (
         <div className="flex-1 flex flex-col min-h-0">
           {agentContent}

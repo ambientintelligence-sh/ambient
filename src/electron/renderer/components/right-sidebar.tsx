@@ -561,12 +561,14 @@ export function RightSidebar({
 
   const activeTasks: TaskItem[] = [];
   const completedTasks: TaskItem[] = [];
+  let openTasksCount = 0;
   let pendingInAgentsCount = 0;
   for (const task of tasks) {
     if (task.completed) {
       completedTasks.push(task);
       continue;
     }
+    openTasksCount += 1;
     if (agentByTaskId.get(task.id)?.status === "running") {
       pendingInAgentsCount += 1;
       continue;
@@ -606,7 +608,7 @@ export function RightSidebar({
   };
 
   const hasRefs = transcriptRefs.length > 0;
-  const runningAgentsCount = (agents ?? []).filter((agent) => agent.status === "running").length;
+  const totalAgentsCount = (agents ?? []).length;
 
   return (
     <div className="w-full h-full shrink-0 border-l border-sidebar-border/35 flex flex-col min-h-0 bg-sidebar/90">
@@ -615,12 +617,12 @@ export function RightSidebar({
           <RailModeButton
             active={mode === "agents"}
             onClick={() => setMode("agents")}
-            label={runningAgentsCount > 0 ? `Agents (${runningAgentsCount} live)` : `Agents (${(agents ?? []).length})`}
+            label={`Agents (${totalAgentsCount})`}
           />
           <RailModeButton
             active={mode === "work"}
             onClick={() => setMode("work")}
-            label={`Tasks (${activeTasks.length + suggestions.length})`}
+            label={`Tasks (${openTasksCount})`}
           />
         </div>
       </div>
@@ -629,11 +631,11 @@ export function RightSidebar({
           <>
             {/* Active tasks */}
             <div className="mb-3">
-              <div className="sticky top-0 z-20 -mx-1 mb-2 rounded-xl bg-sidebar/88 px-1 py-1 backdrop-blur supports-[backdrop-filter]:bg-sidebar/72">
+              <div className="sticky top-0 z-20 -mx-1 mb-2 flex items-center justify-between gap-3 rounded-xl bg-sidebar/88 px-1 py-1 backdrop-blur supports-[backdrop-filter]:bg-sidebar/72">
                 <SectionLabel as="span">
                   {pendingInAgentsCount > 0 ? `Tasks · ${pendingInAgentsCount} in agents` : "Tasks"}
                 </SectionLabel>
-                <div className="mt-1 flex items-center justify-end">
+                <div className="flex items-center justify-end">
                   {(() => {
                     const completedByAgent = activeTasks.filter(
                       (t) => agentByTaskId.get(t.id)?.status === "completed"
