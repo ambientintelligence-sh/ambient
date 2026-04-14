@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/ambientintelligence-sh/ambient/compare/v1.2.1...v1.3.0) (2026-04-14)
+
+
+### Features
+
+* add suggestion agent, native claude code and codex support and improve prompt context handling ([#12](https://github.com/ambientintelligence-sh/ambient/issues/12)) ([c5bb87a](https://github.com/ambientintelligence-sh/ambient/commit/c5bb87a7b48ba9b1e1d471e5929bbd3d5ab3de6e))
+
 ## [1.2.1](https://github.com/investor55/ambient/compare/v1.2.0...v1.2.1) (2026-03-20)
 
 
