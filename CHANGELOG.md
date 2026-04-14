@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.1](https://github.com/ambientintelligence-sh/ambient/compare/v1.3.0...v1.3.1) (2026-04-14)
+
+
+### Bug Fixes
+
+* improve artifact upload process in release workflow ([6913a16](https://github.com/ambientintelligence-sh/ambient/commit/6913a167940ab946a6b5b6dab660492e010d2991))
+* update app icon ([db81701](https://github.com/ambientintelligence-sh/ambient/commit/db817010f0a0ba8bb9e73ff5bafb20fa93dc69b1))
+
 ## [1.3.0](https://github.com/ambientintelligence-sh/ambient/compare/v1.2.1...v1.3.0) (2026-04-14)
 
 
