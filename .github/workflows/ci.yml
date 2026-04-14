@@ -51,19 +51,13 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
       - name: Setup Python for native modules
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Rebuild native modules
-        run: |
-          pnpm rebuild better-sqlite3
-          npx node-gyp rebuild --directory=node_modules/macos-alias
-          npx node-gyp rebuild --directory=node_modules/fs-xattr
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Make distributables
         run: pnpm electron:make
