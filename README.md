@@ -55,7 +55,7 @@ Flights get mentioned. Hotels are debated. Someone says, "I'll look into it."
 
 Ambient captures destinations, dates, and ideas as your group discusses. Then generates a structured plan with flight research, hotel options, and an itinerary pushed to Notion before the conversation even ends.
 
-<video src="https://github.com/ambientintelligence-sh/ambient/raw/main/docs/media/ambient-trip-planning.webm" controls muted loop playsinline width="100%"></video>
+[ambient-trip-planning.webm](https://github.com/user-attachments/assets/880ece12-8076-4252-ad9a-77541bb6ced2)
 
 ### Research & Brainstorming
 
@@ -65,7 +65,7 @@ Ideas move fast. Insights get buried. Action items are implied but never written
 
 You think out loud, Ambient turns it into momentum. Structuring thoughts into organized notes, research summaries, and next steps while you stay in creative flow.
 
-<video src="https://github.com/ambientintelligence-sh/ambient/raw/main/docs/media/ambient-project.webm" controls muted loop playsinline width="100%"></video>
+[ambient-project.webm](https://github.com/user-attachments/assets/7ff7bd5f-62f5-40d1-8148-589d68778cfd)
 
 ### Study Sessions
 
