@@ -2,10 +2,13 @@
 // Set reasoning: true for models that support extended thinking.
 // The UI shows a sparkle icon next to reasoning models automatically.
 
+export type ReasoningEffort = "xhigh" | "high" | "medium" | "low" | "minimal" | "none";
+
 export type AnalysisModelPreset = {
   label: string;
   modelId: string;
   reasoning: boolean;
+  reasoningEffort?: ReasoningEffort;
   providerOnly?: string;
 };
 
@@ -13,6 +16,7 @@ export type ModelPreset = {
   label: string;
   modelId: string;
   reasoning?: boolean;
+  reasoningEffort?: ReasoningEffort;
   providerOnly?: string;
   providers?: string[];
 };
@@ -43,32 +47,33 @@ export const MODEL_CONFIG: Record<ModelProvider, ProviderConfig> = {
       taskProviders: ["sambanova", "groq", "cerebras"],
     },
     models: [
+      // Anthropic
       {
-        label: "GPT-OSS 20B",
-        modelId: "openai/gpt-oss-20b",
+        label: "Claude Opus 4.7",
+        modelId: "anthropic/claude-opus-4.7",
         reasoning: true,
-      },
-      {
-        label: "GPT-OSS 120B",
-        modelId: "openai/gpt-oss-120b",
-        reasoning: true,
-        providers: ["sambanova", "groq", "cerebras"],
-      },
-      {
-        label: "Minimax M2.5",
-        modelId: "minimax/minimax-m2.5",
-        reasoning: true,
-      },
-      {
-        label: "Qwen 3.5 397B A17B",
-        modelId: "qwen/qwen3.5-397b-a17b",
-        reasoning: true,
+        reasoningEffort: "medium",
       },
       {
         label: "Claude Sonnet 4.6",
         modelId: "anthropic/claude-sonnet-4.6",
         reasoning: false,
       },
+      // Google
+      {
+        label: "Gemini 3.1 Pro",
+        modelId: "google/gemini-3.1-pro-preview",
+        reasoning: true,
+        reasoningEffort: "medium",
+      },
+      // MiniMax
+      {
+        label: "Minimax M2.7",
+        modelId: "minimax/minimax-m2.7",
+        reasoning: true,
+        reasoningEffort: "medium",
+      },
+      // Moonshot AI
       {
         label: "Kimi K2 0905",
         modelId: "moonshotai/kimi-k2-0905",
@@ -78,16 +83,47 @@ export const MODEL_CONFIG: Record<ModelProvider, ProviderConfig> = {
         label: "Kimi K2.5",
         modelId: "moonshotai/kimi-k2.5",
         reasoning: true,
+        reasoningEffort: "medium",
+      },
+      // OpenAI
+      {
+        label: "GPT-5.4",
+        modelId: "openai/gpt-5.4",
+        reasoning: true,
+        reasoningEffort: "medium",
       },
       {
-        label: "GLM 4.7",
-        modelId: "z-ai/glm-4.7",
+        label: "GPT-5.4 Mini",
+        modelId: "openai/gpt-5.4-mini",
         reasoning: true,
+        reasoningEffort: "medium",
       },
       {
-        label: "GLM 5",
-        modelId: "z-ai/glm-5",
+        label: "GPT-OSS 20B",
+        modelId: "openai/gpt-oss-20b",
         reasoning: true,
+        reasoningEffort: "medium",
+      },
+      {
+        label: "GPT-OSS 120B",
+        modelId: "openai/gpt-oss-120b",
+        reasoning: true,
+        reasoningEffort: "medium",
+        providers: ["sambanova", "groq", "cerebras"],
+      },
+      // Qwen
+      {
+        label: "Qwen 3.5 397B A17B",
+        modelId: "qwen/qwen3.5-397b-a17b",
+        reasoning: true,
+        reasoningEffort: "medium",
+      },
+      // Z.AI
+      {
+        label: "GLM 5.1",
+        modelId: "z-ai/glm-5.1",
+        reasoning: true,
+        reasoningEffort: "medium",
       },
     ],
   },
@@ -153,9 +189,18 @@ export function getAnalysisModelPreset(
         label: match.label,
         modelId: match.modelId,
         reasoning: !!match.reasoning,
+        reasoningEffort: match.reasoningEffort,
         providerOnly: match.providerOnly,
       };
     }
+  }
+  return undefined;
+}
+
+export function getReasoningEffortForModel(modelId: string): ReasoningEffort | undefined {
+  for (const { models } of Object.values(MODEL_CONFIG)) {
+    const match = models.find((p) => p.modelId === modelId);
+    if (match) return match.reasoningEffort;
   }
   return undefined;
 }

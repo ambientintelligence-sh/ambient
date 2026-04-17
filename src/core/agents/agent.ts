@@ -348,7 +348,9 @@ async function buildTools(
           const results = await exaClient.search(query, {
             type: "auto",
             numResults: 10,
-            text: { maxCharacters: 1500 },
+            contents: {
+              text: { maxCharacters: 1500 },
+            },
           });
 
           return results.results;

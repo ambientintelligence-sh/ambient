@@ -18,6 +18,7 @@
   "scripts": {
     "dev": "electron-forge start",
     "start": "electron-forge start",
+    "postinstall": "npx --yes @electron/rebuild -f -w better-sqlite3 || true",
     "test": "vitest run",
     "test:watch": "vitest",
     "check:type": "pnpm exec tsc --noEmit",
@@ -26,7 +27,7 @@
     "check:deadcode": "pnpm run check:type && pnpm run check:unused && pnpm run check:reachability",
     "check:ci": "pnpm run check:type && pnpm test && pnpm electron:package",
     "db:reset": "rm -f \"$HOME/Library/Application Support/ambient/ambient.db\" && echo 'DB deleted.'",
-    "db:seed": "pnpm rebuild better-sqlite3 --silent && tsx scripts/seed-demo.ts && cd node_modules/better-sqlite3 && npx --yes node-gyp rebuild --release --target=34.5.8 --arch=arm64 --dist-url=https://electronjs.org/headers --runtime=electron",
+    "db:seed": "pnpm rebuild better-sqlite3 --silent && tsx scripts/seed-demo.ts && npx --yes @electron/rebuild -f -w better-sqlite3",
     "db:fresh": "pnpm db:reset && pnpm db:seed",
     "electron:dev": "electron-forge start",
     "electron:package": "electron-forge package",

@@ -86,9 +86,9 @@ function normalizeAgentTaskTitle(text: string): string {
 export function App() {
   // --- Language & Config (local to app, used by session hook) ---
   const [languages, setLanguages] = useState<Language[]>([]);
-  const [sourceLang, setSourceLang] = useLocalStorage<LanguageCode>("ambient-source-lang", "ko");
+  const [sourceLang, setSourceLang] = useLocalStorage<LanguageCode>("ambient-source-lang", "en");
   const [targetLang, setTargetLang] = useLocalStorage<LanguageCode>("ambient-translate-to-lang", "en");
-  const [translateToSelection, setTranslateToSelection] = useLocalStorage<LanguageCode | "off">("ambient-translate-to-selection", "en");
+  const [translateToSelection, setTranslateToSelection] = useLocalStorage<LanguageCode | "off">("ambient-translate-to-selection", "off");
   const [armedMicInput, setArmedMicInput] = useLocalStorage<boolean>("ambient-armed-mic-input", true);
   const [armedDeviceAudio, setArmedDeviceAudio] = useLocalStorage<boolean>("ambient-armed-device-audio", true);
   const [storedAppConfig, setStoredAppConfig] = useLocalStorage<AppConfig>("ambient-app-config", DEFAULT_APP_CONFIG);
