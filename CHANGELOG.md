@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/ambientintelligence-sh/ambient/compare/v1.3.1...v1.4.0) (2026-04-17)
+
+
+### Features
+
+* enhance model configs, reasoning effort, and packaging metadata ([7b9860a](https://github.com/ambientintelligence-sh/ambient/commit/7b9860a82813e6784d7fb1380c5b40884fb8d311))
+
 ## [1.3.1](https://github.com/ambientintelligence-sh/ambient/compare/v1.3.0...v1.3.1) (2026-04-14)
 
 
