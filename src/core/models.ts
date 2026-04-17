@@ -40,10 +40,10 @@ export type ProviderConfig = {
 export const MODEL_CONFIG: Record<ModelProvider, ProviderConfig> = {
   openrouter: {
     defaults: {
-      analysisModelId: "moonshotai/kimi-k2-0905",
+      analysisModelId: "moonshotai/kimi-k2.5",
       taskModelId: "openai/gpt-oss-120b",
       utilityModelId: "openai/gpt-oss-20b",
-      synthesisModelId: "openai/gpt-oss-20b",
+      synthesisModelId: "openai/gpt-oss-120b",
       taskProviders: ["sambanova", "groq", "cerebras"],
     },
     models: [
@@ -174,9 +174,6 @@ export const MODEL_CONFIG: Record<ModelProvider, ProviderConfig> = {
     ],
   },
 };
-
-export const DEFAULT_UTILITY_MODEL_ID = "openai/gpt-oss-20b";
-export const DEFAULT_SYNTHESIS_MODEL_ID = "openai/gpt-oss-20b";
 
 export function getAnalysisModelPreset(
   modelId: string
