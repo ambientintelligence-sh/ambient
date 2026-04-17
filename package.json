@@ -18,7 +18,7 @@
   "scripts": {
     "dev": "electron-forge start",
     "start": "electron-forge start",
-    "postinstall": "npx --yes @electron/rebuild -f -w better-sqlite3 || true",
+    "postinstall": "[ -n \"$CI\" ] || npx --yes @electron/rebuild -f -w better-sqlite3",
     "test": "vitest run",
     "test:watch": "vitest",
     "check:type": "pnpm exec tsc --noEmit",
