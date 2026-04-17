@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/ambientintelligence-sh/ambient/compare/v1.4.0...v1.4.1) (2026-04-17)
+
+
+### Bug Fixes
+
+* rebuild better-sqlite3 against Electron ABI in CI ([edabfaf](https://github.com/ambientintelligence-sh/ambient/commit/edabfaf784721f7e14b048284f98746568722712))
+
 ## [1.4.0](https://github.com/ambientintelligence-sh/ambient/compare/v1.3.1...v1.4.0) (2026-04-17)
 
 
