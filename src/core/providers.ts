@@ -4,6 +4,18 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import type { SessionConfig } from "./types";
+import { getReasoningEffortForModel } from "./models";
+
+type ReasoningOption =
+  | { effort: "xhigh" | "high" | "medium" | "low" | "minimal" | "none"; exclude: boolean }
+  | { max_tokens: number; exclude: boolean };
+
+function reasoningForModel(modelId: string, fallbackMaxTokens: number): ReasoningOption {
+  const effort = getReasoningEffortForModel(modelId);
+  return effort
+    ? { effort, exclude: false }
+    : { max_tokens: fallbackMaxTokens, exclude: false };
+}
 
 export function createTranscriptionModel(config: SessionConfig): LanguageModel {
   switch (config.transcriptionProvider) {
@@ -48,7 +60,7 @@ export function createAnalysisModel(config: SessionConfig): LanguageModel {
       };
       return openrouter(config.analysisModelId, {
         reasoning: config.analysisReasoning
-          ? { max_tokens: 4096, exclude: false }
+          ? reasoningForModel(config.analysisModelId, 4096)
           : undefined,
         provider,
       });
@@ -81,7 +93,7 @@ export function createAnalysisModel(config: SessionConfig): LanguageModel {
 function createModelForProvider(
   config: SessionConfig,
   modelId: string,
-  openRouterOptions?: { reasoning?: { max_tokens: number; exclude: boolean }; provider?: Record<string, unknown> },
+  openRouterOptions?: { reasoning?: ReasoningOption; provider?: Record<string, unknown> },
 ): LanguageModel {
   switch (config.analysisProvider) {
     case "bedrock": {
@@ -110,7 +122,7 @@ export function createSynthesisModel(config: SessionConfig): LanguageModel {
 
 export function createTaskModel(config: SessionConfig): LanguageModel {
   return createModelForProvider(config, config.taskModelId, {
-    reasoning: { max_tokens: 1024, exclude: false },
+    reasoning: reasoningForModel(config.taskModelId, 1024),
     provider: {
       sort: "throughput" as const,
       ...(config.taskProviders?.length ? { only: config.taskProviders } : {}),

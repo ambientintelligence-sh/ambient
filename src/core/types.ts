@@ -1,5 +1,5 @@
 // All shared types for Ambient.
-import { getAnalysisModelPreset, DEFAULT_UTILITY_MODEL_ID, DEFAULT_SYNTHESIS_MODEL_ID, MODEL_CONFIG } from "./models";
+import { getAnalysisModelPreset, MODEL_CONFIG } from "./models";
 
 export type LanguageCode =
   | "en"

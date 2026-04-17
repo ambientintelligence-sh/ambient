@@ -366,9 +366,14 @@ function ActivitySummaryItem({
             {steps.map((step) => {
               const isActive = isStreaming && step.id === lastStep?.id;
               if (step.kind === "thinking") {
+                const hasContent = !!step.content?.trim();
                 return (
                   <div key={`${step.id}:${step.kind}`} className="py-0.5 text-2xs leading-relaxed text-muted-foreground">
-                    <MessageResponse>{step.content}</MessageResponse>
+                    {hasContent ? (
+                      <MessageResponse>{step.content}</MessageResponse>
+                    ) : (
+                      <span className="italic text-muted-foreground/70">Reasoning unavailable from provider.</span>
+                    )}
                   </div>
                 );
               }

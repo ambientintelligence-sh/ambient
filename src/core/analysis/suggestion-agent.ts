@@ -180,7 +180,9 @@ export async function runSuggestionAgent(
           const results = await exa.search(query, {
             type: "auto",
             numResults: 5,
-            text: { maxCharacters: 1000 },
+            contents: {
+              text: { maxCharacters: 1000 },
+            },
           });
           return results.results;
         } catch (error) {

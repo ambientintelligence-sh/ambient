@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(pnpm test:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(bun run:*)",
+      "Bash(curl:*)",
+      "Bash(grep -E \"\\\\.\\(ts|js|json|yml|yaml|md\\)$\")"
     ]
   }
 }
