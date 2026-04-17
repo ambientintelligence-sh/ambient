@@ -59,5 +59,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Rebuild native modules against Electron ABI
+        run: npx --yes @electron/rebuild -f -w better-sqlite3
+
       - name: Make distributables
         run: pnpm electron:make
