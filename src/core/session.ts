@@ -22,7 +22,7 @@ import type {
   TranscriptionProvider,
   AnalysisProvider,
 } from "./types";
-import { createTranscriptionModel, createAnalysisModel, createTaskModel, createUtilitiesModel, createSynthesisModel } from "./providers";
+import { createTranscriptionModel, createAnalysisModel, createTaskModel, createUtilitiesModel, createSynthesisModel, createAgentPiModel } from "./providers";
 import { log } from "./logger";
 import { pcmToWavBuffer, computeRms } from "./audio/audio-utils";
 import { toReadableError } from "./text/text-utils";
@@ -364,7 +364,7 @@ export class Session {
     });
 
     this.agentManager = createAgentManager({
-      model: this.analysisModel,
+      model: createAgentPiModel(config),
       utilitiesModel: this.utilitiesModel,
       synthesisModel: this.synthesisModel,
       exaApiKey: process.env.EXA_API_KEY,
@@ -1839,7 +1839,8 @@ export class Session {
     let result: Awaited<ReturnType<typeof runSuggestionAgent>> | undefined;
     try {
       result = await runSuggestionAgent(input, {
-        model: this.analysisModel,
+        agentModel: createAgentPiModel(this.config),
+        extractionModel: this.analysisModel,
         getTranscriptContext: (last?: number, offset?: number) =>
           this.getTranscriptBlocks(last, offset),
         searchTranscriptHistory: db

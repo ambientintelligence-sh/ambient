@@ -1,6 +1,8 @@
 import { EventEmitter } from "node:events";
-import type { ModelMessage } from "ai";
+import type { LanguageModel } from "ai";
+import type { Message } from "@mariozechner/pi-ai";
 import { buildAgentInitialUserPrompt, runAgent, continueAgent } from "./agent";
+import type { AgentPiModel } from "../providers";
 import { agentTitleSchema, buildAgentTitlePrompt } from "../analysis/analysis";
 import { log } from "../logger";
 import type { AppDatabase } from "../db/db";
@@ -26,9 +28,9 @@ type TypedEmitter = EventEmitter & {
 };
 
 type AgentManagerDeps = {
-  model: Parameters<typeof runAgent>[1]["model"];
-  utilitiesModel: Parameters<typeof runAgent>[1]["model"];
-  synthesisModel: Parameters<typeof runAgent>[1]["model"];
+  model: AgentPiModel;
+  utilitiesModel: LanguageModel;
+  synthesisModel: LanguageModel;
   exaApiKey?: string;
   events: TypedEmitter;
   getTranscriptSummary: () => string;
@@ -92,7 +94,7 @@ async function generateAgentTitle(
 export function createAgentManager(deps: AgentManagerDeps): AgentManager {
   const agents = new Map<string, Agent>();
   const abortControllers = new Map<string, AbortController>();
-  const conversationHistory = new Map<string, ModelMessage[]>();
+  const conversationHistory = new Map<string, Message[]>();
   const pendingFlush = new Map<string, NodeJS.Timeout>();
   const pendingQuestions = new Map<string, {
     toolCallId: string;
@@ -113,11 +115,16 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
     reject: (error: Error) => void;
   }>();
 
-  function buildHistoryFromSteps(agent: Agent): ModelMessage[] {
-    const history: ModelMessage[] = [];
+  function buildHistoryFromSteps(agent: Agent): Message[] {
+    const history: Message[] = [];
+    const now = Date.now();
     if (agent.task.trim()) {
       const taskPrompt = buildAgentInitialUserPrompt(agent.task, agent.taskContext);
-      history.push({ role: "user", content: taskPrompt });
+      history.push({
+        role: "user",
+        content: [{ type: "text", text: taskPrompt }],
+        timestamp: now,
+      });
     }
 
     // Skip the first user step — it mirrors the initial task and
@@ -130,11 +137,31 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
           skippedInitialUser = true;
           continue;
         }
-        history.push({ role: "user", content: step.content });
+        history.push({
+          role: "user",
+          content: [{ type: "text", text: step.content }],
+          timestamp: step.createdAt,
+        });
       }
       if (step.kind === "text") {
         skippedInitialUser = true;
-        history.push({ role: "assistant", content: step.content });
+        history.push({
+          role: "assistant",
+          content: [{ type: "text", text: step.content }],
+          api: "anthropic-messages",
+          provider: "anthropic",
+          model: "reconstructed",
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+          stopReason: "stop",
+          timestamp: step.createdAt,
+        });
       }
     }
 
@@ -329,8 +356,8 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
 
   function makeAgentCallbacks(agent: Agent) {
     return {
-      onStepFinish: (info: { usage: { inputTokens: number; outputTokens: number; totalTokens: number }; finishReason: string; toolCalls?: Array<{ toolName: string }> }) => {
-        log("INFO", `Agent ${agent.id} step: reason=${info.finishReason}, tokens=${info.usage.totalTokens}${info.toolCalls?.length ? `, tools=${info.toolCalls.map((t) => t.toolName).join(",")}` : ""}`);
+      onStepFinish: (info: { finishReason: string; toolCalls?: Array<{ toolName: string }> }) => {
+        log("INFO", `Agent ${agent.id} step: reason=${info.finishReason}${info.toolCalls?.length ? `, tools=${info.toolCalls.map((t) => t.toolName).join(",")}` : ""}`);
       },
       onStep: (step: AgentStep) => {
         const existingIdx = agent.steps.findIndex((s) => s.id === step.id);
@@ -342,7 +369,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         deps.events.emit("agent-step", agent.id, step);
         scheduleStepFlush(agent.id);
       },
-      onComplete: (result: string, messages: ModelMessage[]) => {
+      onComplete: (result: string, messages: Message[]) => {
         agent.status = "completed" as const;
         agent.result = result;
         agent.completedAt = Date.now();
@@ -370,7 +397,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
           }
         }
       },
-      onFail: (error: string, messages?: ModelMessage[]) => {
+      onFail: (error: string, messages?: Message[]) => {
         agent.status = "failed" as const;
         agent.result = error;
         agent.completedAt = Date.now();

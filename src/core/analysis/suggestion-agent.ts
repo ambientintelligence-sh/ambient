@@ -1,12 +1,7 @@
-import {
-  generateText,
-  stepCountIs,
-  tool,
-  type LanguageModel,
-  type LanguageModelUsage,
-  type ToolSet,
-} from "ai";
-import { z } from "zod";
+import type { LanguageModel } from "ai";
+import { Agent as PiAgent, type AgentTool } from "@mariozechner/pi-agent-core";
+import type { AssistantMessage, TextContent, Message } from "@mariozechner/pi-ai";
+import { Type, type Static, type TSchema } from "@sinclair/typebox";
 
 import type {
   TranscriptBlock,
@@ -16,6 +11,7 @@ import type {
 import { log } from "../logger";
 import { toReadableError } from "../text/text-utils";
 import { generateStructuredObject } from "../ai/structured-output";
+import type { AgentPiModel } from "../providers";
 import {
   agentSuggestionSchema,
   type AgentSuggestionItem,
@@ -32,7 +28,10 @@ type ExaClient = {
 };
 
 export type SuggestionAgentDeps = {
-  model: LanguageModel;
+  /** Pi-mono model used for the research/agentic phase. */
+  agentModel: AgentPiModel;
+  /** AI SDK model used for the structured extraction phase. */
+  extractionModel: LanguageModel;
   getTranscriptContext: (
     last?: number,
     offset?: number,
@@ -65,6 +64,35 @@ const STEP_BUDGET = 20;
 function truncateLabel(text: string, max = 40): string {
   const clean = text.trim().replaceAll(/\s+/g, " ");
   return clean.length <= max ? clean : `${clean.slice(0, max - 1)}…`;
+}
+
+function jsonResult<T>(value: T) {
+  return {
+    content: [{ type: "text" as const, text: safeStringify(value) }],
+    details: value,
+  };
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return typeof value === "string" ? value : JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function extractFinalText(messages: Message[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== "assistant") continue;
+    const assistant = msg as AssistantMessage;
+    const texts = assistant.content
+      .filter((c): c is TextContent => c.type === "text")
+      .map((c) => c.text.trim())
+      .filter(Boolean);
+    if (texts.length > 0) return texts.join("\n\n");
+  }
+  return "";
 }
 
 const SYSTEM_PROMPT = [
@@ -105,6 +133,84 @@ const SYSTEM_PROMPT = [
   "If you didn't find anything concrete via tools, write the research note and then the single line: NO_SUGGESTIONS.",
 ].join("\n");
 
+const GetTranscriptContextSchema = Type.Object({
+  last: Type.Optional(Type.Number({ description: "Number of most recent blocks to return (default 20)" })),
+  offset: Type.Optional(Type.Number({ description: "Skip this many blocks from the end to page backwards (default 0)" })),
+});
+
+const SearchHistorySchema = Type.Object({
+  query: Type.String({ description: "Keyword query" }),
+  limit: Type.Optional(Type.Number({ description: "Max results to return (default 10)" })),
+});
+
+const SearchWebSchema = Type.Object({
+  query: Type.String({ description: "The search query" }),
+});
+
+function buildTools(deps: SuggestionAgentDeps, emitStep: (label: string) => void): AgentTool<TSchema>[] {
+  const tools: AgentTool<TSchema>[] = [];
+
+  tools.push({
+    name: "getTranscriptContext",
+    label: "Read earlier transcript",
+    description:
+      "Read additional transcript blocks from the CURRENT session. Use when the base context is not enough to judge whether a suggestion is warranted.",
+    parameters: GetTranscriptContextSchema,
+    execute: async (_id, { last, offset }: Static<typeof GetTranscriptContextSchema>) => {
+      emitStep("Reading earlier transcript…");
+      return jsonResult(deps.getTranscriptContext(last ?? 20, offset ?? 0));
+    },
+  });
+
+  if (deps.searchTranscriptHistory) {
+    const search = deps.searchTranscriptHistory;
+    tools.push({
+      name: "searchTranscriptHistory",
+      label: "Search past sessions",
+      description:
+        "Search transcript blocks from PAST sessions by keyword (FTS5). Use to check whether a topic was already covered before.",
+      parameters: SearchHistorySchema,
+      execute: async (_id, { query, limit }: Static<typeof SearchHistorySchema>) => {
+        emitStep(`Searching past sessions for "${truncateLabel(query)}"…`);
+        return jsonResult(search(query, limit ?? 10));
+      },
+    });
+  }
+
+  if (deps.exa) {
+    const exa = deps.exa;
+    tools.push({
+      name: "searchWeb",
+      label: "Search the web",
+      description:
+        "Search the web for current, external facts (prices, news, docs, people, companies, recent releases). Use ONLY when the conversation depends on up-to-date information your training data may not cover. Prefer specific, targeted queries.",
+      parameters: SearchWebSchema,
+      execute: async (_id, { query }: Static<typeof SearchWebSchema>) => {
+        emitStep(`Looking up on the web: "${truncateLabel(query)}"…`);
+        try {
+          const results = await exa.search(query, {
+            type: "auto",
+            numResults: 5,
+            contents: { text: { maxCharacters: 1000 } },
+          });
+          return jsonResult(results.results);
+        } catch (error) {
+          const message = toReadableError(error);
+          if (deps.debug) {
+            log("WARN", `Suggestion agent searchWeb failed: ${message}`);
+          }
+          return jsonResult({
+            error: message,
+            hint: "Web search is temporarily unavailable. Continue with transcript-only reasoning.",
+          });
+        }
+      },
+    });
+  }
+
+  return tools;
+}
+
 export async function runSuggestionAgent(
   input: SuggestionAgentInput,
   deps: SuggestionAgentDeps,
@@ -126,106 +232,48 @@ export async function runSuggestionAgent(
     }
   };
 
-  const tools: ToolSet = {
-    getTranscriptContext: tool({
-      description:
-        "Read additional transcript blocks from the CURRENT session. Use when the base context is not enough to judge whether a suggestion is warranted.",
-      inputSchema: z.object({
-        last: z
-          .number()
-          .optional()
-          .describe("Number of most recent blocks to return (default 20)"),
-        offset: z
-          .number()
-          .optional()
-          .describe("Skip this many blocks from the end to page backwards (default 0)"),
-      }),
-      execute: async ({ last, offset }) => {
-        emitStep("Reading earlier transcript…");
-        return deps.getTranscriptContext(last ?? 20, offset ?? 0);
-      },
-    }),
-  };
-
-  if (deps.searchTranscriptHistory) {
-    const search = deps.searchTranscriptHistory;
-    tools.searchTranscriptHistory = tool({
-      description:
-        "Search transcript blocks from PAST sessions by keyword (FTS5). Use to check whether a topic was already covered before.",
-      inputSchema: z.object({
-        query: z.string().describe("Keyword query"),
-        limit: z
-          .number()
-          .optional()
-          .describe("Max results to return (default 10)"),
-      }),
-      execute: async ({ query, limit }) => {
-        emitStep(`Searching past sessions for “${truncateLabel(query)}”…`);
-        return search(query, limit ?? 10);
-      },
-    });
-  }
-
-  if (deps.exa) {
-    const exa = deps.exa;
-    tools.searchWeb = tool({
-      description:
-        "Search the web for current, external facts (prices, news, docs, people, companies, recent releases). Use ONLY when the conversation depends on up-to-date information your training data may not cover. Prefer specific, targeted queries.",
-      inputSchema: z.object({
-        query: z.string().describe("The search query"),
-      }),
-      execute: async ({ query }) => {
-        emitStep(`Looking up on the web: “${truncateLabel(query)}”…`);
-        try {
-          const results = await exa.search(query, {
-            type: "auto",
-            numResults: 5,
-            contents: {
-              text: { maxCharacters: 1000 },
-            },
-          });
-          return results.results;
-        } catch (error) {
-          const message = toReadableError(error);
-          if (deps.debug) {
-            log("WARN", `Suggestion agent searchWeb failed: ${message}`);
-          }
-          return {
-            error: message,
-            hint: "Web search is temporarily unavailable. Continue with transcript-only reasoning.",
-          };
-        }
-      },
-    });
-  }
-
-  let researchText = "";
-  let researchUsage: LanguageModelUsage | undefined;
-  let stepsTaken = 0;
-
   emitStep("Thinking…");
 
-  try {
-    const result = await generateText({
-      model: deps.model,
-      system: SYSTEM_PROMPT,
-      prompt: userPrompt,
+  const tools = buildTools(deps, emitStep);
+
+  const piAgent = new PiAgent({
+    initialState: {
+      systemPrompt: SYSTEM_PROMPT,
+      model: deps.agentModel.model,
+      thinkingLevel: deps.agentModel.thinkingLevel,
+      messages: [],
       tools,
-      stopWhen: stepCountIs(STEP_BUDGET),
-      temperature: 0,
-      onStepFinish: () => {
-        emitStep("Thinking…");
-      },
-    });
-    researchText = result.text.trim();
-    researchUsage = result.usage;
-    stepsTaken = result.steps?.length ?? 0;
+    },
+    getApiKey: deps.agentModel.apiKey ? async () => deps.agentModel.apiKey : undefined,
+  });
+
+  let stepsTaken = 0;
+  let researchInputTokens = 0;
+  let researchOutputTokens = 0;
+
+  piAgent.subscribe((event) => {
+    if (event.type === "turn_start") {
+      stepsTaken += 1;
+      emitStep("Thinking…");
+      if (stepsTaken > STEP_BUDGET) {
+        piAgent.abort();
+      }
+    }
+    if (event.type === "message_end" && event.message.role === "assistant") {
+      const assistant = event.message as AssistantMessage;
+      researchInputTokens += assistant.usage.input ?? 0;
+      researchOutputTokens += assistant.usage.output ?? 0;
+    }
+  });
+
+  let researchText = "";
+  try {
+    await piAgent.prompt(userPrompt);
+    await piAgent.waitForIdle();
+    researchText = extractFinalText(piAgent.state.messages as Message[]).trim();
   } catch (error) {
     if (deps.debug) {
-      log(
-        "WARN",
-        `Suggestion agent research phase failed: ${toReadableError(error)}`,
-      );
+      log("WARN", `Suggestion agent research phase failed: ${toReadableError(error)}`);
     }
     throw error;
   }
@@ -235,10 +283,7 @@ export async function runSuggestionAgent(
   if (!researchText || /\bNO_SUGGESTIONS\b/.test(researchText)) {
     return {
       suggestions: [],
-      usage: {
-        inputTokens: researchUsage?.inputTokens ?? 0,
-        outputTokens: researchUsage?.outputTokens ?? 0,
-      },
+      usage: { inputTokens: researchInputTokens, outputTokens: researchOutputTokens },
       steps: stepsTaken,
     };
   }
@@ -258,7 +303,7 @@ export async function runSuggestionAgent(
 
   try {
     const { object, usage: extractionUsage } = await generateStructuredObject({
-      model: deps.model,
+      model: deps.extractionModel,
       schema: agentSuggestionSchema,
       prompt: extractionPrompt,
       temperature: 0,
@@ -267,21 +312,14 @@ export async function runSuggestionAgent(
     return {
       suggestions: object.suggestions,
       usage: {
-        inputTokens:
-          (researchUsage?.inputTokens ?? 0) +
-          (extractionUsage?.inputTokens ?? 0),
-        outputTokens:
-          (researchUsage?.outputTokens ?? 0) +
-          (extractionUsage?.outputTokens ?? 0),
+        inputTokens: researchInputTokens + (extractionUsage?.inputTokens ?? 0),
+        outputTokens: researchOutputTokens + (extractionUsage?.outputTokens ?? 0),
       },
       steps: stepsTaken,
     };
   } catch (error) {
     if (deps.debug) {
-      log(
-        "WARN",
-        `Suggestion agent extraction phase failed: ${toReadableError(error)}`,
-      );
+      log("WARN", `Suggestion agent extraction phase failed: ${toReadableError(error)}`);
     }
     throw error;
   }
