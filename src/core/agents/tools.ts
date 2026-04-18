@@ -379,6 +379,11 @@ export async function buildAgentTools(deps: AgentToolDeps): Promise<BuildToolsRe
       "Only ONE todo should be 'in_progress' at a time.",
       "Mark todos 'completed' immediately after finishing, 'cancelled' if no longer needed.",
       "Do NOT use for single-step or trivial tasks.",
+      "",
+      "IMPORTANT — UI rendering rule:",
+      "When you call this tool the UI renders the full checklist as its own card above your text response.",
+      "Therefore do NOT also write the task list in your text response — no markdown table, no bullet list, no 'Here is your updated task list', no restatement of the items.",
+      "In your text response, reference the checklist by pointing at it (e.g., 'Updated the checklist — starting with X') and move on to the next step or question. Never duplicate the items in prose.",
     ].join("\n"),
     parameters: UpdateTodosSchema,
     execute: async (_id, { merge, todos }: Static<typeof UpdateTodosSchema>) => {
