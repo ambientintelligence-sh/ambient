@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import "dotenv/config";
 import { registerIpcHandlers, shutdownSessionOnAppQuit } from "./ipc-handlers";
+import { disposeRunJsRuntime } from "@core/agents/run-js-tool";
 import { createDatabase, type AppDatabase } from "@core/db/db";
 import { seedDemoData } from "@core/db/seed-demo";
 import { log } from "@core/logger";
@@ -108,6 +109,7 @@ app.whenReady().then(async () => {
 
 app.on("will-quit", () => {
   shutdownSessionOnAppQuit();
+  void disposeRunJsRuntime();
   db?.close();
   db = null;
 });

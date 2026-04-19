@@ -47,6 +47,8 @@ type AgentManagerDeps = {
   getClaudeClient?: import("./claude-client").GetClaudeClient;
   getEnabledSkills?: () => SkillMetadata[];
   allowAutoApprove: boolean;
+  /** Working directory for local coding tools (read/write/edit/bash/runJs). Defaults to process.cwd(). */
+  localWorkspaceCwd?: string;
   db?: AppDatabase;
 };
 
@@ -488,6 +490,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
           return { agents: allAgents, tasks: sessionTasks };
         },
         allowAutoApprove: deps.allowAutoApprove,
+        localWorkspaceCwd: deps.localWorkspaceCwd,
         requestClarification: (request, options) =>
           requestClarification(agent.id, request, options),
         requestToolApproval: (request, options) =>
@@ -566,6 +569,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
           return { agents: allAgents, tasks: sessionTasks };
         },
         allowAutoApprove: deps.allowAutoApprove,
+        localWorkspaceCwd: deps.localWorkspaceCwd,
         requestClarification: (request, options) =>
           requestClarification(agent.id, request, options),
         requestToolApproval: (request, options) =>
@@ -826,6 +830,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
           return { agents: allAgents, tasks: sessionTasks };
         },
         allowAutoApprove: deps.allowAutoApprove,
+        localWorkspaceCwd: deps.localWorkspaceCwd,
         requestClarification: (request, options) => requestClarification(agentId, request, options),
         requestToolApproval: (request, options) => requestToolApproval(agentId, request, options),
         requestPlanApproval: (request, options) => requestPlanApproval(agentId, request, options),

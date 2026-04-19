@@ -38,7 +38,7 @@ import {
   resolveExternalToolName,
   shouldRequireApproval,
 } from "./mcp-tool-resolution";
-import { buildAgentTools } from "./tools";
+import { buildAgentTools, DESTRUCTIVE_LOCAL_TOOLS } from "./tools";
 import type { AgentPiModel } from "../providers";
 
 type ExaClient = {
@@ -70,6 +70,8 @@ export type AgentDeps = {
     tasks: Array<{ id: string; text: string; completed: boolean; size: TaskSize }>;
   };
   allowAutoApprove: boolean;
+  /** Working directory for local coding tools (read/write/edit/bash/runJs). Defaults to process.cwd(). */
+  localWorkspaceCwd?: string;
   requestClarification: (
     request: AgentQuestionRequest,
     options: { toolCallId: string; abortSignal?: AbortSignal }
@@ -197,6 +199,113 @@ function summarizeApprovalInput(input: unknown): string {
   } catch {
     return String(input ?? "(no input)");
   }
+}
+
+function localToolApprovalTitle(toolName: string, args: unknown): string {
+  const argRecord = (args && typeof args === "object" ? args : {}) as Record<string, unknown>;
+  switch (toolName) {
+    case "bash": {
+      const cmd = typeof argRecord.command === "string" ? argRecord.command : "";
+      const short = cmd.length > 80 ? cmd.slice(0, 80) + "…" : cmd;
+      return `Run shell: ${short}`;
+    }
+    case "write": {
+      const p = typeof argRecord.path === "string" ? argRecord.path : "";
+      return `Write file: ${p}`;
+    }
+    case "edit": {
+      const p = typeof argRecord.path === "string" ? argRecord.path : "";
+      return `Edit file: ${p}`;
+    }
+    case "runJs":
+      return "Run JavaScript in sandbox";
+    default:
+      return `Run ${toolName}`;
+  }
+}
+
+function localToolApprovalSummary(toolName: string): string {
+  switch (toolName) {
+    case "bash":
+      return "Execute this shell command on your machine.";
+    case "write":
+      return "Create or overwrite this file on your machine.";
+    case "edit":
+      return "Modify this existing file on your machine.";
+    case "runJs":
+      return "Execute JavaScript in a sandboxed V8 isolate on your machine.";
+    default:
+      return "Run this local tool on your machine.";
+  }
+}
+
+/**
+ * Shared approval gate: emits tool-call/tool-result steps, blocks until the
+ * user responds, returns `{block: true}` on denial. Used for both MCP tools
+ * and local destructive tools.
+ */
+async function runApprovalGate(params: {
+  toolCallId: string;
+  toolName: string;
+  provider: string;
+  title: string;
+  summary: string;
+  input: string;
+  signal?: AbortSignal;
+  onStep: (step: AgentStep) => void;
+  requestToolApproval: AgentDeps["requestToolApproval"];
+}): Promise<{ block: true; reason: string } | undefined> {
+  const { toolCallId, toolName, provider, title, summary, input, signal, onStep, requestToolApproval } = params;
+  const approvalId = `approval:${toolCallId}`;
+  const request: AgentToolApprovalRequest = {
+    id: approvalId,
+    toolName,
+    provider,
+    title,
+    summary,
+    input,
+  };
+
+  onStep({
+    id: `${approvalId}:requested`,
+    kind: "tool-call",
+    toolName,
+    toolInput: input,
+    approvalId,
+    approvalState: "approval-requested",
+    content: `Approval required: ${title}`,
+    createdAt: Date.now(),
+  });
+
+  const response = await requestToolApproval(request, { toolCallId, abortSignal: signal });
+
+  onStep({
+    id: `${approvalId}:responded`,
+    kind: "tool-result",
+    toolName,
+    toolInput: input,
+    approvalId,
+    approvalState: "approval-responded",
+    approvalApproved: response.approved,
+    content: response.approved ? "Approved by user" : "Rejected by user",
+    createdAt: Date.now(),
+  });
+
+  if (!response.approved) {
+    onStep({
+      id: `${approvalId}:denied`,
+      kind: "tool-result",
+      toolName,
+      toolInput: input,
+      approvalId,
+      approvalState: "output-denied",
+      approvalApproved: false,
+      content: "Tool execution denied",
+      createdAt: Date.now(),
+    });
+    return { block: true, reason: `User denied ${toolName}.` };
+  }
+  return undefined;
 }
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -418,6 +527,7 @@ async function runAgentWithMessages(
     enabledSkills,
     getFleetStatus,
     allowAutoApprove,
+    localWorkspaceCwd,
     requestClarification,
     requestToolApproval,
     requestPlanApproval,
@@ -441,6 +551,7 @@ async function runAgentWithMessages(
       enabledSkills,
       getFleetStatus,
       allowAutoApprove,
+      localWorkspaceCwd,
       requestClarification,
       requestPlanApproval,
       onStep,
@@ -468,70 +579,46 @@ async function runAgentWithMessages(
       },
       getApiKey: model.apiKey ? async () => model.apiKey : undefined,
       beforeToolCall: async ({ toolCall, args }, signal) => {
-        if (toolCall.name !== "callMcpTool") return;
-        const input = args as { name: string; args: Record<string, unknown>; _autoApprove?: boolean };
-        const resolution = resolveExternalToolName(input.name, externalTools);
-        if (!resolution.ok) return; // let execute handle the resolution error
-        const external = externalTools[resolution.toolName];
-        if (!external) return;
-        const requiresApproval = shouldRequireApproval(
-          external.isMutating,
-          allowAutoApprove,
-          input._autoApprove,
-        );
-        if (!requiresApproval) return;
+        // 1) MCP tools: approval depends on tool's isMutating flag + auto-approve hint.
+        if (toolCall.name === "callMcpTool") {
+          const input = args as { name: string; args: Record<string, unknown>; _autoApprove?: boolean };
+          const resolution = resolveExternalToolName(input.name, externalTools);
+          if (!resolution.ok) return;
+          const external = externalTools[resolution.toolName];
+          if (!external) return;
+          const requiresApproval = shouldRequireApproval(
+            external.isMutating,
+            allowAutoApprove,
+            input._autoApprove,
+          );
+          if (!requiresApproval) return;
 
-        const approvalId = `approval:${toolCall.id}`;
-        const request: AgentToolApprovalRequest = {
-          id: approvalId,
-          toolName: resolution.toolName,
-          provider: external.provider,
-          title: buildApprovalTitle(resolution.toolName, external.provider),
-          summary: "This tool can create, update, or delete external data.",
-          input: summarizeApprovalInput(input.args),
-        };
-
-        onStep({
-          id: `${approvalId}:requested`,
-          kind: "tool-call",
-          toolName: resolution.toolName,
-          toolInput: request.input,
-          approvalId,
-          approvalState: "approval-requested",
-          content: `Approval required: ${request.title}`,
-          createdAt: Date.now(),
-        });
-
-        const response = await requestToolApproval(request, {
-          toolCallId: toolCall.id,
-          abortSignal: signal,
-        });
-
-        onStep({
-          id: `${approvalId}:responded`,
-          kind: "tool-result",
-          toolName: resolution.toolName,
-          toolInput: request.input,
-          approvalId,
-          approvalState: "approval-responded",
-          approvalApproved: response.approved,
-          content: response.approved ? "Approved by user" : "Rejected by user",
-          createdAt: Date.now(),
-        });
-
-        if (!response.approved) {
-          onStep({
-            id: `${approvalId}:denied`,
-            kind: "tool-result",
+          return runApprovalGate({
+            toolCallId: toolCall.id,
             toolName: resolution.toolName,
-            toolInput: request.input,
-            approvalId,
-            approvalState: "output-denied",
-            approvalApproved: false,
-            content: "Tool execution denied",
-            createdAt: Date.now(),
+            provider: external.provider,
+            title: buildApprovalTitle(resolution.toolName, external.provider),
+            summary: "This tool can create, update, or delete external data.",
+            input: summarizeApprovalInput(input.args),
+            signal,
+            onStep,
+            requestToolApproval,
           });
-          return { block: true, reason: `User denied ${resolution.toolName}.` };
+        }
+
+        // 2) Local destructive tools (write/edit/bash/runJs): always require approval.
+        if (DESTRUCTIVE_LOCAL_TOOLS.has(toolCall.name)) {
+          return runApprovalGate({
+            toolCallId: toolCall.id,
+            toolName: toolCall.name,
+            provider: "local",
+            title: localToolApprovalTitle(toolCall.name, args),
+            summary: localToolApprovalSummary(toolCall.name),
+            input: summarizeApprovalInput(args),
+            signal,
+            onStep,
+            requestToolApproval,
+          });
         }
       },
     });

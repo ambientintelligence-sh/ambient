@@ -4,6 +4,10 @@ import type {
   AgentTool,
   AgentToolResult,
 } from "@mariozechner/pi-agent-core";
+// @mariozechner/pi-coding-agent is externalized in vite.main.config.ts
+// (pulls in native WASM + a large TUI dep graph). Electron resolves it from
+// node_modules at runtime, and because it's ESM-only we load it via dynamic
+// `import()` inside buildAgentTools() rather than a static import here.
 import type {
   AgentStep,
   AgentQuestionRequest,
@@ -18,7 +22,20 @@ import {
   rankExternalTools,
   resolveExternalToolName,
 } from "./mcp-tool-resolution";
+import { buildRunJsTool } from "./run-js-tool";
 import { log } from "../logger";
+
+/**
+ * Tools that affect the user's machine (writes, shells out, evaluates code).
+ * These always go through the approval flow — no auto-approve.
+ * Kept in sync with the gate in `agent.ts:beforeToolCall`.
+ */
+export const DESTRUCTIVE_LOCAL_TOOLS = new Set([
+  "write",
+  "edit",
+  "bash",
+  "runJs",
+]);
 
 type ExaClient = {
   search: (
@@ -47,6 +64,8 @@ export type AgentToolDeps = {
     tasks: Array<{ id: string; text: string; completed: boolean; size: import("../types").TaskSize }>;
   };
   allowAutoApprove: boolean;
+  /** Root directory local coding tools (read/write/edit/bash/…) operate from. */
+  localWorkspaceCwd?: string;
   requestClarification: (
     request: AgentQuestionRequest,
     options: { toolCallId: string; abortSignal?: AbortSignal },
@@ -783,6 +802,33 @@ export async function buildAgentTools(deps: AgentToolDeps): Promise<BuildToolsRe
       },
     });
   }
+
+  // --- Local coding tools (read/write/edit/bash/grep/find/ls) -----------
+  // Source: @mariozechner/pi-coding-agent. Destructive ones
+  // (write/edit/bash) are gated by beforeToolCall in agent.ts — they always
+  // require explicit user approval, never auto-approve.
+  const cwd = deps.localWorkspaceCwd ?? process.cwd();
+  const {
+    createReadTool,
+    createWriteTool,
+    createEditTool,
+    createBashTool,
+    createGrepTool,
+    createFindTool,
+    createLsTool,
+  } = await import("@mariozechner/pi-coding-agent");
+  tools.push(
+    createReadTool(cwd) as AgentTool<TSchema>,
+    createLsTool(cwd) as AgentTool<TSchema>,
+    createGrepTool(cwd) as AgentTool<TSchema>,
+    createFindTool(cwd) as AgentTool<TSchema>,
+    createWriteTool(cwd) as AgentTool<TSchema>,
+    createEditTool(cwd) as AgentTool<TSchema>,
+    createBashTool(cwd) as AgentTool<TSchema>,
+  );
+
+  // --- runJs (sandboxed JS execution via secure-exec V8 isolate) ---------
+  tools.push(buildRunJsTool(cwd) as AgentTool<TSchema>);
 
   return { tools, externalTools, codexRegistered, claudeRegistered };
 }
