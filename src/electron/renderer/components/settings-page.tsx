@@ -476,6 +476,21 @@ function AgentsTab({
           control={<Switch checked={config.autoDelegate} onCheckedChange={(v) => set("autoDelegate", v)} />}
         />
         <SettingRow
+          label="File Tools"
+          description="Let agents read, write, edit, and search files on your machine (read, ls, grep, find, write, edit). Writes and edits always ask for approval."
+          control={<Switch checked={config.localToolsFiles} onCheckedChange={(v) => set("localToolsFiles", v)} />}
+        />
+        <SettingRow
+          label="Shell (bash)"
+          description="Let agents run shell commands on your machine. Every command asks for approval before it runs."
+          control={<Switch checked={config.localToolsBash} onCheckedChange={(v) => set("localToolsBash", v)} />}
+        />
+        <SettingRow
+          label="JavaScript Sandbox"
+          description="Let agents run JavaScript in a sandboxed V8 isolate. Use for pure computation — the sandbox can't install npm packages. Approval required per run."
+          control={<Switch checked={config.localToolsRunJs} onCheckedChange={(v) => set("localToolsRunJs", v)} />}
+        />
+        <SettingRow
           label="Coding Agent"
           description="Pick a background coding agent to make available in this session. Only one can be active at a time — the agent you pick is dispatched via a tool and streams live progress into the chat. Requires the matching CLI installed and logged in."
           control={

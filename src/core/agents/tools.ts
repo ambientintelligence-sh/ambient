@@ -66,6 +66,12 @@ export type AgentToolDeps = {
   allowAutoApprove: boolean;
   /** Root directory local coding tools (read/write/edit/bash/…) operate from. */
   localWorkspaceCwd?: string;
+  /** Feature flags for the local coding tools. */
+  localTools: {
+    files: boolean;
+    bash: boolean;
+    runJs: boolean;
+  };
   requestClarification: (
     request: AgentQuestionRequest,
     options: { toolCallId: string; abortSignal?: AbortSignal },
@@ -808,27 +814,36 @@ export async function buildAgentTools(deps: AgentToolDeps): Promise<BuildToolsRe
   // (write/edit/bash) are gated by beforeToolCall in agent.ts — they always
   // require explicit user approval, never auto-approve.
   const cwd = deps.localWorkspaceCwd ?? process.cwd();
-  const {
-    createReadTool,
-    createWriteTool,
-    createEditTool,
-    createBashTool,
-    createGrepTool,
-    createFindTool,
-    createLsTool,
-  } = await import("@mariozechner/pi-coding-agent");
-  tools.push(
-    createReadTool(cwd) as AgentTool<TSchema>,
-    createLsTool(cwd) as AgentTool<TSchema>,
-    createGrepTool(cwd) as AgentTool<TSchema>,
-    createFindTool(cwd) as AgentTool<TSchema>,
-    createWriteTool(cwd) as AgentTool<TSchema>,
-    createEditTool(cwd) as AgentTool<TSchema>,
-    createBashTool(cwd) as AgentTool<TSchema>,
-  );
+  const needsCodingAgent = deps.localTools.files || deps.localTools.bash;
+  if (needsCodingAgent) {
+    const {
+      createReadTool,
+      createWriteTool,
+      createEditTool,
+      createBashTool,
+      createGrepTool,
+      createFindTool,
+      createLsTool,
+    } = await import("@mariozechner/pi-coding-agent");
+    if (deps.localTools.files) {
+      tools.push(
+        createReadTool(cwd) as AgentTool<TSchema>,
+        createLsTool(cwd) as AgentTool<TSchema>,
+        createGrepTool(cwd) as AgentTool<TSchema>,
+        createFindTool(cwd) as AgentTool<TSchema>,
+        createWriteTool(cwd) as AgentTool<TSchema>,
+        createEditTool(cwd) as AgentTool<TSchema>,
+      );
+    }
+    if (deps.localTools.bash) {
+      tools.push(createBashTool(cwd) as AgentTool<TSchema>);
+    }
+  }
 
   // --- runJs (sandboxed JS execution via secure-exec V8 isolate) ---------
-  tools.push(buildRunJsTool(cwd) as AgentTool<TSchema>);
+  if (deps.localTools.runJs) {
+    tools.push(buildRunJsTool(cwd) as AgentTool<TSchema>);
+  }
 
   return { tools, externalTools, codexRegistered, claudeRegistered };
 }

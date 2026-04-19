@@ -72,6 +72,12 @@ export type AgentDeps = {
   allowAutoApprove: boolean;
   /** Working directory for local coding tools (read/write/edit/bash/runJs). Defaults to process.cwd(). */
   localWorkspaceCwd?: string;
+  /** Feature flags for the local coding tools. */
+  localTools: {
+    files: boolean;
+    bash: boolean;
+    runJs: boolean;
+  };
   requestClarification: (
     request: AgentQuestionRequest,
     options: { toolCallId: string; abortSignal?: AbortSignal }
@@ -528,6 +534,7 @@ async function runAgentWithMessages(
     getFleetStatus,
     allowAutoApprove,
     localWorkspaceCwd,
+    localTools,
     requestClarification,
     requestToolApproval,
     requestPlanApproval,
@@ -552,6 +559,7 @@ async function runAgentWithMessages(
       getFleetStatus,
       allowAutoApprove,
       localWorkspaceCwd,
+      localTools,
       requestClarification,
       requestPlanApproval,
       onStep,

@@ -391,6 +391,11 @@ export class Session {
       },
       responseLength: config.responseLength,
       allowAutoApprove: config.agentAutoApprove,
+      localTools: {
+        files: config.localToolsFiles,
+        bash: config.localToolsBash,
+        runJs: config.localToolsRunJs,
+      },
       db: this.db ?? undefined,
     });
     if (this.db) {

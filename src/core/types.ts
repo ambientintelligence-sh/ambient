@@ -205,6 +205,12 @@ export type SessionConfig = {
   legacyAudio: boolean;
   translationEnabled: boolean;
   agentAutoApprove: boolean;
+  /** Enables the local file tools: read, write, edit, ls, grep, find. */
+  localToolsFiles: boolean;
+  /** Enables the local bash shell tool. */
+  localToolsBash: boolean;
+  /** Enables the sandboxed runJs V8 tool. */
+  localToolsRunJs: boolean;
   codingAgent: CodingAgentProvider;
   disabledSkillIds: string[];
   learningEnabled: boolean;
@@ -245,6 +251,12 @@ export type AppConfig = {
   legacyAudio: boolean;
   agentAutoApprove: boolean;
   autoDelegate: boolean;
+  /** Enables the local file tools: read, write, edit, ls, grep, find. */
+  localToolsFiles: boolean;
+  /** Enables the local bash shell tool. */
+  localToolsBash: boolean;
+  /** Enables the sandboxed runJs V8 tool. */
+  localToolsRunJs: boolean;
   codingAgent: CodingAgentProvider;
   disabledSkillIds: string[];
   learningEnabled: boolean;
@@ -377,6 +389,9 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   legacyAudio: false,
   agentAutoApprove: false,
   autoDelegate: false,
+  localToolsFiles: true,
+  localToolsBash: true,
+  localToolsRunJs: false,
   codingAgent: null,
   disabledSkillIds: [],
   learningEnabled: true,
@@ -512,6 +527,9 @@ export function normalizeAppConfig(
     legacyAudio: !!merged.legacyAudio,
     agentAutoApprove: !!merged.agentAutoApprove,
     autoDelegate: !!merged.autoDelegate,
+    localToolsFiles: merged.localToolsFiles !== false,
+    localToolsBash: merged.localToolsBash !== false,
+    localToolsRunJs: !!merged.localToolsRunJs,
     codingAgent: resolveCodingAgent(merged),
     analysisProviderOnly,
     analysisReasoning,

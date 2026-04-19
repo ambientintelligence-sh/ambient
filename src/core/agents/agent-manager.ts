@@ -49,6 +49,12 @@ type AgentManagerDeps = {
   allowAutoApprove: boolean;
   /** Working directory for local coding tools (read/write/edit/bash/runJs). Defaults to process.cwd(). */
   localWorkspaceCwd?: string;
+  /** Feature flags for the local coding tools. */
+  localTools: {
+    files: boolean;
+    bash: boolean;
+    runJs: boolean;
+  };
   db?: AppDatabase;
 };
 
@@ -491,6 +497,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         },
         allowAutoApprove: deps.allowAutoApprove,
         localWorkspaceCwd: deps.localWorkspaceCwd,
+        localTools: deps.localTools,
         requestClarification: (request, options) =>
           requestClarification(agent.id, request, options),
         requestToolApproval: (request, options) =>
@@ -570,6 +577,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         },
         allowAutoApprove: deps.allowAutoApprove,
         localWorkspaceCwd: deps.localWorkspaceCwd,
+        localTools: deps.localTools,
         requestClarification: (request, options) =>
           requestClarification(agent.id, request, options),
         requestToolApproval: (request, options) =>
@@ -831,6 +839,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         },
         allowAutoApprove: deps.allowAutoApprove,
         localWorkspaceCwd: deps.localWorkspaceCwd,
+        localTools: deps.localTools,
         requestClarification: (request, options) => requestClarification(agentId, request, options),
         requestToolApproval: (request, options) => requestToolApproval(agentId, request, options),
         requestPlanApproval: (request, options) => requestPlanApproval(agentId, request, options),
