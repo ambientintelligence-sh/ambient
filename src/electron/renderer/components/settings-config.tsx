@@ -169,6 +169,7 @@ export function getTranscriptionModelOption(
 export const ANALYSIS_PROVIDERS: Array<{ value: AppConfig["analysisProvider"]; label: string }> = [
   { value: "openrouter", label: "OpenRouter" },
   { value: "bedrock", label: "AWS Bedrock" },
+  { value: "openai-codex", label: "ChatGPT Plus/Pro (Codex)" },
 ];
 
 export const PROVIDER_REQUIRED_KEYS: Record<string, string[]> = {

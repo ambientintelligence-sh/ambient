@@ -585,7 +585,11 @@ async function runAgentWithMessages(
         messages: previousMessages as PiAgentMessage[],
         tools,
       },
-      getApiKey: model.apiKey ? async () => model.apiKey : undefined,
+      getApiKey: model.getApiKey
+        ? async () => model.getApiKey!()
+        : model.apiKey
+          ? async () => model.apiKey
+          : undefined,
       beforeToolCall: async ({ toolCall, args }, signal) => {
         // 1) MCP tools: approval depends on tool's isMutating flag + auto-approve hint.
         if (toolCall.name === "callMcpTool") {

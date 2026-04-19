@@ -142,7 +142,13 @@ export function createTaskModel(config: SessionConfig): LanguageModel {
 export type AgentPiModel = {
   model: Model<Api>;
   thinkingLevel: ThinkingLevel | "off";
+  /** Static API key for env-backed providers (OpenRouter). */
   apiKey?: string;
+  /**
+   * Dynamic key resolver for OAuth-backed providers (ChatGPT subscription).
+   * Called per LLM request so expired tokens can be refreshed transparently.
+   */
+  getApiKey?: () => Promise<string | undefined>;
 };
 
 function reasoningEffortToThinkingLevel(
@@ -189,7 +195,33 @@ function buildBedrockModel(modelId: string): Model<"bedrock-converse-stream"> {
   };
 }
 
-export function createAgentPiModel(config: SessionConfig): AgentPiModel {
+function buildOpenAiCodexModel(modelId: string): Model<"openai-codex-responses"> {
+  return {
+    id: modelId,
+    name: modelId,
+    api: "openai-codex-responses",
+    provider: "openai-codex",
+    baseUrl: "https://chatgpt.com/backend-api",
+    reasoning: true,
+    input: ["text", "image"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 200_000,
+    maxTokens: 100_000,
+  };
+}
+
+export type CreateAgentPiModelDeps = {
+  /**
+   * Returns a fresh OpenAI Codex OAuth access token (refreshing on expiry).
+   * Required when `config.analysisProvider === "openai-codex"`.
+   */
+  getOpenAiCodexAccessToken?: () => Promise<string>;
+};
+
+export function createAgentPiModel(
+  config: SessionConfig,
+  deps: CreateAgentPiModelDeps = {},
+): AgentPiModel {
   const thinkingLevel = reasoningEffortToThinkingLevel(
     getReasoningEffortForModel(config.analysisModelId),
   );
@@ -198,6 +230,20 @@ export function createAgentPiModel(config: SessionConfig): AgentPiModel {
     return {
       model: buildBedrockModel(config.analysisModelId) as Model<Api>,
       thinkingLevel,
+    };
+  }
+
+  if (config.analysisProvider === "openai-codex") {
+    const getToken = deps.getOpenAiCodexAccessToken;
+    if (!getToken) {
+      throw new Error(
+        "openai-codex provider selected but no OAuth token resolver was wired. Log in via Settings → ChatGPT.",
+      );
+    }
+    return {
+      model: buildOpenAiCodexModel(config.analysisModelId) as Model<Api>,
+      thinkingLevel,
+      getApiKey: getToken,
     };
   }
 

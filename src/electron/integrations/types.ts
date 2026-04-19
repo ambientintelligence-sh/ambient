@@ -26,9 +26,25 @@ export type CustomMcpServerRecord = {
   lastError?: string;
 };
 
+/**
+ * AI provider OAuth credentials (ChatGPT/Claude/etc. subscription logins).
+ *
+ * Distinct from `OAuthCredentialRecord` above, which targets MCP's
+ * `@modelcontextprotocol/sdk` token shape. AI providers use pi-ai's
+ * `OAuthCredentials` (`{access, refresh, expires, ...}`) serialized as JSON.
+ */
+export type AiOAuthProviderRecord = {
+  credentialsEncrypted?: string;
+  label?: string;
+  accountId?: string;
+  lastConnectedAt?: number;
+  lastError?: string;
+};
+
 export type IntegrationCredentialsFile = {
   version: 1;
   oauthProviders?: Record<string, OAuthCredentialRecord>;
+  aiProviders?: Record<string, AiOAuthProviderRecord>;
   customServers?: CustomMcpServerRecord[];
   apiKeys?: Record<string, string>;
   /** @deprecated Old per-provider fields — migrated on first read. */

@@ -6,10 +6,20 @@ import type {
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type {
+  AiOAuthProviderRecord,
   CustomMcpServerRecord,
   IntegrationCredentialsFile,
   OAuthCredentialRecord,
 } from "./types";
+
+/** Shape of credentials returned by pi-ai OAuth providers. */
+export type AiOAuthCredentials = {
+  access: string;
+  refresh: string;
+  expires: number;
+  accountId?: string;
+  [key: string]: unknown;
+};
 
 const EMPTY_FILE: IntegrationCredentialsFile = { version: 1 };
 
@@ -198,6 +208,57 @@ export class SecureCredentialStore {
           lastConnectedAt: undefined,
           lastError: undefined,
         };
+      }
+      return current;
+    });
+  }
+
+  // ── AI provider OAuth (ChatGPT, Claude Pro, etc.) ──
+
+  private aiProviderRecord(data: IntegrationCredentialsFile, providerId: string): AiOAuthProviderRecord {
+    return data.aiProviders?.[providerId] ?? {};
+  }
+
+  private ensureAiProvider(data: IntegrationCredentialsFile, providerId: string): AiOAuthProviderRecord {
+    data.aiProviders ??= {};
+    data.aiProviders[providerId] ??= {};
+    return data.aiProviders[providerId];
+  }
+
+  async getAiOAuthCredentials(providerId: string): Promise<AiOAuthCredentials | undefined> {
+    const data = await this.readFile();
+    return this.decryptJson<AiOAuthCredentials>(this.aiProviderRecord(data, providerId).credentialsEncrypted);
+  }
+
+  async setAiOAuthCredentials(
+    providerId: string,
+    credentials: AiOAuthCredentials | undefined,
+    meta?: { label?: string; accountId?: string },
+  ): Promise<void> {
+    await this.mutate((current) => {
+      const record = this.ensureAiProvider(current, providerId);
+      if (credentials) {
+        record.credentialsEncrypted = this.encryptJson(credentials);
+        record.lastConnectedAt = Date.now();
+        record.lastError = undefined;
+        if (meta?.label !== undefined) record.label = meta.label;
+        if (meta?.accountId !== undefined) record.accountId = meta.accountId;
+      } else {
+        record.credentialsEncrypted = undefined;
+      }
+      return current;
+    });
+  }
+
+  async getAiProviderMeta(providerId: string): Promise<AiOAuthProviderRecord | undefined> {
+    const data = await this.readFile();
+    return data.aiProviders?.[providerId];
+  }
+
+  async clearAiOAuthProvider(providerId: string): Promise<void> {
+    await this.mutate((current) => {
+      if (current.aiProviders) {
+        delete current.aiProviders[providerId];
       }
       return current;
     });
