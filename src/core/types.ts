@@ -49,7 +49,7 @@ export type TranscriptionProvider =
   | "openrouter"
   | "vertex"
   | "google";
-export type AnalysisProvider = "openrouter" | "google" | "vertex" | "bedrock" | "openai-codex";
+export type AnalysisProvider = "openrouter" | "google" | "vertex" | "bedrock";
 export type { AnalysisModelPreset } from "./models";
 
 export type TranscriptBlock = {
@@ -462,8 +462,7 @@ export function normalizeAppConfig(
     merged.analysisProvider === "openrouter" ||
     merged.analysisProvider === "google" ||
     merged.analysisProvider === "vertex" ||
-    merged.analysisProvider === "bedrock" ||
-    merged.analysisProvider === "openai-codex"
+    merged.analysisProvider === "bedrock"
       ? merged.analysisProvider
       : DEFAULT_APP_CONFIG.analysisProvider;
   const intervalMs =

@@ -188,13 +188,6 @@ export type SessionExternalDeps = {
   getCodexClient?: import("./agents/codex-client").GetCodexClient;
   getClaudeClient?: import("./agents/claude-client").GetClaudeClient;
   dataDir?: string;
-  /**
-   * Electron-side callback that returns a fresh OpenAI Codex OAuth access
-   * token (refreshing on expiry). Only needed when the agent provider is
-   * set to "openai-codex". Kept as a plain function so core stays
-   * independent of the credential store implementation.
-   */
-  getOpenAiCodexAccessToken?: () => Promise<string>;
 };
 
 export class Session {
@@ -274,7 +267,6 @@ export class Session {
   private getCodexClient?: SessionExternalDeps["getCodexClient"];
   private getClaudeClient?: SessionExternalDeps["getClaudeClient"];
   private dataDir?: string;
-  private getOpenAiCodexAccessToken?: SessionExternalDeps["getOpenAiCodexAccessToken"];
 
   private get sourceLangLabel(): string { return getLanguageLabel(this.config.sourceLang); }
   private get targetLangLabel(): string { return getLanguageLabel(this.config.targetLang); }
@@ -352,7 +344,6 @@ export class Session {
     this.getCodexClient = externalDeps?.getCodexClient;
     this.getClaudeClient = externalDeps?.getClaudeClient;
     this.dataDir = externalDeps?.dataDir;
-    this.getOpenAiCodexAccessToken = externalDeps?.getOpenAiCodexAccessToken;
     this._translationEnabled = config.translationEnabled;
     this.userContext = this.loadProjectContext();
 
@@ -373,9 +364,7 @@ export class Session {
     });
 
     this.agentManager = createAgentManager({
-      model: createAgentPiModel(config, {
-        getOpenAiCodexAccessToken: this.getOpenAiCodexAccessToken,
-      }),
+      model: createAgentPiModel(config),
       utilitiesModel: this.utilitiesModel,
       synthesisModel: this.synthesisModel,
       exaApiKey: process.env.EXA_API_KEY,
@@ -1855,9 +1844,7 @@ export class Session {
     let result: Awaited<ReturnType<typeof runSuggestionAgent>> | undefined;
     try {
       result = await runSuggestionAgent(input, {
-        agentModel: createAgentPiModel(this.config, {
-          getOpenAiCodexAccessToken: this.getOpenAiCodexAccessToken,
-        }),
+        agentModel: createAgentPiModel(this.config),
         extractionModel: this.analysisModel,
         getTranscriptContext: (last?: number, offset?: number) =>
           this.getTranscriptBlocks(last, offset),

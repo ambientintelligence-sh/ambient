@@ -631,59 +631,6 @@ export function SettingsPage({
   const claudeConnected = useIntegrationStore((s) => s.claudeConnected);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // ChatGPT Plus/Pro OAuth login state — gates the "openai-codex" provider
-  // option (hidden until login succeeds) and powers the login row in the
-  // Models tab.
-  const [chatgptAuth, setChatgptAuth] = useState<{
-    loggedIn: boolean;
-    accountId?: string;
-    error?: string;
-    busy?: boolean;
-  }>({ loggedIn: false });
-
-  const refreshChatgptAuth = () => {
-    void window.electronAPI.openaiCodexStatus().then((res) => {
-      if (res.ok) {
-        setChatgptAuth({ loggedIn: !!res.loggedIn, accountId: res.accountId });
-      } else {
-        setChatgptAuth({ loggedIn: false, error: res.error });
-      }
-    });
-  };
-
-  useEffect(() => {
-    refreshChatgptAuth();
-  }, []);
-
-  const handleChatgptLogin = async () => {
-    setChatgptAuth((prev) => ({ ...prev, busy: true, error: undefined }));
-    const res = await window.electronAPI.openaiCodexLogin();
-    if (res.ok) {
-      setChatgptAuth({ loggedIn: !!res.loggedIn, accountId: res.accountId });
-    } else {
-      setChatgptAuth({ loggedIn: false, error: res.error, busy: false });
-    }
-  };
-
-  const handleChatgptLogout = async () => {
-    setChatgptAuth((prev) => ({ ...prev, busy: true }));
-    await window.electronAPI.openaiCodexLogout();
-    // If the user was on the openai-codex provider when logging out, fall
-    // back to OpenRouter so they're not stuck with an unusable model.
-    if (config.analysisProvider === "openai-codex") {
-      const or = MODEL_CONFIG.openrouter.defaults;
-      onConfigChange({
-        ...config,
-        analysisProvider: "openrouter",
-        analysisModelId: or.analysisModelId,
-        taskModelId: or.taskModelId,
-        utilityModelId: or.utilityModelId,
-        synthesisModelId: or.synthesisModelId,
-        taskProviders: or.taskProviders,
-      });
-    }
-    setChatgptAuth({ loggedIn: false });
-  };
   const [systemPrefersDark, setSystemPrefersDark] = useState(() =>
     typeof globalThis.matchMedia === "function"
       ? globalThis.matchMedia("(prefers-color-scheme: dark)").matches
@@ -1028,7 +975,7 @@ export function SettingsPage({
           <SettingsSection icon={CpuIcon} title="Model Roles">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {(() => {
-                const providerKey = (config.analysisProvider === "openrouter" || config.analysisProvider === "bedrock" || config.analysisProvider === "openai-codex")
+                const providerKey = (config.analysisProvider === "openrouter" || config.analysisProvider === "bedrock")
                   ? config.analysisProvider
                   : "openrouter" as const;
                 const providerConfig = MODEL_CONFIG[providerKey];
@@ -1043,7 +990,7 @@ export function SettingsPage({
                         value={config.analysisProvider}
                         onValueChange={(v) => {
                           const provider = v as AppConfig["analysisProvider"];
-                          const nextConfig = (provider === "openrouter" || provider === "bedrock" || provider === "openai-codex")
+                          const nextConfig = (provider === "openrouter" || provider === "bedrock")
                             ? MODEL_CONFIG[provider]
                             : null;
                           const defs = nextConfig?.defaults;
@@ -1066,18 +1013,10 @@ export function SettingsPage({
                         </SelectTrigger>
                         <SelectContent>
                           {ANALYSIS_PROVIDERS
-                            .filter((option) => {
-                              // openai-codex is OAuth-gated: only show once the user has logged in.
-                              // Keep the option visible if it's the currently selected provider so
-                              // the UI doesn't go blank mid-render while status refreshes.
-                              if (option.value === "openai-codex") {
-                                return option.value === config.analysisProvider || chatgptAuth.loggedIn;
-                              }
-                              return (
-                                option.value === config.analysisProvider ||
-                                isProviderConfigured(option.value, apiKeyStatus)
-                              );
-                            })
+                            .filter((option) =>
+                              option.value === config.analysisProvider ||
+                              isProviderConfigured(option.value, apiKeyStatus),
+                            )
                             .map((option) => (
                             <SelectItem key={option.value} value={option.value}>
                               {option.label}
@@ -1212,48 +1151,6 @@ export function SettingsPage({
             </div>
           </SettingsSection>
 
-          <SettingsSection
-            icon={KeyIcon}
-            title="Subscription Logins"
-            description="Authorize ambient against an AI subscription so agents can run without per-token API billing."
-          >
-            <div className="flex items-start justify-between gap-4 py-1">
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium flex items-center gap-2">
-                  <OpenAIIcon className="size-3.5" />
-                  ChatGPT Plus/Pro (Codex)
-                </div>
-                <p className="text-2xs text-muted-foreground mt-1 leading-relaxed">
-                  {chatgptAuth.loggedIn
-                    ? `Logged in${chatgptAuth.accountId ? ` — account ${chatgptAuth.accountId.slice(0, 8)}…` : ""}. Unlocks gpt-5.x models; agents bill against your subscription quota, not API credits.`
-                    : "Log in with your ChatGPT account to unlock gpt-5.x models in the provider dropdown above. Runs agents on your Plus/Pro subscription quota — no API credits needed."}
-                </p>
-                {chatgptAuth.error && (
-                  <span className="text-2xs text-red-500 mt-1 block">{chatgptAuth.error}</span>
-                )}
-              </div>
-              <div className="shrink-0">
-                {chatgptAuth.loggedIn ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleChatgptLogout}
-                    disabled={chatgptAuth.busy}
-                  >
-                    Log out
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    onClick={handleChatgptLogin}
-                    disabled={chatgptAuth.busy}
-                  >
-                    {chatgptAuth.busy ? "Opening browser…" : "Log in with ChatGPT"}
-                  </Button>
-                )}
-              </div>
-            </div>
-          </SettingsSection>
           </TabsContent>
 
           <TabsContent value="skills">
