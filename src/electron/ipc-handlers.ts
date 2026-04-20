@@ -12,6 +12,7 @@ import { registerSessionHandlers } from "./ipc/register-session-handlers";
 import { registerTaskInsightHandlers } from "./ipc/register-task-insight-handlers";
 import { registerIntegrationHandlers } from "./ipc/register-integration-handlers";
 import { registerApiKeyHandlers } from "./ipc/register-api-key-handlers";
+import { registerAiOAuthHandlers } from "./ipc/register-ai-oauth-handlers";
 import { registerSkillHandlers } from "./ipc/register-skill-handlers";
 import { registerLearningHandlers } from "./ipc/register-learning-handlers";
 import { buildSessionConfig, shutdownCurrentSession, wireSessionEvents } from "./ipc/ipc-utils";
@@ -112,6 +113,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null, db: A
   const manager = integrationManager;
 
   registerApiKeyHandlers(store);
+  registerAiOAuthHandlers(store);
 
   const ensureSession: EnsureSession = async (
     sessionId: string,

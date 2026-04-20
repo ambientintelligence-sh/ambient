@@ -12,7 +12,7 @@ import {
 export const analysisSchema = z.object({
   keyPoints: z
     .array(z.string())
-    .describe("2-4 key points from the recent conversation. Each must be a specific, verifiable fact. One sentence each."),
+    .describe("1-2 key points from the recent conversation. Each must be a specific, verifiable fact. One sentence each."),
 });
 
 export const agentSuggestionSchema = z.object({

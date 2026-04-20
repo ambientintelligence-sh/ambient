@@ -167,6 +167,10 @@ export type ElectronAPI = {
   saveApiKey: (envVar: string, value: string) => Promise<{ ok: boolean; error?: string }>;
   deleteApiKey: (envVar: string) => Promise<{ ok: boolean; error?: string }>;
 
+  openaiCodexStatus: () => Promise<{ ok: boolean; loggedIn?: boolean; accountId?: string; lastConnectedAt?: number; error?: string }>;
+  openaiCodexLogin: () => Promise<{ ok: boolean; loggedIn?: boolean; accountId?: string; lastConnectedAt?: number; error?: string }>;
+  openaiCodexLogout: () => Promise<{ ok: boolean; error?: string }>;
+
   onStateChange: (callback: (state: UIState) => void) => () => void;
   onBlockAdded: (callback: (block: TranscriptBlock) => void) => () => void;
   onBlockUpdated: (callback: (block: TranscriptBlock) => void) => () => void;
@@ -319,6 +323,10 @@ const api: ElectronAPI = {
   getApiKeyStatus: () => ipcRenderer.invoke("get-api-key-status"),
   saveApiKey: (envVar, value) => ipcRenderer.invoke("save-api-key", envVar, value),
   deleteApiKey: (envVar) => ipcRenderer.invoke("delete-api-key", envVar),
+
+  openaiCodexStatus: () => ipcRenderer.invoke("auth:openai-codex:status"),
+  openaiCodexLogin: () => ipcRenderer.invoke("auth:openai-codex:login"),
+  openaiCodexLogout: () => ipcRenderer.invoke("auth:openai-codex:logout"),
 
   onStateChange: createListener<UIState>("session:state-change"),
   onBlockAdded: createListener<TranscriptBlock>("session:block-added"),

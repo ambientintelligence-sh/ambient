@@ -3,6 +3,7 @@ import { createVertex } from "@ai-sdk/google-vertex";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
+import type { Api, Model, ThinkingLevel } from "@mariozechner/pi-ai";
 import type { SessionConfig } from "./types";
 import { getReasoningEffortForModel } from "./models";
 
@@ -128,4 +129,93 @@ export function createTaskModel(config: SessionConfig): LanguageModel {
       ...(config.taskProviders?.length ? { only: config.taskProviders } : {}),
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// pi-ai (pi-mono) provider factory for the agent runtime.
+//
+// The analysis / structured-output path stays on Vercel AI SDK (see functions
+// above). Only the agent runtime migrates to pi-mono, so we build a pi-ai
+// `Model<Api>` here and let pi-mono's `streamSimple` drive the conversation.
+// ---------------------------------------------------------------------------
+
+export type AgentPiModel = {
+  model: Model<Api>;
+  thinkingLevel: ThinkingLevel | "off";
+  /** Static API key for env-backed providers (OpenRouter). */
+  apiKey?: string;
+  /**
+   * Dynamic key resolver for OAuth-backed providers (ChatGPT subscription).
+   * Called per LLM request so expired tokens can be refreshed transparently.
+   */
+  getApiKey?: () => Promise<string | undefined>;
+};
+
+function reasoningEffortToThinkingLevel(
+  effort: ReturnType<typeof getReasoningEffortForModel>,
+): ThinkingLevel | "off" {
+  if (!effort || effort === "none") return "off";
+  return effort;
+}
+
+function buildOpenRouterModel(modelId: string, taskProviders?: string[]): Model<"openai-completions"> {
+  return {
+    id: modelId,
+    name: modelId,
+    api: "openai-completions",
+    provider: "openrouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    reasoning: true,
+    input: ["text", "image"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 200_000,
+    maxTokens: 32_000,
+    compat: {
+      thinkingFormat: "openrouter",
+      openRouterRouting: {
+        sort: "throughput",
+        ...(taskProviders?.length ? { only: taskProviders } : {}),
+      },
+    },
+  };
+}
+
+function buildBedrockModel(modelId: string): Model<"bedrock-converse-stream"> {
+  return {
+    id: modelId,
+    name: modelId,
+    api: "bedrock-converse-stream",
+    provider: "amazon-bedrock",
+    baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com",
+    reasoning: true,
+    input: ["text", "image"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 200_000,
+    maxTokens: 16_384,
+  };
+}
+
+export type CreateAgentPiModelDeps = Record<string, never>;
+
+export function createAgentPiModel(
+  config: SessionConfig,
+  _deps: CreateAgentPiModelDeps = {},
+): AgentPiModel {
+  const thinkingLevel = reasoningEffortToThinkingLevel(
+    getReasoningEffortForModel(config.analysisModelId),
+  );
+
+  if (config.analysisProvider === "bedrock") {
+    return {
+      model: buildBedrockModel(config.analysisModelId) as Model<Api>,
+      thinkingLevel,
+    };
+  }
+
+  const only = config.analysisProviderOnly ? [config.analysisProviderOnly] : undefined;
+  return {
+    model: buildOpenRouterModel(config.analysisModelId, only) as Model<Api>,
+    thinkingLevel,
+    apiKey: process.env.OPENROUTER_API_KEY,
+  };
 }

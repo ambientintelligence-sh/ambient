@@ -21,7 +21,7 @@ export type ModelPreset = {
   providers?: string[];
 };
 
-export type ModelProvider = "openrouter" | "bedrock";
+export type ModelProvider = "openrouter" | "bedrock" | "openai-codex";
 
 export type ProviderRoleDefaults = {
   analysisModelId: string;
@@ -122,6 +122,68 @@ export const MODEL_CONFIG: Record<ModelProvider, ProviderConfig> = {
       {
         label: "GLM 5.1",
         modelId: "z-ai/glm-5.1",
+        reasoning: true,
+        reasoningEffort: "medium",
+      },
+    ],
+  },
+  "openai-codex": {
+    defaults: {
+      // ChatGPT subscription-backed endpoint. These only apply to the agent
+      // path — utility/synthesis/analysis for suggestions still route via
+      // the original provider (OpenRouter/Bedrock) because the ChatGPT
+      // backend charges against weekly/daily message caps and we don't want
+      // to burn them on summarisation.
+      //
+      // Model list mirrors what ChatGPT Plus/Pro exposes in the web model
+      // picker. ChatGPT's own UI is the source of truth for "what's
+      // available on your subscription" — there's no clean API for it.
+      analysisModelId: "gpt-5.4",
+      taskModelId: "gpt-5.4",
+      utilityModelId: "gpt-5.4",
+      synthesisModelId: "gpt-5.4",
+      taskProviders: [],
+    },
+    models: [
+      {
+        label: "GPT-5.4",
+        modelId: "gpt-5.4",
+        reasoning: true,
+        reasoningEffort: "medium",
+      },
+      {
+        label: "GPT-5.4 Mini",
+        modelId: "gpt-5.4-mini",
+        reasoning: true,
+        reasoningEffort: "medium",
+      },
+      {
+        label: "GPT-5.3 Codex",
+        modelId: "gpt-5.3-codex",
+        reasoning: true,
+        reasoningEffort: "medium",
+      },
+      {
+        label: "GPT-5.2 Codex",
+        modelId: "gpt-5.2-codex",
+        reasoning: true,
+        reasoningEffort: "medium",
+      },
+      {
+        label: "GPT-5.2",
+        modelId: "gpt-5.2",
+        reasoning: true,
+        reasoningEffort: "medium",
+      },
+      {
+        label: "GPT-5.1 Codex Max",
+        modelId: "gpt-5.1-codex-max",
+        reasoning: true,
+        reasoningEffort: "xhigh",
+      },
+      {
+        label: "GPT-5.1 Codex Mini",
+        modelId: "gpt-5.1-codex-mini",
         reasoning: true,
         reasoningEffort: "medium",
       },
