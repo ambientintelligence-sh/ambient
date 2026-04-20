@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/ambientintelligence-sh/ambient/compare/v1.4.1...v1.5.0) (2026-04-20)
+
+
+### Features
+
+* Integrate local tools, and OpenAI login  ([#20](https://github.com/ambientintelligence-sh/ambient/issues/20)) ([84311c9](https://github.com/ambientintelligence-sh/ambient/commit/84311c9ae6538cf3f00756f0dc78850f11db1c0c))
+
 ## [1.4.1](https://github.com/ambientintelligence-sh/ambient/compare/v1.4.0...v1.4.1) (2026-04-17)
 
 
