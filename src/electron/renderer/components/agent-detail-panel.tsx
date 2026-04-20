@@ -15,7 +15,6 @@ import {
   RefreshCwIcon,
 } from "lucide-react";
 import {
-  CitedMessageResponse,
   Message,
   MessageContent,
   MessageResponse,
@@ -302,7 +301,7 @@ function StepItem({
       return (
         <div className="group mt-1 py-2">
           <div className="text-xs text-foreground leading-relaxed [&_a]:text-primary [&_a]:underline">
-            <CitedMessageResponse>{step.content}</CitedMessageResponse>
+            <MessageResponse>{step.content}</MessageResponse>
           </div>
           <TextStepActions content={step.content} onRegenerate={onRegenerate} />
         </div>

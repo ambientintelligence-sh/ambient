@@ -14,7 +14,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { InlineCitationBadge } from "@/components/ai-elements/inline-citation";
 import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
@@ -323,57 +322,6 @@ export const MessageResponse = ({
     {...props}
   />
 );
-
-// Matches: [N] Title — URL  (supports —, –, or -)
-const SOURCE_LINE_RE = /^\[(\d+)\]\s+(.+?)\s+[—–-]\s+(https?:\/\/\S+)/;
-
-function parseCitations(content: string): {
-  body: string;
-  sources: Record<string, { title: string; url: string }>;
-} {
-  const sourcesIdx = content.search(/\n+Sources:\s*\n/);
-  if (sourcesIdx === -1) return { body: content, sources: {} };
-
-  const body = content.slice(0, sourcesIdx).trim();
-  const sources: Record<string, { title: string; url: string }> = {};
-
-  for (const line of content.slice(sourcesIdx).split("\n")) {
-    const m = line.match(SOURCE_LINE_RE);
-    if (m) sources[m[1]] = { title: m[2].trim(), url: m[3].trim() };
-  }
-
-  return { body, sources };
-}
-
-export function CitedMessageResponse({
-  children,
-  className,
-  ...props
-}: MessageResponseProps) {
-  const content = typeof children === "string" ? children : "";
-  const { body, sources } = parseCitations(content);
-  const citationEntries = Object.entries(sources);
-
-  return (
-    <div>
-      <MessageResponse className={className} {...props}>
-        {citationEntries.length > 0 ? body : children}
-      </MessageResponse>
-      {citationEntries.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {citationEntries.map(([num, source]) => (
-            <InlineCitationBadge
-              key={num}
-              number={num}
-              title={source.title}
-              url={source.url}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export type MessageToolbarProps = ComponentProps<"div">;
 
