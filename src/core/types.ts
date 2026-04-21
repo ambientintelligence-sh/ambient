@@ -125,6 +125,7 @@ export type SuggestionKind = "research" | "action" | "insight" | "flag" | "follo
 export type TaskSuggestion = Readonly<{
   id: string;
   text: string;
+  flag?: string;
   details?: string;
   transcriptExcerpt?: string;
   kind?: SuggestionKind;

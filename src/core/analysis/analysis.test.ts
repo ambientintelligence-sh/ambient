@@ -66,6 +66,12 @@ describe("buildAgentSuggestionPrompt", () => {
     expect(prompt).toContain("Prior educational insights");
     expect(prompt).toContain("- Austin has major events that can affect hotel prices");
   });
+
+  it("asks for separate flag and action output", () => {
+    const prompt = buildAgentSuggestionPrompt(SAMPLE_BLOCKS, []);
+    expect(prompt).toContain("Recent transcript:");
+    expect(prompt).toContain("I want to visit Austin next month.");
+  });
 });
 
 describe("buildTaskFromSelectionPrompt", () => {

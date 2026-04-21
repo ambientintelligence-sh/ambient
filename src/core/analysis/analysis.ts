@@ -22,9 +22,13 @@ export const agentSuggestionSchema = z.object({
         kind: z
           .enum(["research", "action", "insight", "flag", "followup"])
           .describe("research = share a concrete fact you looked up; action = offer to draft/create/do something specific; insight = point out something the speakers didn't notice; flag = highlight a conflict, mistake, or risk; followup = remind about a loose thread"),
+        flag: z
+          .string()
+          .describe("Short concrete issue, contradiction, or opportunity noticed in the transcript or tools.")
+          .optional(),
         text: z
           .string()
-          .describe("Short, natural, first-person observation from a friend listening in. Leads with the concrete finding (specific number, date, decision, contradiction) — not a generic offer. Good: 'They said 45M, but the March UN report said 38M — flag it?'. Bad: 'Want me to compare the figures and identify any discrepancies?'"),
+          .describe("Short, concrete next step or action the user can accept as a task. Keep it actionable and specific, not generic. Good: 'Flag the 45M vs 38M discrepancy before this gets repeated.' Bad: 'Want me to compare the figures and identify any discrepancies?'"),
         details: z
           .string()
           .describe("Brief context or rationale for the suggestion.")
@@ -35,7 +39,7 @@ export const agentSuggestionSchema = z.object({
           .optional(),
       }),
     )
-    .describe("0-3 grounded observations. Each must lead with a concrete thing the agent actually found, not a generic offer to do research."),
+    .describe("0-3 grounded suggestions. Each should pair a concrete flag or observation with a specific next step the user could accept as a task."),
 });
 
 export const taskFromSelectionSchema = z.object({

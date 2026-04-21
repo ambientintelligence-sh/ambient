@@ -106,6 +106,7 @@ function SuggestionItem({
 }) {
   const [opacity, setOpacity] = useState(1);
   const [progress, setProgress] = useState(100);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const onDismissRef = useRef(onDismiss);
   onDismissRef.current = onDismiss;
 
@@ -132,6 +133,7 @@ function SuggestionItem({
   }, [suggestion.createdAt]);
 
   const KindIcon = suggestion.kind ? SUGGESTION_KIND_ICONS[suggestion.kind] : SearchIcon;
+  const hasDetails = Boolean(suggestion.flag?.trim() || suggestion.details?.trim() || suggestion.transcriptExcerpt?.trim());
 
   return (
     <li
@@ -140,25 +142,59 @@ function SuggestionItem({
     >
       <div className="flex items-start gap-2 min-h-7 py-1.5 px-2 relative z-10">
         <KindIcon className="size-3 shrink-0 text-muted-foreground mt-0.5" />
-        <span className="text-xs text-foreground flex-1 break-words">
-          {suggestion.text}
-        </span>
-        <button
-          type="button"
-          onClick={onAccept}
-          className="shrink-0 cursor-pointer p-0.5 text-primary transition-colors hover:text-primary/80"
-          aria-label="Add to tasks"
-        >
-          <PlusIcon className="size-3" />
-        </button>
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="shrink-0 cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-foreground"
-          aria-label="Dismiss suggestion"
-        >
-          <XIcon className="size-3" />
-        </button>
+        <div className="min-w-0 flex-1">
+          {suggestion.flag?.trim() && (
+            <div className="mb-1 text-[11px] font-medium text-foreground/72 break-words">
+              {suggestion.flag.trim()}
+            </div>
+          )}
+          <div className="text-xs text-foreground break-words">
+            {suggestion.text}
+          </div>
+          {hasDetails && (
+            <button
+              type="button"
+              onClick={() => setDetailsOpen((prev) => !prev)}
+              className="mt-1 text-2xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {detailsOpen ? "Hide context" : "Show context"}
+            </button>
+          )}
+          {detailsOpen && hasDetails && (
+            <div className="mt-1.5 space-y-1 text-2xs text-muted-foreground">
+              {suggestion.flag?.trim() && !suggestion.details?.trim() && !suggestion.transcriptExcerpt?.trim() && (
+                <p className="whitespace-pre-wrap break-words">{suggestion.flag.trim()}</p>
+              )}
+              {suggestion.details?.trim() && (
+                <p className="whitespace-pre-wrap break-words">{suggestion.details.trim()}</p>
+              )}
+              {suggestion.transcriptExcerpt?.trim() && (
+                <p className="whitespace-pre-wrap break-words italic text-muted-foreground/85">
+                  {suggestion.transcriptExcerpt.trim()}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 items-start gap-0.5">
+          <button
+            type="button"
+            onClick={onAccept}
+            className="cursor-pointer p-0.5 text-primary transition-colors hover:text-primary/80"
+            aria-label="Accept suggestion"
+            title="Accept suggestion"
+          >
+            <PlusIcon className="size-3" />
+          </button>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+            aria-label="Dismiss suggestion"
+          >
+            <XIcon className="size-3" />
+          </button>
+        </div>
       </div>
       <div className="absolute inset-x-2 bottom-1 h-[2px] overflow-hidden rounded-full bg-primary/8">
         <div className="h-full rounded-full bg-primary/28 transition-none" style={{ width: `${progress}%` }} />

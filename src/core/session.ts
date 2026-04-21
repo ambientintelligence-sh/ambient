@@ -105,6 +105,7 @@ type AudioPipeline = {
 
 type TaskSuggestionDraft = {
   text: string;
+  flag?: string;
   details?: string;
   transcriptExcerpt?: string;
   kind?: import("./types").SuggestionKind;
@@ -140,6 +141,7 @@ type SuggestionScanResult = {
 
 function buildSuggestionArchiveDetails(candidate: TaskSuggestionDraft): string | undefined {
   const sections = [
+    candidate.flag?.trim() ? `Flag:\n${candidate.flag.trim()}` : "",
     candidate.details?.trim() ? `Context summary:\n${candidate.details.trim()}` : "",
     candidate.transcriptExcerpt?.trim() ? `Original transcript excerpt:\n${candidate.transcriptExcerpt.trim()}` : "",
   ].filter(Boolean);
@@ -1709,7 +1711,6 @@ export class Session {
       if (this.config.debug) {
         log("INFO", `Analysis response: ${analysisElapsedMs}ms, keyPoints=${analysisKeyPointsCount}`);
       }
-      void this.enqueueSuggestionScan({ force: false, reason: "auto" });
     } catch (error) {
       if (this.config.debug) {
         log("WARN", `Analysis failed: ${toReadableError(error)}`);
@@ -1744,7 +1745,7 @@ export class Session {
   }
 
   private async enqueueSuggestionScan(request: SuggestionScanRequest): Promise<SuggestionScanResult | null> {
-    if (!request.force) {
+    if (!request.force && request.reason !== "auto") {
       const hasEquivalentPending = this.suggestionScanQueue.some((queued) => queued.force === request.force && queued.reason === request.reason);
       if (hasEquivalentPending) {
         return null;
@@ -1967,6 +1968,7 @@ export class Session {
     const suggestion: TaskSuggestion = {
       id: crypto.randomUUID(),
       text: normalized,
+      flag: candidate.flag?.trim() || undefined,
       details: candidate.details?.trim() || undefined,
       transcriptExcerpt: candidate.transcriptExcerpt?.trim() || undefined,
       kind: candidate.kind,
@@ -2003,6 +2005,7 @@ export class Session {
     return {
       text,
       kind: rawSuggestion.kind,
+      flag: rawSuggestion.flag?.trim() || undefined,
       details: rawSuggestion.details?.trim() || undefined,
       transcriptExcerpt: rawSuggestion.transcriptExcerpt?.trim() || undefined,
     };

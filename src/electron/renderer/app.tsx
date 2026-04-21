@@ -399,7 +399,8 @@ export function App() {
     const demoSuggestions: import("@core/types").TaskSuggestion[] = [
       {
         id: "demo-suggestion-1",
-        text: "Want me to research Datadog vs Grafana Cloud pricing for your infrastructure size?",
+        flag: "The team mentioned Datadog pricing, but nobody captured the actual comparison.",
+        text: "Compare Datadog vs Grafana Cloud pricing for your current infrastructure size.",
         kind: "research",
         details: "Team discussed monitoring tools but didn't compare pricing.",
         transcriptExcerpt: "We should look at Datadog pricing tiers...",
@@ -408,7 +409,8 @@ export function App() {
       },
       {
         id: "demo-suggestion-2",
-        text: "I noticed an action item: draft the webhook processor postmortem. Want me to start it?",
+        flag: "Friday's outage postmortem was assigned verbally but not captured as a task.",
+        text: "Draft the webhook processor postmortem from Friday's outage.",
         kind: "action",
         details: "Marcus mentioned Friday's outage needs a postmortem.",
         sessionId: selectedSessionId,
@@ -416,7 +418,8 @@ export function App() {
       },
       {
         id: "demo-suggestion-3",
-        text: "The team agreed on 20% tech debt allocation but didn't define which items. Flag for follow-up?",
+        flag: "The team agreed on 20% tech debt allocation but never named the items.",
+        text: "List the specific tech debt items that should fill the 20% allocation.",
         kind: "flag",
         sessionId: selectedSessionId,
         createdAt: now,
@@ -1009,9 +1012,14 @@ export function App() {
     ui().setRouteNotice("");
     await ts().acceptSuggestion({ suggestion, targetSessionId, appConfig });
     const accepted = useTaskStore.getState().tasks.find((t) => t.id === suggestion.id);
-    if (accepted?.size === "large") {
-      ui().setRouteNotice("Suggestion accepted as large. Approval is required before running the agent.");
+    if (!accepted) {
+      return;
     }
+    if (accepted.size === "large") {
+      ts().setPendingApprovalTask(accepted);
+      return;
+    }
+    await launchTaskAgent(accepted);
   };
 
   const handleDismissSuggestion = (id: string) => {
@@ -1023,7 +1031,13 @@ export function App() {
   };
 
   const handleAcceptArchivedTask = async (task: TaskItem) => {
-    ts().acceptArchivedTask(task);
+    const targetSessionId = task.sessionId ?? selectedSessionId ?? session.sessionId ?? null;
+    if (!targetSessionId) {
+      ui().setRouteNotice("Missing session id for archived suggestion.");
+      return;
+    }
+    ui().setRouteNotice("");
+    await ts().acceptArchivedTask({ task, targetSessionId, appConfig });
   };
 
   // --- Agent handlers ---
