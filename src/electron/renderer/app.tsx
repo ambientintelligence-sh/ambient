@@ -134,7 +134,7 @@ export function App() {
   const tasks = useTaskStore((s) => s.tasks);
   const suggestions = useTaskStore((s) => s.suggestions);
   const suggestionProgress = useTaskStore((s) => s.suggestionProgress);
-  const agentSteps = useTaskStore((s) => s.agentSteps);
+  const suggestionScanCards = useTaskStore((s) => s.suggestionScanCards);
   const archivedSuggestions = useTaskStore((s) => s.archivedSuggestions);
   const processingTaskIds = useTaskStore((s) => s.processingTaskIds);
   const pendingApprovalTask = useTaskStore((s) => s.pendingApprovalTask);
@@ -1211,6 +1211,9 @@ export function App() {
     const prev = storedAppConfig;
     const normalized = normalizeAppConfig(next);
     setStoredAppConfig(normalized);
+    if (prev.suggestionScanWordBudget !== normalized.suggestionScanWordBudget && sessionActive) {
+      void window.electronAPI.setSuggestionScanWordBudget(normalized.suggestionScanWordBudget);
+    }
     const modelChanged =
       prev.analysisModelId !== normalized.analysisModelId ||
       prev.analysisProvider !== normalized.analysisProvider ||
@@ -1564,7 +1567,8 @@ export function App() {
                 tasks={tasks}
                 suggestions={suggestions}
                 suggestionProgress={suggestionProgress}
-                agentSteps={agentSteps}
+                suggestionScanCards={suggestionScanCards}
+                scanWordBudget={appConfig.suggestionScanWordBudget}
                 agents={agents}
                 selectedAgentId={selectedAgentId}
                 forceWorkTabKey={forceWorkTabKey}

@@ -110,6 +110,34 @@ type TaskSuggestionDraft = {
   kind?: import("./types").SuggestionKind;
 };
 
+type SuggestionScanProgress = {
+  scanId: string;
+  label?: string;
+  busy: boolean;
+  wordsUntilNextScan: number;
+  liveWordsUntilNextScan?: number;
+  scanWordBudget?: number;
+  step?: string;
+  lastScanEmpty?: boolean;
+  error?: string;
+};
+
+type SuggestionScanRequest = {
+  force: boolean;
+  reason: "auto" | "manual";
+};
+
+type QueuedSuggestionScanRequest = SuggestionScanRequest & {
+  resolve: (result: SuggestionScanResult | null) => void;
+};
+
+type SuggestionScanResult = {
+  scanId: string;
+  suggestions: TaskSuggestion[];
+  taskSuggestionsEmitted: number;
+  lastScanEmpty: boolean;
+};
+
 function buildSuggestionArchiveDetails(candidate: TaskSuggestionDraft): string | undefined {
   const sections = [
     candidate.details?.trim() ? `Context summary:\n${candidate.details.trim()}` : "",
@@ -187,6 +215,7 @@ export type SessionExternalDeps = {
   getExternalTools?: () => Promise<AgentExternalToolSet>;
   getCodexClient?: import("./agents/codex-client").GetCodexClient;
   getClaudeClient?: import("./agents/claude-client").GetClaudeClient;
+  getOpenAiCodexAccessToken?: () => Promise<string>;
   dataDir?: string;
 };
 
@@ -250,13 +279,18 @@ export class Session {
   private readonly analysisHeartbeatMs = 5000;
   private readonly analysisRetryDelayMs = 2000;
   private readonly taskAnalysisMaxBlocks = 20;
-  private readonly taskAnalysisMinNewWords = 200;
+  private get taskAnalysisMinNewWords() {
+    return this.config.suggestionScanWordBudget;
+  }
   private recentSuggestedTaskTexts: string[] = [];
-  private taskScanRequested = false;
-  private suggestionScanInFlight = false;
+  private suggestionScanSequence = 0;
+  private suggestionScanQueue: QueuedSuggestionScanRequest[] = [];
+  private suggestionScanInFlight = new Map<string, SuggestionScanProgress>();
+  private readonly maxSuggestionScanConcurrency = 3;
   private lastTaskAnalysisAt = 0;
   private lastTaskAnalysisBlockCount = 0;
   private lastTaskAnalysisWordCount = 0;
+  private queuedTaskAnalysisWordCount = 0;
   /** Timestamp of last mic speech detection, for system-audio ducking */
   private lastSummary: Summary | null = null;
   private lastAnalysisBlockCount = 0;
@@ -266,6 +300,7 @@ export class Session {
   private getExternalTools?: () => Promise<AgentExternalToolSet>;
   private getCodexClient?: SessionExternalDeps["getCodexClient"];
   private getClaudeClient?: SessionExternalDeps["getClaudeClient"];
+  private getOpenAiCodexAccessToken?: SessionExternalDeps["getOpenAiCodexAccessToken"];
   private dataDir?: string;
 
   private get sourceLangLabel(): string { return getLanguageLabel(this.config.sourceLang); }
@@ -299,39 +334,28 @@ export class Session {
     );
     const pendingWordCount = this.paragraphBuffer.pendingWordCount;
     const liveWordCount = committedWordCount + pendingWordCount;
-    const committedNewWords = Math.max(0, committedWordCount - this.lastTaskAnalysisWordCount);
-    const liveNewWords = Math.max(0, liveWordCount - this.lastTaskAnalysisWordCount);
+    const committedNewWords = Math.max(0, committedWordCount - this.queuedTaskAnalysisWordCount);
+    const liveNewWords = Math.max(0, liveWordCount - this.queuedTaskAnalysisWordCount);
     const wordsUntilNextScan = Math.max(0, this.taskAnalysisMinNewWords - committedNewWords);
     const liveWordsUntilNextScan = Math.max(0, this.taskAnalysisMinNewWords - liveNewWords);
     const committedWordsUntilNextScan = Math.max(0, this.taskAnalysisMinNewWords - committedNewWords);
-    if (this.suggestionScanInFlight) {
-      return;
-    }
     if (committedWordsUntilNextScan === 0 && this.isCapturing) {
-      this.events.emit("suggestion-progress", {
-        busy: true,
-        wordsUntilNextScan: 0,
-        liveWordsUntilNextScan: 0,
-        step: "Preparing scan…",
-        lastScanEmpty,
-      });
-      if (!this.analysisInFlight) {
-        if (this.analysisTimer) {
-          clearTimeout(this.analysisTimer);
-          this.analysisTimer = null;
-        }
-        void this.generateAnalysis();
+      const scansToQueue = Math.floor(committedNewWords / this.taskAnalysisMinNewWords);
+      this.queuedTaskAnalysisWordCount += scansToQueue * this.taskAnalysisMinNewWords;
+      for (let index = 0; index < scansToQueue; index += 1) {
+        void this.enqueueSuggestionScan({ force: false, reason: "auto" });
       }
       return;
     }
     log(
       "INFO",
-      `suggestion-progress: blocks=${allBlocks.length} committedWords=${committedWordCount} pendingWords=${pendingWordCount} words=${liveWordCount} lastScanWords=${this.lastTaskAnalysisWordCount} committedNewWords=${committedNewWords} liveNewWords=${liveNewWords} remaining=${wordsUntilNextScan} liveRemaining=${liveWordsUntilNextScan}`,
+      `suggestion-progress: blocks=${allBlocks.length} committedWords=${committedWordCount} pendingWords=${pendingWordCount} words=${liveWordCount} queuedScanWords=${this.queuedTaskAnalysisWordCount} committedNewWords=${committedNewWords} liveNewWords=${liveNewWords} remaining=${wordsUntilNextScan} liveRemaining=${liveWordsUntilNextScan}`,
     );
     this.events.emit("suggestion-progress", {
       busy: false,
       wordsUntilNextScan,
       liveWordsUntilNextScan,
+      scanWordBudget: this.taskAnalysisMinNewWords,
       lastScanEmpty,
     });
   }
@@ -343,6 +367,7 @@ export class Session {
     this.getExternalTools = externalDeps?.getExternalTools;
     this.getCodexClient = externalDeps?.getCodexClient;
     this.getClaudeClient = externalDeps?.getClaudeClient;
+    this.getOpenAiCodexAccessToken = externalDeps?.getOpenAiCodexAccessToken;
     this.dataDir = externalDeps?.dataDir;
     this._translationEnabled = config.translationEnabled;
     this.userContext = this.loadProjectContext();
@@ -364,7 +389,9 @@ export class Session {
     });
 
     this.agentManager = createAgentManager({
-      model: createAgentPiModel(config),
+      model: createAgentPiModel(config, {
+        getOpenAiCodexAccessToken: this.getOpenAiCodexAccessToken,
+      }),
       utilitiesModel: this.utilitiesModel,
       synthesisModel: this.synthesisModel,
       exaApiKey: process.env.EXA_API_KEY,
@@ -587,6 +614,7 @@ export class Session {
       this.lastTaskAnalysisBlockCount = 0;
       this.lastTaskAnalysisAt = 0;
       this.lastTaskAnalysisWordCount = 0;
+      this.queuedTaskAnalysisWordCount = 0;
       this.recentSuggestedTaskTexts = [];
       this.titleGenerated = false;
       this.events.emit("blocks-cleared");
@@ -881,6 +909,13 @@ export class Session {
     log("INFO", `Source language updated: ${sourceLang}`);
   }
 
+  setSuggestionScanWordBudget(suggestionScanWordBudget: SessionConfig["suggestionScanWordBudget"]): void {
+    if (this.config.suggestionScanWordBudget === suggestionScanWordBudget) return;
+    this.config.suggestionScanWordBudget = suggestionScanWordBudget;
+    this.emitIdleSuggestionProgress();
+    log("INFO", `Suggestion scan word budget updated: ${suggestionScanWordBudget}`);
+  }
+
   addNote(text: string): TranscriptBlock {
     const block = createBlock(
       this.contextState,
@@ -918,32 +953,22 @@ export class Session {
       };
     }
 
-    this.taskScanRequested = true;
     this.events.emit("status", "Task scan running...");
-    if (this.analysisInFlight) {
-      this.events.emit("status", "Task scan waiting for current analysis...");
-      await this.waitForAnalysisIdle();
-    }
-
     if (this.analysisTimer) {
       clearTimeout(this.analysisTimer);
       this.analysisTimer = null;
     }
     this.analysisRequested = false;
 
-    let analysisResult = await this.generateAnalysis();
-    if (!analysisResult.taskAnalysisRan && this.taskScanRequested) {
-      // Rare race: another analysis started between idle/wakeup and our forced scan.
-      await this.waitForAnalysisIdle();
-      analysisResult = await this.generateAnalysis();
-    }
+    const analysisResult = await this.generateAnalysis();
+    const scanResult = await this.enqueueSuggestionScan({ force: true, reason: "manual" });
 
     return {
       ok: true,
       queued: false,
-      taskAnalysisRan: analysisResult.taskAnalysisRan,
-      taskSuggestionsEmitted: analysisResult.taskSuggestionsEmitted,
-      suggestions: analysisResult.suggestions,
+      taskAnalysisRan: analysisResult.summaryAnalysisRan || scanResult !== null,
+      taskSuggestionsEmitted: scanResult?.taskSuggestionsEmitted ?? 0,
+      suggestions: scanResult?.suggestions ?? [],
     };
   }
 
@@ -1609,43 +1634,22 @@ export class Session {
   }
 
   private async generateAnalysis(): Promise<{
-    taskAnalysisRan: boolean;
-    taskSuggestionsEmitted: number;
-    suggestions: TaskSuggestion[];
+    summaryAnalysisRan: boolean;
   }> {
     if (this.analysisInFlight) {
       this.analysisRequested = true;
       return {
-        taskAnalysisRan: false,
-        taskSuggestionsEmitted: 0,
-        suggestions: [],
+        summaryAnalysisRan: false,
       };
     }
 
     const allBlocks = [...this.contextState.transcriptBlocks.values()];
-    const now = Date.now();
-    const forceTaskAnalysis = this.taskScanRequested;
-    this.taskScanRequested = false;
     const hasNewAnalysisBlocks = allBlocks.length > this.lastAnalysisBlockCount;
-    const shouldRunSummaryAnalysis =
-      hasNewAnalysisBlocks
-      && !(forceTaskAnalysis && !this.isRecording);
-    const hasNewTaskBlocks = allBlocks.length > this.lastTaskAnalysisBlockCount;
-    const committedWordCount = allBlocks.reduce(
-      (sum, b) => sum + b.sourceText.split(/\s+/).filter(Boolean).length,
-      0,
-    );
-    const newWords = committedWordCount - this.lastTaskAnalysisWordCount;
-    const hasEnoughNewWords = newWords >= this.taskAnalysisMinNewWords;
-    const shouldRunTaskAnalysis =
-      (forceTaskAnalysis && allBlocks.length > 0)
-      || (hasNewTaskBlocks && hasEnoughNewWords);
+    const shouldRunSummaryAnalysis = hasNewAnalysisBlocks;
 
-    if (!shouldRunSummaryAnalysis && !shouldRunTaskAnalysis) {
+    if (!shouldRunSummaryAnalysis) {
       return {
-        taskAnalysisRan: false,
-        taskSuggestionsEmitted: 0,
-        suggestions: [],
+        summaryAnalysisRan: false,
       };
     }
 
@@ -1659,151 +1663,56 @@ export class Session {
     const startTime = Date.now();
     let analysisElapsedMs = 0;
     let analysisKeyPointsCount = 0;
-    let taskAnalysisRan = false;
-    let taskSuggestionsEmitted = 0;
-    let emittedTaskSuggestions: TaskSuggestion[] = [];
-
-    if (shouldRunTaskAnalysis) {
-      this.suggestionScanInFlight = true;
-      this.events.emit("suggestion-progress", {
-        busy: true,
-        wordsUntilNextScan: 0,
-        liveWordsUntilNextScan: 0,
-        step: "Preparing scan…",
-      });
-    }
 
     try {
-      const existingTasks = this.db
-        ? [
-            ...this.db.getTasksForSession(this.sessionId),
-            ...this.db.getArchivedTasksForSession(this.sessionId),
-          ]
-        : [];
       const previousKeyPoints = this.contextState.allKeyPoints.slice(-20);
-      const previousEducationalInsights = dedupeInsightHistory(
-        this.contextState.allEducationalInsights.slice(-40),
+
+      const analysisPrompt = buildAnalysisPrompt(
+        recentBlocks,
+        previousKeyPoints,
       );
 
-      if (shouldRunSummaryAnalysis) {
-        const analysisPrompt = buildAnalysisPrompt(
-          recentBlocks,
-          previousKeyPoints,
-        );
+      const analysisProvider = this.config.analysisProvider;
+      const providerOptions = analysisProvider === "google" || analysisProvider === "vertex"
+        ? { google: { thinkingConfig: { includeThoughts: false, thinkingBudget: 2048 } } }
+        : undefined;
 
-        const analysisProvider = this.config.analysisProvider;
-        const providerOptions = analysisProvider === "google" || analysisProvider === "vertex"
-          ? { google: { thinkingConfig: { includeThoughts: false, thinkingBudget: 2048 } } }
-          : undefined;
+      const { object: analysisResult, usage } = await generateStructuredObject({
+        model: this.analysisModel,
+        schema: analysisSchema,
+        prompt: analysisPrompt,
+        temperature: 0,
+        providerOptions,
+      });
 
-        const { object: analysisResult, usage } = await generateStructuredObject({
-          model: this.analysisModel,
-          schema: analysisSchema,
-          prompt: analysisPrompt,
-          temperature: 0,
-          providerOptions,
-        });
+      analysisElapsedMs = Date.now() - startTime;
+      this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", this.config.analysisProvider);
+      this.lastAnalysisBlockCount = Math.max(this.lastAnalysisBlockCount, analysisTargetBlockCount);
+      analysisSucceeded = true;
 
-        analysisElapsedMs = Date.now() - startTime;
-        this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", this.config.analysisProvider);
-        this.lastAnalysisBlockCount = analysisTargetBlockCount;
-        analysisSucceeded = true;
-
-        // Update key points / summary — persist each as an insight so history survives
-        this.contextState.allKeyPoints.push(...analysisResult.keyPoints);
-        analysisKeyPointsCount = analysisResult.keyPoints.length;
-        for (const text of analysisResult.keyPoints) {
-          const kpInsight: Insight = {
-            id: crypto.randomUUID(),
-            kind: "key-point",
-            text,
-            sessionId: this.sessionId,
-            createdAt: Date.now(),
-          };
-          this.db?.insertInsight(kpInsight);
-        }
-        this.lastSummary = { keyPoints: analysisResult.keyPoints, updatedAt: Date.now() };
-        this.events.emit("summary-updated", this.lastSummary);
+      // Update key points / summary — persist each as an insight so history survives
+      this.contextState.allKeyPoints.push(...analysisResult.keyPoints);
+      analysisKeyPointsCount = analysisResult.keyPoints.length;
+      for (const text of analysisResult.keyPoints) {
+        const kpInsight: Insight = {
+          id: crypto.randomUUID(),
+          kind: "key-point",
+          text,
+          sessionId: this.sessionId,
+          createdAt: Date.now(),
+        };
+        this.db?.insertInsight(kpInsight);
       }
-
-      let taskSuggestions: TaskSuggestionDraft[] = [];
-      let taskBlocks: typeof allBlocks = [];
-
-      if (shouldRunTaskAnalysis) {
-        taskAnalysisRan = true;
-        this.events.emit("suggestion-progress", {
-          busy: true,
-          wordsUntilNextScan: 0,
-          liveWordsUntilNextScan: 0,
-          step: "Gathering context…",
-        });
-        if (forceTaskAnalysis) {
-          taskBlocks = allBlocks.slice(-this.taskAnalysisMaxBlocks);
-        } else {
-          const taskContextStart = Math.max(
-            0,
-            this.lastTaskAnalysisBlockCount - 5,
-          );
-          taskBlocks = allBlocks.slice(taskContextStart, analysisTargetBlockCount);
-        }
-        this.lastTaskAnalysisAt = now;
-        this.lastTaskAnalysisWordCount = committedWordCount;
-        let lastScanEmpty = true;
-
-        try {
-          taskSuggestions = await this.generateTaskSuggestionsAgentic({
-            recentBlocks: taskBlocks,
-            existingTasks,
-            historicalSuggestions: this.recentSuggestedTaskTexts,
-            keyPoints: previousKeyPoints,
-            educationalContext: previousEducationalInsights.slice(-20),
-            aggressiveness: this.config.taskSuggestionAggressiveness,
-          });
-          lastScanEmpty = taskSuggestions.length === 0;
-          this.lastTaskAnalysisBlockCount = analysisTargetBlockCount;
-        } catch (taskError) {
-          if (this.config.debug) {
-            log("WARN", `Agent suggestion generation failed: ${toReadableError(taskError)}`);
-          }
-        } finally {
-          this.suggestionScanInFlight = false;
-          this.emitIdleSuggestionProgress(lastScanEmpty);
-        }
-      }
+      this.lastSummary = { keyPoints: analysisResult.keyPoints, updatedAt: Date.now() };
+      this.events.emit("summary-updated", this.lastSummary);
 
       if (this.config.debug) {
-        log("INFO", `Analysis response: ${analysisElapsedMs}ms, keyPoints=${analysisKeyPointsCount}, suggestions=${taskSuggestions.length}`);
+        log("INFO", `Analysis response: ${analysisElapsedMs}ms, keyPoints=${analysisKeyPointsCount}`);
       }
-
-      // Emit task suggestions (not auto-added — user must accept).
-      // Dedup is handled by the model via historical suggestions in the prompt.
-      emittedTaskSuggestions = [];
-      for (const candidate of taskSuggestions) {
-        const emittedSuggestion = this.tryEmitTaskSuggestion(candidate);
-        if (!emittedSuggestion) {
-          continue;
-        }
-        emittedTaskSuggestions.push(emittedSuggestion);
-        taskSuggestionsEmitted += 1;
-      }
-
-      if (forceTaskAnalysis) {
-        const suffix = taskSuggestionsEmitted === 1 ? "" : "s";
-        this.events.emit(
-          "status",
-          taskAnalysisRan
-            ? `Suggestion scan complete: ${taskSuggestionsEmitted} suggestion${suffix}.`
-            : "Suggestion scan skipped."
-        );
-        setTimeout(() => this.events.emit("status", ""), 3000);
-      }
+      void this.enqueueSuggestionScan({ force: false, reason: "auto" });
     } catch (error) {
       if (this.config.debug) {
         log("WARN", `Analysis failed: ${toReadableError(error)}`);
-      }
-      if (forceTaskAnalysis) {
-        this.events.emit("status", `Suggestion scan failed: ${toReadableError(error)}`);
-        setTimeout(() => this.events.emit("status", ""), 5000);
       }
     } finally {
       this.analysisInFlight = false;
@@ -1821,30 +1730,178 @@ export class Session {
       }
     }
     return {
-      taskAnalysisRan,
-      taskSuggestionsEmitted,
+      summaryAnalysisRan: analysisSucceeded,
+    };
+  }
+
+  private nextSuggestionScanId(): string {
+    this.suggestionScanSequence += 1;
+    return `scan-${this.suggestionScanSequence}`;
+  }
+
+  private emitSuggestionProgress(progress: SuggestionScanProgress): void {
+    this.events.emit("suggestion-progress", progress);
+  }
+
+  private async enqueueSuggestionScan(request: SuggestionScanRequest): Promise<SuggestionScanResult | null> {
+    if (!request.force) {
+      const hasEquivalentPending = this.suggestionScanQueue.some((queued) => queued.force === request.force && queued.reason === request.reason);
+      if (hasEquivalentPending) {
+        return null;
+      }
+    }
+
+    return await new Promise<SuggestionScanResult | null>((resolve) => {
+      const job = { ...request, resolve };
+      this.suggestionScanQueue.push(job);
+      this.drainSuggestionScanQueue();
+    });
+  }
+
+  private drainSuggestionScanQueue(): void {
+    while (
+      this.suggestionScanInFlight.size < this.maxSuggestionScanConcurrency
+      && this.suggestionScanQueue.length > 0
+    ) {
+      const next = this.suggestionScanQueue.shift();
+      if (!next) {
+        return;
+      }
+      void this.runSuggestionScan(next).then(next.resolve);
+    }
+  }
+
+  private async runSuggestionScan(
+    request: SuggestionScanRequest,
+  ): Promise<SuggestionScanResult | null> {
+    const allBlocks = [...this.contextState.transcriptBlocks.values()];
+    if (allBlocks.length === 0) {
+      return null;
+    }
+
+    const committedWordCount = allBlocks.reduce(
+      (sum, b) => sum + b.sourceText.split(/\s+/).filter(Boolean).length,
+      0,
+    );
+    const hasNewTaskBlocks = allBlocks.length > this.lastTaskAnalysisBlockCount;
+    if (!request.force && !hasNewTaskBlocks) {
+      return null;
+    }
+
+    const scanId = this.nextSuggestionScanId();
+
+    const existingTasks = this.db
+      ? [
+          ...this.db.getTasksForSession(this.sessionId),
+          ...this.db.getArchivedTasksForSession(this.sessionId),
+        ]
+      : [];
+    const previousKeyPoints = this.contextState.allKeyPoints.slice(-20);
+    const previousEducationalInsights = dedupeInsightHistory(
+      this.contextState.allEducationalInsights.slice(-40),
+    );
+    const taskContextStart = request.force
+      ? Math.max(0, allBlocks.length - this.taskAnalysisMaxBlocks)
+      : Math.max(0, this.lastTaskAnalysisBlockCount - 5);
+    const taskBlocks = allBlocks.slice(taskContextStart);
+    const analysisTargetBlockCount = allBlocks.length;
+    const now = Date.now();
+    let taskSuggestions: TaskSuggestionDraft[] = [];
+    let lastScanEmpty = true;
+
+    try {
+      this.lastTaskAnalysisAt = now;
+      this.lastTaskAnalysisWordCount = Math.max(this.lastTaskAnalysisWordCount, committedWordCount);
+      taskSuggestions = await this.generateTaskSuggestionsAgentic({
+        scanId,
+        label: "Suggestion agent",
+        recentBlocks: taskBlocks,
+        existingTasks,
+        historicalSuggestions: this.recentSuggestedTaskTexts,
+        keyPoints: previousKeyPoints,
+        educationalContext: previousEducationalInsights.slice(-20),
+        aggressiveness: this.config.taskSuggestionAggressiveness,
+      });
+      lastScanEmpty = taskSuggestions.length === 0;
+      this.lastTaskAnalysisBlockCount = Math.max(this.lastTaskAnalysisBlockCount, analysisTargetBlockCount);
+    } catch (taskError) {
+      if (this.config.debug) {
+        log("WARN", `Agent suggestion generation failed: ${toReadableError(taskError)}`);
+      }
+      if (request.force) {
+        this.events.emit("status", `Suggestion scan failed: ${toReadableError(taskError)}`);
+        setTimeout(() => this.events.emit("status", ""), 5000);
+      }
+    } finally {
+      this.suggestionScanInFlight.delete(scanId);
+    }
+
+    const emittedTaskSuggestions: TaskSuggestion[] = [];
+    let taskSuggestionsEmitted = 0;
+    for (const candidate of taskSuggestions) {
+      const emittedSuggestion = this.tryEmitTaskSuggestion(candidate);
+      if (!emittedSuggestion) {
+        continue;
+      }
+      emittedTaskSuggestions.push(emittedSuggestion);
+      taskSuggestionsEmitted += 1;
+    }
+
+    this.emitIdleSuggestionProgress(lastScanEmpty);
+
+    if (request.force) {
+      const suffix = taskSuggestionsEmitted === 1 ? "" : "s";
+      this.events.emit(
+        "status",
+        `Suggestion scan complete: ${taskSuggestionsEmitted} suggestion${suffix}.`
+      );
+      setTimeout(() => this.events.emit("status", ""), 3000);
+    }
+
+    this.drainSuggestionScanQueue();
+    return {
+      scanId,
       suggestions: emittedTaskSuggestions,
+      taskSuggestionsEmitted,
+      lastScanEmpty,
     };
   }
 
   private async generateTaskSuggestionsAgentic(
-    input: Parameters<typeof runSuggestionAgent>[0],
+    input: Parameters<typeof runSuggestionAgent>[0] & { scanId: string; label: string },
   ): Promise<TaskSuggestionDraft[]> {
+    const { scanId, label, ...agentInput } = input;
     const costProvider: AnalysisProvider | TranscriptionProvider =
       this.config.analysisProvider === "bedrock" ? "bedrock" : "openrouter";
 
-    this.events.emit("suggestion-progress", {
-      busy: true,
+    const progressBase = {
+      scanId,
+      label,
       wordsUntilNextScan: 0,
       liveWordsUntilNextScan: 0,
+      scanWordBudget: this.taskAnalysisMinNewWords,
+    } satisfies Omit<SuggestionScanProgress, "busy">;
+
+    this.suggestionScanInFlight.set(scanId, {
+      ...progressBase,
+      busy: true,
+      step: "Gathering context…",
+    });
+    this.emitSuggestionProgress({
+      ...progressBase,
+      busy: true,
       step: "Gathering context…",
     });
 
     const db = this.db;
     let result: Awaited<ReturnType<typeof runSuggestionAgent>> | undefined;
+    let normalized: TaskSuggestionDraft[] = [];
+    let errorMessage: string | undefined;
     try {
-      result = await runSuggestionAgent(input, {
-        agentModel: createAgentPiModel(this.config),
+      result = await runSuggestionAgent(agentInput, {
+        agentModel: createAgentPiModel(this.config, {
+          getOpenAiCodexAccessToken: this.getOpenAiCodexAccessToken,
+        }),
         extractionModel: this.analysisModel,
         getTranscriptContext: (last?: number, offset?: number) =>
           this.getTranscriptBlocks(last, offset),
@@ -1853,36 +1910,49 @@ export class Session {
           : undefined,
         exa: this.agentManager?.getExaClient() ?? null,
         onStep: (label) => {
-          this.events.emit("suggestion-progress", {
+          this.emitSuggestionProgress({
+            ...progressBase,
             busy: true,
-            wordsUntilNextScan: 0,
-            liveWordsUntilNextScan: 0,
             step: label,
           });
         },
         debug: this.config.debug,
       });
     } catch (error) {
+      errorMessage = toReadableError(error);
       throw error;
+    } finally {
+      if (result) {
+        this.trackCost(
+          result.usage.inputTokens,
+          result.usage.outputTokens,
+          "text",
+          costProvider,
+        );
+
+        if (this.config.debug) {
+          log(
+            "INFO",
+            `Suggestion agent [${label}]: steps=${result.steps}, candidates=${result.suggestions.length}`,
+          );
+        }
+
+        normalized = result.suggestions
+          .map((raw) => this.normalizeAgentSuggestion(raw))
+          .filter((candidate): candidate is TaskSuggestionDraft => candidate !== null);
+      }
+
+      this.suggestionScanInFlight.delete(scanId);
+      this.emitSuggestionProgress({
+        ...progressBase,
+        busy: false,
+        step: normalized.length > 0 ? "Suggestions ready" : undefined,
+        lastScanEmpty: normalized.length === 0,
+        error: errorMessage,
+      });
     }
 
-    this.trackCost(
-      result.usage.inputTokens,
-      result.usage.outputTokens,
-      "text",
-      costProvider,
-    );
-
-    if (this.config.debug) {
-      log(
-        "INFO",
-        `Suggestion agent: steps=${result.steps}, candidates=${result.suggestions.length}`,
-      );
-    }
-
-    return result.suggestions
-      .map((raw) => this.normalizeAgentSuggestion(raw))
-      .filter((candidate): candidate is TaskSuggestionDraft => candidate !== null);
+    return normalized;
   }
 
   private tryEmitTaskSuggestion(
@@ -1890,6 +1960,9 @@ export class Session {
   ): TaskSuggestion | null {
     const normalized = candidate.text.trim();
     if (!normalized) return null;
+    const normalizedKey = normalizeInsightText(normalized);
+    const existingText = this.recentSuggestedTaskTexts.some((text) => normalizeInsightText(text) === normalizedKey);
+    if (existingText) return null;
 
     const suggestion: TaskSuggestion = {
       id: crypto.randomUUID(),

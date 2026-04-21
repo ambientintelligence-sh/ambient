@@ -49,7 +49,7 @@ export type TranscriptionProvider =
   | "openrouter"
   | "vertex"
   | "google";
-export type AnalysisProvider = "openrouter" | "google" | "vertex" | "bedrock";
+export type AnalysisProvider = "openrouter" | "google" | "vertex" | "bedrock" | "openai-codex";
 export type { AnalysisModelPreset } from "./models";
 
 export type TranscriptBlock = {
@@ -201,6 +201,7 @@ export type SessionConfig = {
   bedrockRegion: string;
   responseLength: ResponseLength;
   taskSuggestionAggressiveness: TaskSuggestionAggressiveness;
+  suggestionScanWordBudget: SuggestionScanWordBudget;
   debug: boolean;
   legacyAudio: boolean;
   translationEnabled: boolean;
@@ -223,6 +224,7 @@ export type FontSize = "sm" | "md" | "lg";
 export type FontFamily = "sans" | "serif" | "mono";
 export type ResponseLength = "concise" | "standard" | "detailed";
 export type TaskSuggestionAggressiveness = "conservative" | "balanced" | "aggressive";
+export type SuggestionScanWordBudget = 100 | 150 | 200;
 
 export type AppConfig = {
   themeMode: ThemeMode;
@@ -247,6 +249,7 @@ export type AppConfig = {
   bedrockRegion: string;
   responseLength: ResponseLength;
   taskSuggestionAggressiveness: TaskSuggestionAggressiveness;
+  suggestionScanWordBudget: SuggestionScanWordBudget;
   debug: boolean;
   legacyAudio: boolean;
   agentAutoApprove: boolean;
@@ -385,6 +388,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   bedrockRegion: DEFAULT_BEDROCK_REGION,
   responseLength: "standard",
   taskSuggestionAggressiveness: DEFAULT_TASK_SUGGESTION_AGGRESSIVENESS,
+  suggestionScanWordBudget: 200,
   debug: !!ENV?.DEBUG,
   legacyAudio: false,
   agentAutoApprove: false,
@@ -462,7 +466,8 @@ export function normalizeAppConfig(
     merged.analysisProvider === "openrouter" ||
     merged.analysisProvider === "google" ||
     merged.analysisProvider === "vertex" ||
-    merged.analysisProvider === "bedrock"
+    merged.analysisProvider === "bedrock" ||
+    merged.analysisProvider === "openai-codex"
       ? merged.analysisProvider
       : DEFAULT_APP_CONFIG.analysisProvider;
   const intervalMs =
@@ -492,6 +497,12 @@ export function normalizeAppConfig(
     merged.taskSuggestionAggressiveness === "balanced"
       ? merged.taskSuggestionAggressiveness
       : DEFAULT_APP_CONFIG.taskSuggestionAggressiveness;
+  const suggestionScanWordBudget: SuggestionScanWordBudget =
+    merged.suggestionScanWordBudget === 100 ||
+    merged.suggestionScanWordBudget === 150 ||
+    merged.suggestionScanWordBudget === 200
+      ? merged.suggestionScanWordBudget
+      : DEFAULT_APP_CONFIG.suggestionScanWordBudget;
 
   return {
     ...merged,
@@ -523,6 +534,7 @@ export function normalizeAppConfig(
           ? "concise"
           : DEFAULT_APP_CONFIG.responseLength,
     taskSuggestionAggressiveness,
+    suggestionScanWordBudget,
     debug: !!merged.debug,
     legacyAudio: !!merged.legacyAudio,
     agentAutoApprove: !!merged.agentAutoApprove,
@@ -702,11 +714,15 @@ export type SessionEvents = {
   "task-updated": [task: TaskItem];
   "task-suggested": [suggestion: TaskSuggestion];
   "suggestion-progress": [payload: {
+    scanId?: string;
+    label?: string;
     busy: boolean;
     wordsUntilNextScan: number;
     liveWordsUntilNextScan?: number;
+    scanWordBudget?: number;
     step?: string;
     lastScanEmpty?: boolean;
+    error?: string;
   }];
   "agent-started": [agent: Agent];
   "agent-step": [agentId: string, step: AgentStep];

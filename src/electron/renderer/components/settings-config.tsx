@@ -18,6 +18,7 @@ import type {
   Language,
   LanguageCode,
   LightVariant,
+  SuggestionScanWordBudget,
   TaskSuggestionAggressiveness,
   ThemeMode,
   TranscriptionProvider,
@@ -81,6 +82,16 @@ export const TASK_SUGGESTION_AGGRESSIVENESS_OPTIONS: Array<{
   { value: "conservative", label: "Focused", description: "Only surface strong, explicit follow-ups." },
   { value: "balanced", label: "Balanced", description: "Catch clear asks and solid implied next steps." },
   { value: "aggressive", label: "Proactive", description: "Surface more research, drafting, and follow-up opportunities." },
+];
+
+export const SUGGESTION_SCAN_WORD_BUDGET_OPTIONS: Array<{
+  value: SuggestionScanWordBudget;
+  label: string;
+  description: string;
+}> = [
+  { value: 100, label: "100", description: "Scan more often." },
+  { value: 150, label: "150", description: "Balanced cadence." },
+  { value: 200, label: "200", description: "Scan less often." },
 ];
 
 export type TranscriptionPreset = {
@@ -169,6 +180,7 @@ export function getTranscriptionModelOption(
 export const ANALYSIS_PROVIDERS: Array<{ value: AppConfig["analysisProvider"]; label: string }> = [
   { value: "openrouter", label: "OpenRouter" },
   { value: "bedrock", label: "AWS Bedrock" },
+  { value: "openai-codex", label: "OpenAI (ChatGPT)" },
 ];
 
 export const PROVIDER_REQUIRED_KEYS: Record<string, string[]> = {
@@ -180,7 +192,9 @@ export const PROVIDER_REQUIRED_KEYS: Record<string, string[]> = {
 export function isProviderConfigured(
   provider: string,
   apiKeyStatus: Record<string, boolean>,
+  extras?: { openaiCodexLoggedIn?: boolean },
 ): boolean {
+  if (provider === "openai-codex") return !!extras?.openaiCodexLoggedIn;
   const required = PROVIDER_REQUIRED_KEYS[provider];
   if (!required || required.length === 0) return true;
   return required.every((key) => apiKeyStatus[key]);

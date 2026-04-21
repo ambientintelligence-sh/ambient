@@ -58,6 +58,7 @@ export function buildSessionConfig(
     bedrockRegion: config.bedrockRegion,
     responseLength: config.responseLength,
     taskSuggestionAggressiveness: config.taskSuggestionAggressiveness,
+    suggestionScanWordBudget: config.suggestionScanWordBudget,
     debug: config.debug,
     legacyAudio: config.legacyAudio,
     translationEnabled,

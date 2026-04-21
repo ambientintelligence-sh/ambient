@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { AppConfig, TaskItem, TaskSize, TaskSuggestion } from "@core/types";
 
 const LIVE_SUGGESTION_MAX_AGE_MS = 5 * 60_000;
+const FINISHED_SCAN_CARD_MAX_AGE_MS = 6_000;
 
 function buildAiSuggestionDetails(suggestion: TaskSuggestion): string | undefined {
   const sections = [
@@ -56,11 +57,21 @@ function archivedTaskToSuggestion(task: TaskItem): TaskSuggestion | null {
 }
 
 type SuggestionProgress = {
+  scanId?: string;
+  label?: string;
   busy: boolean;
   wordsUntilNextScan: number;
   liveWordsUntilNextScan?: number;
+  scanWordBudget?: number;
   step?: string;
   lastScanEmpty?: boolean;
+  error?: string;
+};
+
+type SuggestionScanCard = SuggestionProgress & {
+  scanId: string;
+  agentSteps: string[];
+  updatedAt: number;
 };
 
 type TaskState = {
@@ -73,7 +84,7 @@ type TaskState = {
   forceWorkTabKey: number;
   transcriptRefs: string[];
   suggestionProgress: SuggestionProgress;
-  agentSteps: string[];
+  suggestionScanCards: SuggestionScanCard[];
 };
 
 type TaskActions = {
@@ -143,27 +154,54 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
   forceWorkTabKey: 0,
   transcriptRefs: [],
   suggestionProgress: { busy: false, wordsUntilNextScan: 200, liveWordsUntilNextScan: 200 },
-  agentSteps: [],
+  suggestionScanCards: [],
 
   // Actions
   setSuggestionProgress: (suggestionProgress) =>
     set((s) => {
-      let agentSteps = s.agentSteps;
+      const now = Date.now();
+      const nextProgress = suggestionProgress.scanId
+        ? s.suggestionProgress
+        : suggestionProgress;
 
-      if (suggestionProgress.busy) {
-        if (!s.suggestionProgress.busy) {
-          agentSteps = [];
-        }
-        if (suggestionProgress.step && agentSteps[agentSteps.length - 1] !== suggestionProgress.step) {
-          agentSteps = [...agentSteps, suggestionProgress.step];
-        }
+      let suggestionScanCards = s.suggestionScanCards;
+      if (suggestionProgress.scanId) {
+        const scanId = suggestionProgress.scanId;
+        const existing = s.suggestionScanCards.find((card) => card.scanId === scanId);
+        const previousSteps = existing?.agentSteps ?? [];
+        const agentSteps = suggestionProgress.busy
+          ? suggestionProgress.step && previousSteps[previousSteps.length - 1] !== suggestionProgress.step
+            ? [...previousSteps, suggestionProgress.step]
+            : previousSteps
+          : previousSteps;
+        const nextCard: SuggestionScanCard = {
+          scanId,
+          label: suggestionProgress.label,
+          busy: suggestionProgress.busy,
+          wordsUntilNextScan: suggestionProgress.wordsUntilNextScan,
+          liveWordsUntilNextScan: suggestionProgress.liveWordsUntilNextScan,
+          scanWordBudget: suggestionProgress.scanWordBudget,
+          step: suggestionProgress.step,
+          lastScanEmpty: suggestionProgress.lastScanEmpty,
+          error: suggestionProgress.error,
+          agentSteps,
+          updatedAt: Date.now(),
+        };
+        suggestionScanCards = [
+          nextCard,
+          ...s.suggestionScanCards.filter((card) => card.scanId !== scanId),
+        ]
+          .filter((card) => card.busy || now - card.updatedAt <= FINISHED_SCAN_CARD_MAX_AGE_MS)
+          .slice(0, 6);
       } else {
-        agentSteps = [];
+        suggestionScanCards = s.suggestionScanCards
+          .filter((card) => card.busy || now - card.updatedAt <= FINISHED_SCAN_CARD_MAX_AGE_MS)
+          .slice(0, 6);
       }
 
       return {
-        suggestionProgress,
-        agentSteps,
+        suggestionProgress: nextProgress,
+        suggestionScanCards,
       };
     }),
   setTasks: (tasks) => set({ tasks }),
@@ -313,7 +351,7 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
       forceWorkTabKey: 0,
       transcriptRefs: [],
       suggestionProgress: { busy: false, wordsUntilNextScan: 200, liveWordsUntilNextScan: 200 },
-      agentSteps: [],
+      suggestionScanCards: [],
     }),
 
   persistTask: async ({ targetSessionId, text, details, source, size = "large", id, createdAt, appConfig }) => {

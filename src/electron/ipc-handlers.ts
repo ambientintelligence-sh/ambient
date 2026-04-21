@@ -19,6 +19,7 @@ import { buildSessionConfig, shutdownCurrentSession, wireSessionEvents } from ".
 import type { EnsureSession, SessionRef } from "./ipc/types";
 import { createIntegrationManager } from "./integrations";
 import { SecureCredentialStore } from "./integrations/secure-credential-store";
+import { getOpenAiCodexAccessToken } from "./integrations/ai-oauth";
 import type { IntegrationManager } from "./integrations/types";
 import { connectCodex, disconnectCodex, isCodexConnected, startCodexTask, waitForCodexTask, getCodexSnapshot, cancelCodexTask } from "@core/agents/codex-client";
 import type { CodexClient } from "@core/agents/codex-client";
@@ -147,6 +148,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null, db: A
       const activeSession = new Session(desiredConfig, db, sessionId, {
         getExternalTools: manager.getExternalTools,
         ...codingAgentGetters(desiredConfig),
+        getOpenAiCodexAccessToken: () => getOpenAiCodexAccessToken(store),
         dataDir: app.getPath("userData"),
       });
       sessionRef.current = activeSession;
@@ -181,6 +183,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null, db: A
     const activeSession = new Session(config, db, sessionId, {
       getExternalTools: manager.getExternalTools,
       ...codingAgentGetters(config),
+      getOpenAiCodexAccessToken: () => getOpenAiCodexAccessToken(store),
       dataDir: app.getPath("userData"),
     });
     sessionRef.current = activeSession;
@@ -202,6 +205,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null, db: A
     sessionRef,
     getExternalTools: manager.getExternalTools,
     getCodexClient,
+    getOpenAiCodexAccessToken: () => getOpenAiCodexAccessToken(store),
     dataDir: app.getPath("userData"),
   });
   registerTaskInsightHandlers({ db, getWindow, sessionRef, ensureSession });

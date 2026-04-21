@@ -51,6 +51,7 @@ import {
   FONT_SIZE_OPTIONS,
   FONT_FAMILY_OPTIONS,
   TASK_SUGGESTION_AGGRESSIVENESS_OPTIONS,
+  SUGGESTION_SCAN_WORD_BUDGET_OPTIONS,
   TRANSCRIPTION_PROVIDER_OPTIONS,
   TRANSCRIPTION_PROVIDER_LABELS,
   getTranscriptionProviderOption,
@@ -298,6 +299,77 @@ function ApiKeyRow({
   );
 }
 
+function OpenAiSubscriptionRow({
+  loggedIn,
+  accountId,
+  onStatusChange,
+}: {
+  loggedIn: boolean;
+  accountId?: string;
+  onStatusChange: (next: { loggedIn: boolean; accountId?: string }) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleLogin = async () => {
+    setBusy(true);
+    setError("");
+    const result = await window.electronAPI.openaiCodexLogin();
+    setBusy(false);
+    if (result.ok) {
+      onStatusChange({ loggedIn: !!result.loggedIn, accountId: result.accountId });
+    } else {
+      setError(result.error ?? "Login failed.");
+    }
+  };
+
+  const handleLogout = async () => {
+    setBusy(true);
+    setError("");
+    const result = await window.electronAPI.openaiCodexLogout();
+    setBusy(false);
+    if (result.ok) {
+      onStatusChange({ loggedIn: false, accountId: undefined });
+    } else {
+      setError(result.error ?? "Disconnect failed.");
+    }
+  };
+
+  return (
+    <div className={`border border-border/60 bg-background px-3 py-3 rounded-md transition-colors ${loggedIn ? "border-l-2 border-l-green-500/50" : ""}`}>
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <div className="flex items-center gap-1.5">
+          <OpenAIIcon className="w-3.5 h-3.5 shrink-0" />
+          <p className="text-xs font-semibold text-foreground">ChatGPT Plus/Pro</p>
+        </div>
+        {loggedIn && (
+          <span className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600 dark:text-green-400">
+            <CheckCircleIcon className="w-3 h-3" />
+            Connected
+          </span>
+        )}
+      </div>
+      <p className="text-2xs text-muted-foreground mb-2 leading-relaxed">
+        {loggedIn && accountId
+          ? `Signed in as ${accountId}.`
+          : "Use your ChatGPT subscription instead of an OpenAI API key. Opens your browser to authorize."}
+      </p>
+      <div className="flex items-center gap-1.5">
+        {loggedIn ? (
+          <Button size="sm" variant="outline" onClick={() => void handleLogout()} disabled={busy}>
+            Disconnect
+          </Button>
+        ) : (
+          <Button size="sm" onClick={() => void handleLogin()} disabled={busy}>
+            {busy ? "Connecting…" : "Log in with OpenAI"}
+          </Button>
+        )}
+      </div>
+      {error && <p className="mt-1 text-2xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
 function ApiKeysSection({
   definitions,
   status,
@@ -305,6 +377,8 @@ function ApiKeysSection({
   onConfigChange,
   onSave,
   onDelete,
+  openaiCodex,
+  onOpenaiCodexChange,
 }: {
   definitions: ApiKeyDefinition[];
   status: Record<string, boolean>;
@@ -312,15 +386,31 @@ function ApiKeysSection({
   onConfigChange: (next: AppConfig) => void;
   onSave: (envVar: string, value: string) => Promise<{ ok: boolean; error?: string }>;
   onDelete: (envVar: string) => Promise<{ ok: boolean; error?: string }>;
+  openaiCodex: { loggedIn: boolean; accountId?: string };
+  onOpenaiCodexChange: (next: { loggedIn: boolean; accountId?: string }) => void;
 }) {
-  if (definitions.length === 0) return null;
-
   const needed = definitions.filter((def) => isKeyNeeded(def, config));
   const other = definitions.filter((def) => !isKeyNeeded(def, config));
 
   return (
     <div className="space-y-5">
-      <SettingsSection icon={ShieldCheckIcon} title="API Keys" description="Keys are encrypted and stored in your system keychain. They override .env values.">
+      <SettingsSection icon={ShieldCheckIcon} title="API Keys" description="Keys and subscription logins are encrypted and stored in your system keychain. They override .env values.">
+
+        <div className={(needed.length + other.length) > 0 ? "mb-6" : ""}>
+          <div className="flex items-center gap-1.5 mb-3">
+            <span className="size-1.5 rounded-full bg-blue-500/70" />
+            <p className="text-2xs font-medium text-foreground/60 uppercase tracking-wider">
+              Subscription Login
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <OpenAiSubscriptionRow
+              loggedIn={openaiCodex.loggedIn}
+              accountId={openaiCodex.accountId}
+              onStatusChange={onOpenaiCodexChange}
+            />
+          </div>
+        </div>
 
         {needed.length > 0 && (
           <div className={other.length > 0 ? "mb-6" : ""}>
@@ -457,6 +547,29 @@ function AgentsTab({
                       : "bg-background text-muted-foreground hover:text-foreground"
                   }`}
                   onClick={() => set("taskSuggestionAggressiveness", option.value)}
+                  title={option.description}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          }
+        />
+        <SettingRow
+          label="Scan Cadence"
+          description="Words of new transcript before the next suggestion scan fires. Lower = more frequent scans."
+          control={
+            <div className="inline-flex items-center border border-border rounded-sm overflow-hidden">
+              {SUGGESTION_SCAN_WORD_BUDGET_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`h-8 px-2.5 text-xs inline-flex cursor-pointer items-center gap-1.5 transition-colors ${
+                    config.suggestionScanWordBudget === option.value
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => set("suggestionScanWordBudget", option.value)}
                   title={option.description}
                 >
                   {option.label}
@@ -630,6 +743,21 @@ export function SettingsPage({
   const codexConnected = useIntegrationStore((s) => s.codexConnected);
   const claudeConnected = useIntegrationStore((s) => s.claudeConnected);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  const [openaiCodex, setOpenaiCodex] = useState<{ loggedIn: boolean; accountId?: string }>({
+    loggedIn: false,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.electronAPI.openaiCodexStatus().then((result) => {
+      if (cancelled || !result.ok) return;
+      setOpenaiCodex({ loggedIn: !!result.loggedIn, accountId: result.accountId });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [systemPrefersDark, setSystemPrefersDark] = useState(() =>
     typeof globalThis.matchMedia === "function"
@@ -975,7 +1103,7 @@ export function SettingsPage({
           <SettingsSection icon={CpuIcon} title="Model Roles">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {(() => {
-                const providerKey = (config.analysisProvider === "openrouter" || config.analysisProvider === "bedrock")
+                const providerKey = (config.analysisProvider === "openrouter" || config.analysisProvider === "bedrock" || config.analysisProvider === "openai-codex")
                   ? config.analysisProvider
                   : "openrouter" as const;
                 const providerConfig = MODEL_CONFIG[providerKey];
@@ -990,7 +1118,7 @@ export function SettingsPage({
                         value={config.analysisProvider}
                         onValueChange={(v) => {
                           const provider = v as AppConfig["analysisProvider"];
-                          const nextConfig = (provider === "openrouter" || provider === "bedrock")
+                          const nextConfig = (provider === "openrouter" || provider === "bedrock" || provider === "openai-codex")
                             ? MODEL_CONFIG[provider]
                             : null;
                           const defs = nextConfig?.defaults;
@@ -1015,7 +1143,7 @@ export function SettingsPage({
                           {ANALYSIS_PROVIDERS
                             .filter((option) =>
                               option.value === config.analysisProvider ||
-                              isProviderConfigured(option.value, apiKeyStatus),
+                              isProviderConfigured(option.value, apiKeyStatus, { openaiCodexLoggedIn: openaiCodex.loggedIn }),
                             )
                             .map((option) => (
                             <SelectItem key={option.value} value={option.value}>
@@ -1024,7 +1152,11 @@ export function SettingsPage({
                           ))}
                         </SelectContent>
                       </Select>
-                      <p className="text-2xs text-muted-foreground">AI provider for all model roles</p>
+                      <p className="text-2xs text-muted-foreground">
+                        {config.analysisProvider === "openai-codex"
+                          ? "Agent runs on your ChatGPT subscription. Analysis, task, utility, and synthesis fall back to OpenRouter to preserve quota."
+                          : "AI provider for all model roles"}
+                      </p>
                     </div>
                     <div className="space-y-1">
                       <label className="text-2xs text-muted-foreground">
@@ -1462,6 +1594,8 @@ export function SettingsPage({
               onConfigChange={onConfigChange}
               onSave={onSaveApiKey}
               onDelete={onDeleteApiKey}
+              openaiCodex={openaiCodex}
+              onOpenaiCodexChange={setOpenaiCodex}
             />
           </TabsContent>
 

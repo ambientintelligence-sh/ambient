@@ -59,7 +59,7 @@ export type SuggestionAgentResult = {
   steps: number;
 };
 
-const STEP_BUDGET = 20;
+const STEP_BUDGET = 8;
 
 function truncateLabel(text: string, max = 40): string {
   const clean = text.trim().replaceAll(/\s+/g, " ");
@@ -102,17 +102,21 @@ const SYSTEM_PROMPT = [
   "",
   "Be proactive. If there's a reasonable moment to help — a fact worth looking up, a past decision worth remembering, a draft worth offering — take it. You don't need a dramatic contradiction to speak up.",
   "",
-  "Before you suggest, INVESTIGATE. You have up to 20 tool-calling steps — use them freely to chase threads, cross-reference, and verify. Tools available:",
+  "Before you suggest, INVESTIGATE — but be decisive. You have up to 8 tool-calling steps. Use them for ONE or TWO targeted lookups, not exhaustive research. The user is waiting; a fast, sharp finding beats a thorough one that takes 60 seconds. Tools available:",
   "- getTranscriptContext: read older blocks from this session to check whether the speakers already covered, resolved, or contradicted something.",
   "- searchTranscriptHistory: search prior sessions to catch stale duplicates or \"we already decided X last time\" moments.",
   "- searchWeb: look up current external facts (specific prices, recent news, exact figures, recent releases). Use when the conversation hinges on an up-to-date external fact.",
   "",
   "Guidelines:",
-  "- Prefer suggestions that lead with a concrete thing — a specific number, name, date, decision, contradiction, or prior commitment. Tool output is the best source, but a sharp observation from the transcript itself is also fine.",
+  "- Prefer suggestions that lead with a concrete thing — a specific number, name, date, decision, contradiction, concern, or prior commitment. Tool output is great, but a sharp observation from the transcript itself is also valid.",
   "- If the transcript contains an explicit follow-up, assignment, deadline, deliverable, research question, or comparison request, prefer returning at least 1 concrete suggestion instead of none.",
+  "- If you notice a concrete concern, inconsistency, risk, or missing next step directly from the transcript, you MAY suggest it even if you did not use any tools.",
   "- Never repeat or rephrase anything in the historical suggestions list.",
   "- Ignore bracketed non-speech tags like [silence], [music], [noise], [laughs]. Preserve specifics: names, places, dates, numbers, constraints.",
-  "- You have step budget to spare. It's fine to make a follow-up search to verify what a first search returned, or to pull more transcript context after finding a prior mention. Don't stop at the first result if it's ambiguous.",
+  "- The transcript comes from automatic speech recognition and will contain errors: misheard words, wrong names, garbled numbers, homophones, dropped negations, sentences that cut off mid-phrase, missing words at the end of utterances. These are UPSTREAM ARTIFACTS, not things the speakers said or did. Treat them as invisible.",
+  "- NEVER produce a suggestion that is meta-commentary about the transcript itself. Forbidden patterns include: 'the transcript cuts off', 'the ASR dropped / missed / garbled X', 'they probably meant Y but the transcript says Z', 'heads up, this sentence is incomplete', 'the recording seems to have lost...', or any variant of pointing out that the transcript has errors. The user already knows the transcript is imperfect — your job is to help with the conversation's CONTENT, not audit the transcription pipeline.",
+  "- If a phrase looks off in a way that's more plausibly a mishearing or truncation than a real error in the conversation, skip it silently — do not suggest anything about it. Only flag a number/name/fact when you have strong evidence (a tool result) that it was actually said that way and is actually wrong on the merits.",
+  "- Stop as soon as you have one concrete finding worth surfacing. Don't chase a second angle unless the first result is clearly too thin to act on. A follow-up query should be the exception, not the default.",
   "",
   "Tone and phrasing — this matters:",
   "- Write like a friend, not a research assistant. Short, natural, first-person, specific.",
@@ -123,14 +127,14 @@ const SYSTEM_PROMPT = [
   "- If the finding itself is strong, the offer can be omitted entirely — the observation alone is the value.",
   "",
   "Output (plain text, no JSON):",
-  "1. A 2-4 line research note summarizing what tools you called and what they returned.",
+  "1. A 2-4 line note summarizing what tools you called and/or what concrete concern you noticed in the transcript.",
   "2. Then, for each candidate suggestion (0-3), a block like:",
   "   KIND: <research|action|insight|flag|followup>",
   "   TEXT: <short, natural, first-person. Leads with the concrete finding. Sounds like a friend, not a research paper.>",
   "   DETAILS: <one-line rationale grounded in what your tool calls returned>",
   "   EXCERPT: <verbatim transcript quote, optional>",
   "",
-  "If you didn't find anything concrete via tools, write the research note and then the single line: NO_SUGGESTIONS.",
+  "If you genuinely didn't find anything concrete in either the transcript or tools, write the note and then the single line: NO_SUGGESTIONS.",
 ].join("\n");
 
 const GetTranscriptContextSchema = Type.Object({
@@ -250,13 +254,25 @@ export async function runSuggestionAgent(
   let stepsTaken = 0;
   let researchInputTokens = 0;
   let researchOutputTokens = 0;
+  let streamedText = "";
+  let lastNonEmptyText = "";
+  let deltaCount = 0;
 
   piAgent.subscribe((event) => {
     if (event.type === "turn_start") {
       stepsTaken += 1;
+      if (streamedText) lastNonEmptyText = streamedText;
+      streamedText = "";
       emitStep("Thinking…");
       if (stepsTaken > STEP_BUDGET) {
         piAgent.abort();
+      }
+    }
+    if (event.type === "message_update") {
+      const ev = event.assistantMessageEvent;
+      if (ev.type === "text_delta") {
+        deltaCount += 1;
+        streamedText += ev.delta;
       }
     }
     if (event.type === "message_end" && event.message.role === "assistant") {
@@ -270,7 +286,23 @@ export async function runSuggestionAgent(
   try {
     await piAgent.prompt(userPrompt);
     await piAgent.waitForIdle();
-    researchText = extractFinalText(piAgent.state.messages as Message[]).trim();
+    if (streamedText) lastNonEmptyText = streamedText;
+    const finalMessages = piAgent.state.messages as Message[];
+    const last = finalMessages[finalMessages.length - 1] as AssistantMessage | Message | undefined;
+    if (last && last.role === "assistant" && (last.stopReason === "error" || last.stopReason === "aborted")) {
+      const detail = last.stopReason === "aborted"
+        ? "Suggestion agent aborted"
+        : `Suggestion agent errored: ${last.errorMessage ?? "Unknown error"}`;
+      if (deps.debug) {
+        log("WARN", detail);
+      }
+      throw new Error(detail);
+    }
+    researchText = (extractFinalText(finalMessages) || lastNonEmptyText).trim();
+    if (deps.debug) {
+      const preview = researchText.length > 800 ? `${researchText.slice(0, 800)}...` : researchText;
+      log("INFO", `Suggestion agent research note: ${preview || `<empty; deltas=${deltaCount}>`}`);
+    }
   } catch (error) {
     if (deps.debug) {
       log("WARN", `Suggestion agent research phase failed: ${toReadableError(error)}`);
@@ -281,6 +313,9 @@ export async function runSuggestionAgent(
   emitStep("Drafting suggestions…");
 
   if (!researchText || /\bNO_SUGGESTIONS\b/.test(researchText)) {
+    if (deps.debug) {
+      log("INFO", `Suggestion agent returned NO_SUGGESTIONS (${researchText ? "explicit" : "empty research note"})`);
+    }
     return {
       suggestions: [],
       usage: { inputTokens: researchInputTokens, outputTokens: researchOutputTokens },
