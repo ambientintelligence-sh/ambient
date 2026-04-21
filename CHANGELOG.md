@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.1](https://github.com/ambientintelligence-sh/ambient/compare/v1.5.0...v1.5.1) (2026-04-21)
+
+
+### Features
+
+* resolve audiotee binary path for Electron builds ([#22](https://github.com/ambientintelligence-sh/ambient/issues/22)) ([db8348c](https://github.com/ambientintelligence-sh/ambient/commit/db8348c8aa13a719343f5223ed06c3961f26550c))
+
+
+### Miscellaneous Chores
+
+* release 1.5.1 ([3fe47d3](https://github.com/ambientintelligence-sh/ambient/commit/3fe47d3acd8fe5851b3da6c8795dc542190ac966))
+
 ## [1.5.0](https://github.com/ambientintelligence-sh/ambient/compare/v1.4.1...v1.5.0) (2026-04-20)
 
 
