@@ -41,14 +41,6 @@ import {
   ChainOfThoughtStep,
 } from "@/components/ai-elements/chain-of-thought";
 import { useStickToBottomContext } from "use-stick-to-bottom";
-import {
-  Queue,
-  QueueSection,
-  QueueSectionContent,
-  QueueItem,
-  QueueItemIndicator,
-  QueueItemContent,
-} from "@/components/ai-elements/queue";
 import type {
   Agent,
   AgentStep,
@@ -210,30 +202,50 @@ function TextStepActions({
 }
 
 function AgentTodoQueue({ items }: { items: ReadonlyArray<{ id: string; content: string; status: string }> }) {
-  if (items.length === 0) return null;
+  const unfinishedItems = items.filter((item) => item.status !== "completed" && item.status !== "cancelled");
+  if (unfinishedItems.length === 0) return null;
+
+  const orderedItems = [
+    ...unfinishedItems.filter((item) => item.status === "in_progress"),
+    ...unfinishedItems.filter((item) => item.status !== "in_progress"),
+  ];
+  const visibleItems = orderedItems.slice(0, 3);
+  const hiddenCount = orderedItems.length - visibleItems.length;
 
   return (
-    <Queue className="max-h-[150px] overflow-y-auto rounded-b-none border-b-0 border-input">
-      <QueueSection>
-        <QueueSectionContent>
-          <div>
-            {items.map((item) => {
-              const done = item.status === "completed" || item.status === "cancelled";
-              return (
-                <QueueItem key={item.id}>
-                  <div className="flex items-center gap-2">
-                    <QueueItemIndicator completed={done} />
-                    <QueueItemContent completed={done}>
-                      {item.content}
-                    </QueueItemContent>
-                  </div>
-                </QueueItem>
-              );
-            })}
-          </div>
-        </QueueSectionContent>
-      </QueueSection>
-    </Queue>
+    <div className="mb-1.5 rounded-lg border border-border/45 bg-background/65 px-2 py-1.5 backdrop-blur-sm">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground/55">
+          In progress
+        </span>
+        <span className="text-[10px] text-muted-foreground/65">
+          {unfinishedItems.length} left
+        </span>
+      </div>
+      <div className="mt-1.5 space-y-1">
+        {visibleItems.map((item) => {
+          const active = item.status === "in_progress";
+          return (
+            <div key={item.id} className="flex items-start gap-2">
+              <span className={`mt-1.5 size-1.5 shrink-0 rounded-full ${active ? "bg-primary" : "bg-muted-foreground/35"}`} />
+              <span className={`min-w-0 flex-1 text-[11px] leading-4 ${active ? "text-foreground/88" : "text-foreground/68"}`}>
+                {item.content}
+              </span>
+              {active && (
+                <span className="shrink-0 rounded-full bg-primary/8 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-primary/70">
+                  Now
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {hiddenCount > 0 && (
+        <div className="mt-1 text-[10px] text-muted-foreground/60">
+          +{hiddenCount} more
+        </div>
+      )}
+    </div>
   );
 }
 

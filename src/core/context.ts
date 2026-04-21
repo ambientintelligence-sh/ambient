@@ -86,15 +86,3 @@ export function loadAgentsMd(): string {
   if (!fs.existsSync(agentsMdPath)) return "";
   return fs.readFileSync(agentsMdPath, "utf-8");
 }
-
-export function writeSummaryLog(allKeyPoints: string[]) {
-  if (allKeyPoints.length === 0) return;
-  const summaryLogFile = path.join(process.cwd(), "summary.log");
-  const ts = new Date().toISOString();
-  const lines = [
-    `\n--- Session: ${ts} ---`,
-    ...allKeyPoints.map((p) => `\u2022 ${p}`),
-    "",
-  ].join("\n");
-  fs.appendFileSync(summaryLogFile, lines);
-}

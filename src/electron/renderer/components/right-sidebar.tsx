@@ -380,20 +380,26 @@ function AgentActivityCard({
     ? Math.max(0, visibleSteps.lastIndexOf(activeStep))
     : visibleSteps.length;
   const statusText = completedCount > 0
-    ? `${completedCount} step${completedCount === 1 ? "" : "s"} completed`
-    : "Agent is working on it";
-  const title = activeStep ?? "Agent is working on it";
+    ? `${completedCount} step${completedCount === 1 ? "" : "s"} done`
+    : "Scanning";
+  const title = activeStep ?? "Working on suggestions";
   const isWaiting = progress.busy && (progress.step === "Preparing scan…" || !progress.step);
 
   return (
-    <li className="relative overflow-hidden rounded-xl border border-primary/35 bg-primary/6 px-2.5 py-2">
-      <div className="flex items-start gap-2">
-        <LoaderCircleIcon className="mt-0.5 size-3 shrink-0 animate-spin text-primary/70" />
+    <li className="relative overflow-hidden rounded-2xl border border-primary/20 bg-primary/[0.045] px-3 py-2.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.7)]">
+      <div className="flex items-start gap-2.5">
+        <div className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10">
+          <LoaderCircleIcon className="size-3 animate-spin text-primary/70" />
+        </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
-              <div className="text-xs text-foreground/80">{title}</div>
-              <div className="mt-1 text-2xs uppercase tracking-[0.14em] text-muted-foreground/60">{cardLabel} · {statusText}</div>
+              <div className="text-xs font-medium text-foreground/85">{title}</div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] uppercase tracking-[0.16em] text-muted-foreground/55">
+                <span>{cardLabel}</span>
+                <span className="text-muted-foreground/35">•</span>
+                <span>{statusText}</span>
+              </div>
             </div>
             {isWaiting && <ManualScanButton onRequestTaskScan={onRequestTaskScan} />}
           </div>

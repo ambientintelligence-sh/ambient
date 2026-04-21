@@ -65,7 +65,6 @@ import {
   recordContext,
   createBlock,
   loadAgentsMd,
-  writeSummaryLog,
   type ContextState,
 } from "./context";
 import {
@@ -1085,7 +1084,6 @@ export class Session {
       this.paragraphBuffer.clear();
     }
     this.events.emit("partial", { source: null, text: "" });
-    writeSummaryLog(this.contextState.allKeyPoints);
   }
 
   launchAgent(kind: AgentKind, taskId: string | undefined, task: string, taskContext?: string): Agent | null {
