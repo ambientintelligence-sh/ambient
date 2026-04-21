@@ -1,6 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { AudioTee } from "audiotee";
 import { release } from "node:os";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { Device } from "./types";
 
 // ============================================================================
@@ -32,10 +34,26 @@ export type AudioRecorder = {
   on: (event: "data" | "error", handler: (data: Buffer | Error) => void) => void;
 };
 
+// In packaged Electron builds, audiotee's default binary path resolves inside
+// `app.asar`, and spawning a file inside the archive fails with ENOTDIR. Point
+// at the unpacked copy instead; dev falls through to audiotee's own __dirname.
+function resolveAudioteeBinaryPath(): string | undefined {
+  const unpacked = join(
+    process.resourcesPath ?? "",
+    "app.asar.unpacked",
+    "node_modules",
+    "audiotee",
+    "bin",
+    "audiotee",
+  );
+  return existsSync(unpacked) ? unpacked : undefined;
+}
+
 export function createAudioRecorder(sampleRate = 16000): AudioRecorder {
   const audiotee = new AudioTee({
     sampleRate,
     chunkDurationMs: 100, // 100ms chunks for low latency
+    binaryPath: resolveAudioteeBinaryPath(),
   });
 
   return {
