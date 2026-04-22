@@ -40,10 +40,10 @@ export type ProviderConfig = {
 export const MODEL_CONFIG: Record<ModelProvider, ProviderConfig> = {
   openrouter: {
     defaults: {
-      analysisModelId: "moonshotai/kimi-k2.5",
+      analysisModelId: "z-ai/glm-5.1",
       taskModelId: "openai/gpt-oss-120b",
       utilityModelId: "openai/gpt-oss-20b",
-      synthesisModelId: "openai/gpt-oss-120b",
+      synthesisModelId: "z-ai/glm-5.1",
       taskProviders: ["sambanova", "groq", "cerebras"],
     },
     models: [

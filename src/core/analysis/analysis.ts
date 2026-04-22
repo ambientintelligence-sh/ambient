@@ -405,10 +405,10 @@ export function buildAgentSuggestionPrompt(
     : "";
   const aggressivenessSection =
     aggressiveness === "conservative"
-      ? "\n\nSuggestion aggressiveness: conservative.\n- Only surface a suggestion when the transcript contains a fairly explicit follow-up, ask, deliverable, or risk.\n- Prefer silence over speculative suggestions."
+      ? "\n\nSuggestion aggressiveness: conservative.\n- Only surface a suggestion when the transcript contains a fairly explicit follow-up, ask, deliverable, or risk.\n- If a suggestion depends on a public factual claim, do one quick external verification pass before surfacing it.\n- Prefer silence over speculative suggestions."
       : aggressiveness === "aggressive"
-        ? "\n\nSuggestion aggressiveness: aggressive.\n- Proactively surface implied next steps, research opportunities, drafting help, and decision support.\n- If there is plausible user-saving work to offer, prefer suggesting it."
-        : "\n\nSuggestion aggressiveness: balanced.\n- Surface explicit follow-ups and strong implied next steps.\n- Avoid weak or speculative suggestions.";
+        ? "\n\nSuggestion aggressiveness: aggressive.\n- Proactively surface implied next steps, research opportunities, drafting help, and decision support.\n- For concrete public claims, default to a fast web check across a few sources before suggesting.\n- If there is plausible user-saving work to offer, prefer suggesting it."
+        : "\n\nSuggestion aggressiveness: balanced.\n- Surface explicit follow-ups and strong implied next steps.\n- For concrete public claims, prefer one quick external verification pass before surfacing them.\n- Avoid weak or speculative suggestions.";
 
   return renderPromptTemplate(getAgentSuggestionPromptTemplate(), {
     transcript,

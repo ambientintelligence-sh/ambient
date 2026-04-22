@@ -72,6 +72,16 @@ describe("buildAgentSuggestionPrompt", () => {
     expect(prompt).toContain("Recent transcript:");
     expect(prompt).toContain("I want to visit Austin next month.");
   });
+
+  it("asks for quick external verification in balanced mode", () => {
+    const prompt = buildAgentSuggestionPrompt(SAMPLE_BLOCKS, [], [], [], [], "balanced");
+    expect(prompt).toContain("For concrete public claims, prefer one quick external verification pass before surfacing them.");
+  });
+
+  it("asks for fast external verification in aggressive mode", () => {
+    const prompt = buildAgentSuggestionPrompt(SAMPLE_BLOCKS, [], [], [], [], "aggressive");
+    expect(prompt).toContain("For concrete public claims, default to a fast web check across a few sources before suggesting.");
+  });
 });
 
 describe("buildTaskFromSelectionPrompt", () => {
