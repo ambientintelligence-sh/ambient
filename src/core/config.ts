@@ -4,7 +4,10 @@ export function validateEnv(config: Pick<SessionConfig, "transcriptionProvider" 
   const missing: string[] = [];
 
   const needsGoogle = config.transcriptionProvider === "google" || config.analysisProvider === "google";
-  const needsOpenRouter = config.transcriptionProvider === "openrouter" || config.analysisProvider === "openrouter";
+  const needsOpenRouter =
+    config.transcriptionProvider === "openrouter" ||
+    config.analysisProvider === "openrouter" ||
+    config.analysisProvider === "openai-codex";
   const needsBedrock = config.analysisProvider === "bedrock";
 
   if (needsBedrock) {

@@ -22,9 +22,13 @@ export const agentSuggestionSchema = z.object({
         kind: z
           .enum(["research", "action", "insight", "flag", "followup"])
           .describe("research = share a concrete fact you looked up; action = offer to draft/create/do something specific; insight = point out something the speakers didn't notice; flag = highlight a conflict, mistake, or risk; followup = remind about a loose thread"),
+        flag: z
+          .string()
+          .describe("Short concrete issue, contradiction, or opportunity noticed in the transcript or tools.")
+          .optional(),
         text: z
           .string()
-          .describe("Short, natural, first-person observation from a friend listening in. Leads with the concrete finding (specific number, date, decision, contradiction) — not a generic offer. Good: 'They said 45M, but the March UN report said 38M — flag it?'. Bad: 'Want me to compare the figures and identify any discrepancies?'"),
+          .describe("Short, concrete next step or action the user can accept as a task. Keep it actionable and specific, not generic. Good: 'Flag the 45M vs 38M discrepancy before this gets repeated.' Bad: 'Want me to compare the figures and identify any discrepancies?'"),
         details: z
           .string()
           .describe("Brief context or rationale for the suggestion.")
@@ -35,7 +39,7 @@ export const agentSuggestionSchema = z.object({
           .optional(),
       }),
     )
-    .describe("0-3 grounded observations. Each must lead with a concrete thing the agent actually found, not a generic offer to do research."),
+    .describe("0-3 grounded suggestions. Each should pair a concrete flag or observation with a specific next step the user could accept as a task."),
 });
 
 export const taskFromSelectionSchema = z.object({
@@ -401,10 +405,10 @@ export function buildAgentSuggestionPrompt(
     : "";
   const aggressivenessSection =
     aggressiveness === "conservative"
-      ? "\n\nSuggestion aggressiveness: conservative.\n- Only surface a suggestion when the transcript contains a fairly explicit follow-up, ask, deliverable, or risk.\n- Prefer silence over speculative suggestions."
+      ? "\n\nSuggestion aggressiveness: conservative.\n- Only surface a suggestion when the transcript contains a fairly explicit follow-up, ask, deliverable, or risk.\n- If a suggestion depends on a public factual claim, do one quick external verification pass before surfacing it.\n- Prefer silence over speculative suggestions."
       : aggressiveness === "aggressive"
-        ? "\n\nSuggestion aggressiveness: aggressive.\n- Proactively surface implied next steps, research opportunities, drafting help, and decision support.\n- If there is plausible user-saving work to offer, prefer suggesting it."
-        : "\n\nSuggestion aggressiveness: balanced.\n- Surface explicit follow-ups and strong implied next steps.\n- Avoid weak or speculative suggestions.";
+        ? "\n\nSuggestion aggressiveness: aggressive.\n- Proactively surface implied next steps, research opportunities, drafting help, and decision support.\n- For concrete public claims, default to a fast web check across a few sources before suggesting.\n- If there is plausible user-saving work to offer, prefer suggesting it."
+        : "\n\nSuggestion aggressiveness: balanced.\n- Surface explicit follow-ups and strong implied next steps.\n- For concrete public claims, prefer one quick external verification pass before surfacing them.\n- Avoid weak or speculative suggestions.";
 
   return renderPromptTemplate(getAgentSuggestionPromptTemplate(), {
     transcript,

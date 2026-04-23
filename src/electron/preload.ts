@@ -49,6 +49,7 @@ export type ElectronAPI = {
   sendMicAudio: (data: ArrayBuffer) => void;
   toggleTranslation: () => Promise<{ ok: boolean; enabled?: boolean; error?: string }>;
   setSourceLanguage: (sourceLang: LanguageCode) => Promise<{ ok: boolean; error?: string }>;
+  setSuggestionScanWordBudget: (budget: 100 | 150 | 200) => Promise<{ ok: boolean; error?: string }>;
   setTranslationMode: (direction: "off" | "auto" | "source-target", targetLang?: LanguageCode) => Promise<{ ok: boolean; error?: string }>;
   addContextNote: (text: string) => Promise<{ ok: boolean; block?: TranscriptBlock; error?: string }>;
   requestTaskScan: () => Promise<{
@@ -183,11 +184,15 @@ export type ElectronAPI = {
   onTaskAdded: (callback: (task: TaskItem) => void) => () => void;
   onTaskSuggested: (callback: (suggestion: TaskSuggestion) => void) => () => void;
   onSuggestionProgress: (callback: (progress: {
+    scanId?: string;
+    label?: string;
     busy: boolean;
     wordsUntilNextScan: number;
     liveWordsUntilNextScan?: number;
+    scanWordBudget?: number;
     step?: string;
     lastScanEmpty?: boolean;
+    error?: string;
   }) => void) => () => void;
   onAgentStarted: (callback: (agent: Agent) => void) => () => void;
   onAgentStep: (callback: (agentId: string, step: AgentStep) => void) => () => void;
@@ -234,6 +239,7 @@ const api: ElectronAPI = {
   sendMicAudio: (data) => ipcRenderer.send("mic-audio-data", data),
   toggleTranslation: () => ipcRenderer.invoke("toggle-translation"),
   setSourceLanguage: (sourceLang) => ipcRenderer.invoke("set-source-language", sourceLang),
+  setSuggestionScanWordBudget: (budget) => ipcRenderer.invoke("set-suggestion-scan-word-budget", budget),
   setTranslationMode: (direction, targetLang) => ipcRenderer.invoke("set-translation-mode", direction, targetLang),
   addContextNote: (text) => ipcRenderer.invoke("add-context-note", text),
   requestTaskScan: () => ipcRenderer.invoke("request-task-scan"),
@@ -340,11 +346,15 @@ const api: ElectronAPI = {
   onTaskAdded: createListener<TaskItem>("session:task-added"),
   onTaskSuggested: createListener<TaskSuggestion>("session:task-suggested"),
   onSuggestionProgress: createListener<{
+    scanId?: string;
+    label?: string;
     busy: boolean;
     wordsUntilNextScan: number;
     liveWordsUntilNextScan?: number;
+    scanWordBudget?: number;
     step?: string;
     lastScanEmpty?: boolean;
+    error?: string;
   }>("session:suggestion-progress"),
   onAgentStarted: createListener<Agent>("session:agent-started"),
   onAgentStep: (callback: (agentId: string, step: AgentStep) => void) => {

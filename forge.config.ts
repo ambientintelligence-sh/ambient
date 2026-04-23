@@ -9,9 +9,11 @@ import * as fs from "fs";
 const config: ForgeConfig = {
   packagerConfig: {
     // Modules with native binaries must be outside the asar so they can execute.
+    // @secure-exec/v8-* ships a Mach-O executable spawned as a subprocess;
+    // @mariozechner/clipboard-* ships a .node addon.
     asar: {
       unpackDir:
-        "node_modules/{audiotee,macos-audio-devices,better-sqlite3,bufferutil,utf-8-validate}",
+        "{node_modules/{audiotee,macos-audio-devices,better-sqlite3,bufferutil,utf-8-validate},node_modules/@secure-exec/*,node_modules/@mariozechner/clipboard*}",
     },
     icon: "./assets/icon",
     appBundleId: "com.ambient.app",
@@ -38,7 +40,11 @@ const config: ForgeConfig = {
             const pkg = JSON.parse(
               fs.readFileSync(path.join(src, "package.json"), "utf8"),
             );
-            for (const dep of Object.keys(pkg.dependencies ?? {})) {
+            const deps = {
+              ...(pkg.dependencies ?? {}),
+              ...(pkg.optionalDependencies ?? {}),
+            };
+            for (const dep of Object.keys(deps)) {
               copyWithDeps(dep);
             }
           } catch {}
@@ -50,6 +56,8 @@ const config: ForgeConfig = {
           "better-sqlite3",
           "drizzle-orm",
           "exa-js",
+          "@mariozechner/pi-coding-agent",
+          "secure-exec",
         ];
 
         for (const mod of externalModules) {

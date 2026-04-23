@@ -5,7 +5,7 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import type { Api, Model, ThinkingLevel } from "@mariozechner/pi-ai";
 import type { SessionConfig } from "./types";
-import { getReasoningEffortForModel } from "./models";
+import { MODEL_CONFIG, getReasoningEffortForModel } from "./models";
 
 type ReasoningOption =
   | { effort: "xhigh" | "high" | "medium" | "low" | "minimal" | "none"; exclude: boolean }
@@ -47,6 +47,13 @@ export function createTranscriptionModel(config: SessionConfig): LanguageModel {
   );
 }
 
+// ChatGPT subscription uses a custom backend and flat-rate pricing. The Vercel
+// AI SDK can't target it directly, so when `openai-codex` is the selected
+// provider we keep the agent on pi-ai + OAuth (see createAgentPiModel) and
+// fall back to OpenRouter defaults for analysis/task/utility/synthesis to
+// preserve the user's subscription quota.
+const OPENROUTER_FALLBACK = MODEL_CONFIG.openrouter.defaults;
+
 export function createAnalysisModel(config: SessionConfig): LanguageModel {
   switch (config.analysisProvider) {
     case "openrouter": {
@@ -85,6 +92,15 @@ export function createAnalysisModel(config: SessionConfig): LanguageModel {
       });
       return bedrock(config.analysisModelId);
     }
+    case "openai-codex": {
+      const openrouter = createOpenRouter({
+        apiKey: process.env.OPENROUTER_API_KEY,
+      });
+      return openrouter(OPENROUTER_FALLBACK.analysisModelId, {
+        reasoning: reasoningForModel(OPENROUTER_FALLBACK.analysisModelId, 4096),
+        provider: { sort: "throughput" as const },
+      });
+    }
   }
   throw new Error(
     `Unsupported analysis provider: ${String(config.analysisProvider)}`
@@ -114,19 +130,28 @@ function createModelForProvider(
 }
 
 export function createUtilitiesModel(config: SessionConfig): LanguageModel {
-  return createModelForProvider(config, config.utilityModelId);
+  const modelId = config.analysisProvider === "openai-codex"
+    ? OPENROUTER_FALLBACK.utilityModelId
+    : config.utilityModelId;
+  return createModelForProvider(config, modelId);
 }
 
 export function createSynthesisModel(config: SessionConfig): LanguageModel {
-  return createModelForProvider(config, config.synthesisModelId);
+  const modelId = config.analysisProvider === "openai-codex"
+    ? OPENROUTER_FALLBACK.synthesisModelId
+    : config.synthesisModelId;
+  return createModelForProvider(config, modelId);
 }
 
 export function createTaskModel(config: SessionConfig): LanguageModel {
-  return createModelForProvider(config, config.taskModelId, {
-    reasoning: reasoningForModel(config.taskModelId, 1024),
+  const useFallback = config.analysisProvider === "openai-codex";
+  const modelId = useFallback ? OPENROUTER_FALLBACK.taskModelId : config.taskModelId;
+  const providers = useFallback ? OPENROUTER_FALLBACK.taskProviders : (config.taskProviders ?? []);
+  return createModelForProvider(config, modelId, {
+    reasoning: reasoningForModel(modelId, 1024),
     provider: {
       sort: "throughput" as const,
-      ...(config.taskProviders?.length ? { only: config.taskProviders } : {}),
+      ...(providers.length ? { only: providers } : {}),
     },
   });
 }
@@ -195,11 +220,33 @@ function buildBedrockModel(modelId: string): Model<"bedrock-converse-stream"> {
   };
 }
 
-export type CreateAgentPiModelDeps = Record<string, never>;
+function buildOpenAiCodexModel(modelId: string): Model<"openai-codex-responses"> {
+  return {
+    id: modelId,
+    name: modelId,
+    api: "openai-codex-responses",
+    provider: "openai-codex",
+    baseUrl: "https://chatgpt.com/backend-api",
+    reasoning: true,
+    input: ["text", "image"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 200_000,
+    maxTokens: 32_000,
+  };
+}
+
+export type CreateAgentPiModelDeps = {
+  /**
+   * Resolver for the ChatGPT subscription access token. Called per LLM request
+   * so the token can be refreshed transparently when it expires. Required when
+   * `config.analysisProvider === "openai-codex"`; ignored otherwise.
+   */
+  getOpenAiCodexAccessToken?: () => Promise<string>;
+};
 
 export function createAgentPiModel(
   config: SessionConfig,
-  _deps: CreateAgentPiModelDeps = {},
+  deps: CreateAgentPiModelDeps = {},
 ): AgentPiModel {
   const thinkingLevel = reasoningEffortToThinkingLevel(
     getReasoningEffortForModel(config.analysisModelId),
@@ -209,6 +256,20 @@ export function createAgentPiModel(
     return {
       model: buildBedrockModel(config.analysisModelId) as Model<Api>,
       thinkingLevel,
+    };
+  }
+
+  if (config.analysisProvider === "openai-codex") {
+    const getApiKey = deps.getOpenAiCodexAccessToken;
+    if (!getApiKey) {
+      throw new Error(
+        "OpenAI (ChatGPT) provider is selected but no OAuth token resolver was provided. Log in again from Settings → API Keys.",
+      );
+    }
+    return {
+      model: buildOpenAiCodexModel(config.analysisModelId) as Model<Api>,
+      thinkingLevel,
+      getApiKey,
     };
   }
 

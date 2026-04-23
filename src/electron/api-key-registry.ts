@@ -27,7 +27,7 @@ export const API_KEY_DEFINITIONS: readonly ApiKeyDefinition[] = [
   },
   {
     envVar: "EXA_API_KEY",
-    label: "Exa API Key (for AI Agents)",
+    label: "Exa Search API Key",
     placeholder: "exa-...",
     providers: [],
   },

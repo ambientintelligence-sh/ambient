@@ -40,10 +40,10 @@ export type ProviderConfig = {
 export const MODEL_CONFIG: Record<ModelProvider, ProviderConfig> = {
   openrouter: {
     defaults: {
-      analysisModelId: "moonshotai/kimi-k2.5",
+      analysisModelId: "z-ai/glm-5.1",
       taskModelId: "openai/gpt-oss-120b",
       utilityModelId: "openai/gpt-oss-20b",
-      synthesisModelId: "openai/gpt-oss-120b",
+      synthesisModelId: "z-ai/glm-5.1",
       taskProviders: ["sambanova", "groq", "cerebras"],
     },
     models: [
@@ -129,18 +129,18 @@ export const MODEL_CONFIG: Record<ModelProvider, ProviderConfig> = {
   },
   "openai-codex": {
     defaults: {
-      // ChatGPT subscription-backed endpoint. These only apply to the agent
-      // path — utility/synthesis/analysis for suggestions still route via
-      // the original provider (OpenRouter/Bedrock) because the ChatGPT
-      // backend charges against weekly/daily message caps and we don't want
-      // to burn them on summarisation.
+      // ChatGPT subscription-backed endpoint. Only the agent (analysis role)
+      // actually routes here — utility/synthesis/task fall back to OpenRouter
+      // so we don't burn the user's weekly/daily message caps on background
+      // summarisation. Mini tier picked for the cheaper roles to match that
+      // intent if/when those roles get routed to ChatGPT in the future.
       //
       // Model list mirrors what ChatGPT Plus/Pro exposes in the web model
       // picker. ChatGPT's own UI is the source of truth for "what's
       // available on your subscription" — there's no clean API for it.
       analysisModelId: "gpt-5.4",
-      taskModelId: "gpt-5.4",
-      utilityModelId: "gpt-5.4",
+      taskModelId: "gpt-5.4-mini",
+      utilityModelId: "gpt-5.4-mini",
       synthesisModelId: "gpt-5.4",
       taskProviders: [],
     },

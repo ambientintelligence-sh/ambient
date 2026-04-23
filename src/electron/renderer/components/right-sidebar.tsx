@@ -44,18 +44,29 @@ type RightRailMode = "work" | "agents";
 const EMPTY_SESSION_TAB_KEY = "__empty__";
 
 type SuggestionProgress = {
+  scanId?: string;
+  label?: string;
   busy: boolean;
   wordsUntilNextScan: number;
   liveWordsUntilNextScan?: number;
+  scanWordBudget?: number;
   step?: string;
   lastScanEmpty?: boolean;
+  error?: string;
+};
+
+type SuggestionScanCard = SuggestionProgress & {
+  scanId: string;
+  agentSteps: string[];
+  updatedAt: number;
 };
 
 type RightSidebarProps = {
   tasks: TaskItem[];
   suggestions: TaskSuggestion[];
   suggestionProgress?: SuggestionProgress;
-  agentSteps?: string[];
+  suggestionScanCards?: SuggestionScanCard[];
+  scanWordBudget?: number;
   agents?: Agent[];
   selectedAgentId?: string | null;
   forceWorkTabKey?: number;
@@ -95,6 +106,7 @@ function SuggestionItem({
 }) {
   const [opacity, setOpacity] = useState(1);
   const [progress, setProgress] = useState(100);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const onDismissRef = useRef(onDismiss);
   onDismissRef.current = onDismiss;
 
@@ -121,6 +133,7 @@ function SuggestionItem({
   }, [suggestion.createdAt]);
 
   const KindIcon = suggestion.kind ? SUGGESTION_KIND_ICONS[suggestion.kind] : SearchIcon;
+  const hasDetails = Boolean(suggestion.flag?.trim() || suggestion.details?.trim() || suggestion.transcriptExcerpt?.trim());
 
   return (
     <li
@@ -129,25 +142,59 @@ function SuggestionItem({
     >
       <div className="flex items-start gap-2 min-h-7 py-1.5 px-2 relative z-10">
         <KindIcon className="size-3 shrink-0 text-muted-foreground mt-0.5" />
-        <span className="text-xs text-foreground flex-1 break-words">
-          {suggestion.text}
-        </span>
-        <button
-          type="button"
-          onClick={onAccept}
-          className="shrink-0 cursor-pointer p-0.5 text-primary transition-colors hover:text-primary/80"
-          aria-label="Add to tasks"
-        >
-          <PlusIcon className="size-3" />
-        </button>
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="shrink-0 cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-foreground"
-          aria-label="Dismiss suggestion"
-        >
-          <XIcon className="size-3" />
-        </button>
+        <div className="min-w-0 flex-1">
+          {suggestion.flag?.trim() && (
+            <div className="mb-1 text-[11px] font-medium text-foreground/72 break-words">
+              {suggestion.flag.trim()}
+            </div>
+          )}
+          <div className="text-xs text-foreground break-words">
+            {suggestion.text}
+          </div>
+          {hasDetails && (
+            <button
+              type="button"
+              onClick={() => setDetailsOpen((prev) => !prev)}
+              className="mt-1 text-2xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {detailsOpen ? "Hide context" : "Show context"}
+            </button>
+          )}
+          {detailsOpen && hasDetails && (
+            <div className="mt-1.5 space-y-1 text-2xs text-muted-foreground">
+              {suggestion.flag?.trim() && !suggestion.details?.trim() && !suggestion.transcriptExcerpt?.trim() && (
+                <p className="whitespace-pre-wrap break-words">{suggestion.flag.trim()}</p>
+              )}
+              {suggestion.details?.trim() && (
+                <p className="whitespace-pre-wrap break-words">{suggestion.details.trim()}</p>
+              )}
+              {suggestion.transcriptExcerpt?.trim() && (
+                <p className="whitespace-pre-wrap break-words italic text-muted-foreground/85">
+                  {suggestion.transcriptExcerpt.trim()}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 items-start gap-0.5">
+          <button
+            type="button"
+            onClick={onAccept}
+            className="cursor-pointer p-0.5 text-primary transition-colors hover:text-primary/80"
+            aria-label="Accept suggestion"
+            title="Accept suggestion"
+          >
+            <PlusIcon className="size-3" />
+          </button>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+            aria-label="Dismiss suggestion"
+          >
+            <XIcon className="size-3" />
+          </button>
+        </div>
       </div>
       <div className="absolute inset-x-2 bottom-1 h-[2px] overflow-hidden rounded-full bg-primary/8">
         <div className="h-full rounded-full bg-primary/28 transition-none" style={{ width: `${progress}%` }} />
@@ -158,17 +205,25 @@ function SuggestionItem({
 
 const STEP_NOISE = new Set(["Thinking…", "Gathering context…", "Drafting suggestions…"]);
 
-function SuggestionCounterRow({ progress }: { progress: SuggestionProgress }) {
-  const SCAN_WORD_BUDGET = 200;
-  const committedAccumulated = Math.max(0, Math.min(SCAN_WORD_BUDGET, SCAN_WORD_BUDGET - progress.wordsUntilNextScan));
-  const liveRemaining = progress.liveWordsUntilNextScan ?? progress.wordsUntilNextScan;
-  const liveAccumulated = Math.max(0, Math.min(SCAN_WORD_BUDGET, SCAN_WORD_BUDGET - liveRemaining));
-  const committedRatio = committedAccumulated / SCAN_WORD_BUDGET;
-  const liveRatio = liveAccumulated / SCAN_WORD_BUDGET;
-  const bufferedWords = Math.max(0, progress.wordsUntilNextScan - liveRemaining);
+function SuggestionCounterRow({
+  progress,
+  configBudget,
+}: {
+  progress: SuggestionProgress;
+  configBudget?: number;
+}) {
+  const scanWordBudget = progress.scanWordBudget ?? configBudget ?? 200;
+  const committedRemaining = Math.min(progress.wordsUntilNextScan, scanWordBudget);
+  const liveRemainingRaw = progress.liveWordsUntilNextScan ?? progress.wordsUntilNextScan;
+  const liveRemaining = Math.min(liveRemainingRaw, scanWordBudget);
+  const committedAccumulated = Math.max(0, Math.min(scanWordBudget, scanWordBudget - committedRemaining));
+  const liveAccumulated = Math.max(0, Math.min(scanWordBudget, scanWordBudget - liveRemaining));
+  const committedRatio = committedAccumulated / scanWordBudget;
+  const liveRatio = liveAccumulated / scanWordBudget;
+  const bufferedWords = Math.max(0, committedRemaining - liveRemaining);
   const label = progress.busy
     ? "Next scan counter paused"
-    : `Next scan in ${progress.wordsUntilNextScan} word${progress.wordsUntilNextScan === 1 ? "" : "s"}`;
+    : `Next scan in ${committedRemaining} word${committedRemaining === 1 ? "" : "s"}`;
 
   return (
     <div className="mb-2 rounded-xl border border-border/60 bg-sidebar/60 px-2.5 py-2">
@@ -236,10 +291,13 @@ function AgentActivityCard({
   const [opacity, setOpacity] = useState(1);
   const [barPct, setBarPct] = useState(100);
   const [dismissed, setDismissed] = useState(false);
-  const isNothingFound = !progress.busy && !!progress.lastScanEmpty;
+  const cardLabel = progress.label ?? "Suggestion agent";
+  const isFinished = !progress.busy;
+  const hasError = !!progress.error;
+  const isNothingFound = isFinished && !!progress.lastScanEmpty;
 
   useEffect(() => {
-    if (!isNothingFound) {
+    if (!isFinished) {
       setOpacity(1);
       setBarPct(100);
       setDismissed(false);
@@ -253,10 +311,29 @@ function AgentActivityCard({
     const fadeTimer = setTimeout(() => setOpacity(0), DISMISS_MS - 400);
     const dismissTimer = setTimeout(() => setDismissed(true), DISMISS_MS);
     return () => { clearInterval(interval); clearTimeout(fadeTimer); clearTimeout(dismissTimer); };
-  }, [isNothingFound]);
+  }, [isFinished]);
 
-  if (!progress.busy && !isNothingFound) return null;
   if (dismissed) return null;
+
+  if (hasError) {
+    return (
+      <li
+        className="relative overflow-hidden rounded-xl border border-destructive/30 bg-destructive/5 transition-opacity duration-500"
+        style={{ opacity }}
+      >
+        <div className="flex items-center gap-2 min-h-7 py-1.5 px-2">
+          <div className="min-w-0 flex-1">
+            <div className="text-xs text-foreground/80">{cardLabel}</div>
+            <div className="mt-0.5 text-2xs text-destructive/80">Scan failed</div>
+            <div className="mt-1 text-2xs text-muted-foreground/70 line-clamp-2">{progress.error}</div>
+          </div>
+        </div>
+        <div className="absolute inset-x-2 bottom-1 h-[2px] overflow-hidden rounded-full bg-destructive/10">
+          <div className="h-full rounded-full bg-destructive/25" style={{ width: `${barPct}%`, transition: "width 100ms linear" }} />
+        </div>
+      </li>
+    );
+  }
 
   if (isNothingFound) {
     return (
@@ -265,10 +342,33 @@ function AgentActivityCard({
         style={{ opacity }}
       >
         <div className="flex items-center gap-2 min-h-7 py-1.5 px-2">
-          <span className="text-xs text-muted-foreground/60 italic flex-1">Nothing found this scan</span>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs text-muted-foreground/75">{cardLabel}</div>
+            <div className="mt-0.5 text-2xs text-muted-foreground/60 italic">Nothing found this scan</div>
+          </div>
         </div>
         <div className="absolute inset-x-2 bottom-1 h-[2px] overflow-hidden rounded-full bg-muted/45">
           <div className="h-full rounded-full bg-muted-foreground/20" style={{ width: `${barPct}%`, transition: "width 100ms linear" }} />
+        </div>
+      </li>
+    );
+  }
+
+  if (isFinished) {
+    return (
+      <li
+        className="relative overflow-hidden rounded-xl border border-primary/20 bg-primary/5 transition-opacity duration-500"
+        style={{ opacity }}
+      >
+        <div className="flex items-center gap-2 min-h-7 py-1.5 px-2">
+          <SearchIcon className="size-3 shrink-0 text-primary/60" />
+          <div className="min-w-0 flex-1">
+            <div className="text-xs text-foreground/80">{cardLabel}</div>
+            <div className="mt-0.5 text-2xs uppercase tracking-[0.14em] text-muted-foreground/60">{progress.step ?? "Suggestions ready"}</div>
+          </div>
+        </div>
+        <div className="absolute inset-x-2 bottom-1 h-[2px] overflow-hidden rounded-full bg-primary/8">
+          <div className="h-full rounded-full bg-primary/25" style={{ width: `${barPct}%`, transition: "width 100ms linear" }} />
         </div>
       </li>
     );
@@ -280,20 +380,26 @@ function AgentActivityCard({
     ? Math.max(0, visibleSteps.lastIndexOf(activeStep))
     : visibleSteps.length;
   const statusText = completedCount > 0
-    ? `${completedCount} step${completedCount === 1 ? "" : "s"} completed`
-    : "Agent gathering context";
-  const title = activeStep ?? "Agent gathering context";
+    ? `${completedCount} step${completedCount === 1 ? "" : "s"} done`
+    : "Scanning";
+  const title = activeStep ?? "Working on suggestions";
   const isWaiting = progress.busy && (progress.step === "Preparing scan…" || !progress.step);
 
   return (
-    <li className="relative overflow-hidden rounded-xl border border-primary/35 bg-primary/6 px-2.5 py-2">
-      <div className="flex items-start gap-2">
-        <LoaderCircleIcon className="mt-0.5 size-3 shrink-0 animate-spin text-primary/70" />
+    <li className="relative overflow-hidden rounded-2xl border border-primary/20 bg-primary/[0.045] px-3 py-2.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.7)]">
+      <div className="flex items-start gap-2.5">
+        <div className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10">
+          <LoaderCircleIcon className="size-3 animate-spin text-primary/70" />
+        </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
-              <div className="text-xs text-foreground/80">{title}</div>
-              <div className="mt-1 text-2xs uppercase tracking-[0.14em] text-muted-foreground/60">{statusText}</div>
+              <div className="text-xs font-medium text-foreground/85">{title}</div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] uppercase tracking-[0.16em] text-muted-foreground/55">
+                <span>{cardLabel}</span>
+                <span className="text-muted-foreground/35">•</span>
+                <span>{statusText}</span>
+              </div>
             </div>
             {isWaiting && <ManualScanButton onRequestTaskScan={onRequestTaskScan} />}
           </div>
@@ -503,7 +609,8 @@ export function RightSidebar({
   tasks,
   suggestions,
   suggestionProgress,
-  agentSteps = [],
+  suggestionScanCards = [],
+  scanWordBudget,
   agents,
   selectedAgentId,
   forceWorkTabKey = 0,
@@ -609,6 +716,9 @@ export function RightSidebar({
 
   const hasRefs = transcriptRefs.length > 0;
   const totalAgentsCount = (agents ?? []).length;
+  const activeSuggestionCards = suggestionScanCards
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, 3);
 
   return (
     <div className="w-full h-full shrink-0 border-l border-sidebar-border/35 flex flex-col min-h-0 bg-sidebar/90">
@@ -744,17 +854,18 @@ export function RightSidebar({
                 <SectionLabel as="span">Suggested</SectionLabel>
               </div>
               {sessionActive && suggestionProgress && (
-                <SuggestionCounterRow progress={suggestionProgress} />
+                <SuggestionCounterRow progress={suggestionProgress} configBudget={scanWordBudget} />
               )}
               {(suggestions.length > 0 || (sessionActive && suggestionProgress)) ? (
                 <ul className="space-y-1">
-                  {sessionActive && suggestionProgress && (
+                  {sessionActive && activeSuggestionCards.map((card) => (
                     <AgentActivityCard
-                      progress={suggestionProgress}
-                      agentSteps={agentSteps}
+                      key={card.scanId}
+                      progress={card}
+                      agentSteps={card.agentSteps}
                       onRequestTaskScan={onRequestTaskScan}
                     />
-                  )}
+                  ))}
                   {suggestions.map((s) => (
                     <SuggestionItem
                       key={s.id}

@@ -98,7 +98,7 @@ export type AgentDeps = {
 };
 
 const MAX_CONSECUTIVE_TOOL_ERRORS = 3;
-const MAX_AGENT_TURNS = 20;
+const MAX_AGENT_TURNS = 40;
 
 function formatCurrentDateForPrompt(now: Date): string {
   const longDate = new Intl.DateTimeFormat("en-US", {

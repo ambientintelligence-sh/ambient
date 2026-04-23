@@ -143,10 +143,13 @@ export function MiddlePanelTabs({
 
   useEffect(() => {
     if (newAgentMode) { setActiveTab("new-agent"); return; }
-    if (selectedAgentId) { setActiveTab(getAgentTabId(selectedAgentId)); return; }
+    if (selectedAgentId) { setActiveTab(getAgentTabId(selectedAgentId)); }
+  }, [agentSelectionNonce, selectedAgentId, newAgentMode, sessionTabKey]);
+
+  useEffect(() => {
     if (prevSummaryKindRef.current === "idle" && summaryState.kind !== "idle") setActiveTab("summary");
     prevSummaryKindRef.current = summaryState.kind;
-  }, [agentSelectionNonce, selectedAgentId, newAgentMode, summaryState.kind, sessionTabKey]);
+  }, [summaryState.kind, sessionTabKey]);
 
   useEffect(() => {
     const activeTabElement = tabRefs.current[validTab];

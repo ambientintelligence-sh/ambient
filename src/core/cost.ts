@@ -11,6 +11,7 @@ const PRICING: Record<TranscriptionProvider | AnalysisProvider, ProviderPricing>
   vertex:     { audioInputPerToken: 1.0 / 1_000_000,  textInputPerToken: 0.5 / 1_000_000,  outputPerToken: 3.0 / 1_000_000 },
   openrouter: { audioInputPerToken: 0,                 textInputPerToken: 0.6 / 1_000_000,  outputPerToken: 2.4 / 1_000_000 },
   bedrock:    { audioInputPerToken: 0,                 textInputPerToken: 0.8 / 1_000_000,  outputPerToken: 4.0 / 1_000_000 },
+  "openai-codex": { audioInputPerToken: 0,             textInputPerToken: 0,                outputPerToken: 0 },
 };
 
 export type CostAccumulator = {

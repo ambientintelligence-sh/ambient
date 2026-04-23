@@ -70,7 +70,11 @@ export function registerTaskInsightHandlers({
       size: classification.size,
     };
 
-    db.insertTask(persistedTask);
+    if (db.getTask(task.id)) {
+      db.updateTaskRecord(persistedTask);
+    } else {
+      db.insertTask(persistedTask);
+    }
     return { ok: true, task: persistedTask };
   });
 

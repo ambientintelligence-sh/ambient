@@ -75,12 +75,12 @@ function NextStepRow({
           onToggle();
         }
       }}
-      className={`flex items-center gap-2 py-1 px-1.5 rounded transition-colors select-none ${
-        accepted ? "opacity-40 cursor-default" : "cursor-pointer hover:bg-muted/60"
+      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors select-none ${
+        accepted ? "opacity-35 cursor-default" : "cursor-pointer hover:bg-muted/45"
       }`}
     >
       <div
-        className={`size-3 rounded-full border shrink-0 flex items-center justify-center transition-colors ${
+        className={`mt-0.5 size-3 rounded-full border shrink-0 flex items-center justify-center transition-colors ${
           accepted
             ? "border-muted-foreground/40"
             : selected
@@ -92,7 +92,7 @@ function NextStepRow({
           <CheckIcon className={`size-1.5 ${accepted ? "text-muted-foreground/60" : "text-background"}`} />
         )}
       </div>
-      <span className={`text-xs/relaxed flex-1 ${selected && !accepted ? "text-foreground font-medium" : "text-foreground/80"}`}>
+      <span className={`flex-1 text-[11px] leading-5 ${selected && !accepted ? "text-foreground font-medium" : "text-foreground/75"}`}>
         {text}
       </span>
     </li>
@@ -143,6 +143,10 @@ function DebriefContent({
   };
 
   const remainingSteps = summary.nextSteps.length - accepted.size;
+  const showNextSteps = summary.nextSteps.length > 0 && remainingSteps > 0;
+  const visibleNextSteps = summary.nextSteps
+    .map((step, i) => ({ step, index: i }))
+    .filter(({ index }) => !accepted.has(index));
 
   return (
     <div className="space-y-2.5">
@@ -190,7 +194,7 @@ function DebriefContent({
       )}
 
       {/* Next steps */}
-      {summary.nextSteps.length > 0 && (
+      {showNextSteps && (
         <div>
           <div className="flex items-center justify-between mb-1">
             <SectionLabel as="p">
@@ -224,15 +228,15 @@ function DebriefContent({
               ) : null
             )}
           </div>
-          <ul>
-            {summary.nextSteps.map((step, i) => (
+          <ul className="space-y-1 rounded-xl border border-border/50 bg-background/45 p-1.5">
+            {visibleNextSteps.map(({ step, index }) => (
               // eslint-disable-next-line react/no-array-index-key
               <NextStepRow
-                key={i}
+                key={index}
                 text={step}
-                selected={selected.has(i)}
-                accepted={accepted.has(i)}
-                onToggle={() => toggleStep(i)}
+                selected={selected.has(index)}
+                accepted={accepted.has(index)}
+                onToggle={() => toggleStep(index)}
               />
             ))}
           </ul>

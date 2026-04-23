@@ -2,9 +2,13 @@ import { create } from "zustand";
 import type { AppConfig, TaskItem, TaskSize, TaskSuggestion } from "@core/types";
 
 const LIVE_SUGGESTION_MAX_AGE_MS = 5 * 60_000;
+const FINISHED_SCAN_CARD_MAX_AGE_MS = 6_000;
 
 function buildAiSuggestionDetails(suggestion: TaskSuggestion): string | undefined {
   const sections = [
+    suggestion.flag?.trim()
+      ? `Flag:\n${suggestion.flag.trim()}`
+      : "",
     suggestion.details?.trim()
       ? `Context summary:\n${suggestion.details.trim()}`
       : "",
@@ -15,30 +19,49 @@ function buildAiSuggestionDetails(suggestion: TaskSuggestion): string | undefine
   return sections.length > 0 ? sections.join("\n\n") : undefined;
 }
 
-function parseAiSuggestionDetails(details?: string): Pick<TaskSuggestion, "details" | "transcriptExcerpt"> {
+function parseAiSuggestionDetails(details?: string): Pick<TaskSuggestion, "flag" | "details" | "transcriptExcerpt"> {
   const trimmed = details?.trim();
   if (!trimmed) return {};
 
+  const flagPrefix = "Flag:\n";
   const summaryPrefix = "Context summary:\n";
   const excerptPrefix = "Original transcript excerpt:\n";
 
-  if (trimmed.startsWith(summaryPrefix)) {
-    const withoutPrefix = trimmed.slice(summaryPrefix.length);
+  let remaining = trimmed;
+  let flag: string | undefined;
+  if (remaining.startsWith(flagPrefix)) {
+    const nextBoundary = remaining.indexOf(`\n\n${summaryPrefix}`) >= 0
+      ? remaining.indexOf(`\n\n${summaryPrefix}`)
+      : remaining.indexOf(`\n\n${excerptPrefix}`);
+    if (nextBoundary >= 0) {
+      flag = remaining.slice(flagPrefix.length, nextBoundary).trim() || undefined;
+      remaining = remaining.slice(nextBoundary + 2).trim();
+    } else {
+      return { flag: remaining.slice(flagPrefix.length).trim() || undefined };
+    }
+  }
+
+  if (remaining.startsWith(summaryPrefix)) {
+    const withoutPrefix = remaining.slice(summaryPrefix.length);
     const excerptIndex = withoutPrefix.indexOf(`\n\n${excerptPrefix}`);
     if (excerptIndex >= 0) {
       return {
+        flag,
         details: withoutPrefix.slice(0, excerptIndex).trim() || undefined,
         transcriptExcerpt: withoutPrefix.slice(excerptIndex + `\n\n${excerptPrefix}`.length).trim() || undefined,
       };
     }
-    return { details: withoutPrefix.trim() || undefined };
+    return { flag, details: withoutPrefix.trim() || undefined };
   }
 
-  if (trimmed.startsWith(excerptPrefix)) {
-    return { transcriptExcerpt: trimmed.slice(excerptPrefix.length).trim() || undefined };
+  if (remaining.startsWith(excerptPrefix)) {
+    return {
+      flag,
+      transcriptExcerpt: remaining.slice(excerptPrefix.length).trim() || undefined,
+    };
   }
 
-  return { details: trimmed };
+  return { flag, details: remaining };
 }
 
 function archivedTaskToSuggestion(task: TaskItem): TaskSuggestion | null {
@@ -47,6 +70,7 @@ function archivedTaskToSuggestion(task: TaskItem): TaskSuggestion | null {
   return {
     id: task.id,
     text: task.text,
+    flag: parsed.flag,
     details: parsed.details,
     transcriptExcerpt: parsed.transcriptExcerpt,
     kind: task.suggestionKind,
@@ -56,11 +80,21 @@ function archivedTaskToSuggestion(task: TaskItem): TaskSuggestion | null {
 }
 
 type SuggestionProgress = {
+  scanId?: string;
+  label?: string;
   busy: boolean;
   wordsUntilNextScan: number;
   liveWordsUntilNextScan?: number;
+  scanWordBudget?: number;
   step?: string;
   lastScanEmpty?: boolean;
+  error?: string;
+};
+
+type SuggestionScanCard = SuggestionProgress & {
+  scanId: string;
+  agentSteps: string[];
+  updatedAt: number;
 };
 
 type TaskState = {
@@ -73,7 +107,7 @@ type TaskState = {
   forceWorkTabKey: number;
   transcriptRefs: string[];
   suggestionProgress: SuggestionProgress;
-  agentSteps: string[];
+  suggestionScanCards: SuggestionScanCard[];
 };
 
 type TaskActions = {
@@ -96,7 +130,11 @@ type TaskActions = {
 
   setArchivedSuggestions: (archived: TaskItem[]) => void;
   hydrateSuggestionsFromArchive: (archived: TaskItem[]) => void;
-  acceptArchivedTask: (task: TaskItem) => void;
+  acceptArchivedTask: (params: {
+    task: TaskItem;
+    targetSessionId: string;
+    appConfig: AppConfig;
+  }) => Promise<void>;
   deleteArchivedSuggestion: (id: string) => void;
 
   addProcessingId: (id: string) => void;
@@ -143,27 +181,54 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
   forceWorkTabKey: 0,
   transcriptRefs: [],
   suggestionProgress: { busy: false, wordsUntilNextScan: 200, liveWordsUntilNextScan: 200 },
-  agentSteps: [],
+  suggestionScanCards: [],
 
   // Actions
   setSuggestionProgress: (suggestionProgress) =>
     set((s) => {
-      let agentSteps = s.agentSteps;
+      const now = Date.now();
+      const nextProgress = suggestionProgress.scanId
+        ? s.suggestionProgress
+        : suggestionProgress;
 
-      if (suggestionProgress.busy) {
-        if (!s.suggestionProgress.busy) {
-          agentSteps = [];
-        }
-        if (suggestionProgress.step && agentSteps[agentSteps.length - 1] !== suggestionProgress.step) {
-          agentSteps = [...agentSteps, suggestionProgress.step];
-        }
+      let suggestionScanCards = s.suggestionScanCards;
+      if (suggestionProgress.scanId) {
+        const scanId = suggestionProgress.scanId;
+        const existing = s.suggestionScanCards.find((card) => card.scanId === scanId);
+        const previousSteps = existing?.agentSteps ?? [];
+        const agentSteps = suggestionProgress.busy
+          ? suggestionProgress.step && previousSteps[previousSteps.length - 1] !== suggestionProgress.step
+            ? [...previousSteps, suggestionProgress.step]
+            : previousSteps
+          : previousSteps;
+        const nextCard: SuggestionScanCard = {
+          scanId,
+          label: suggestionProgress.label,
+          busy: suggestionProgress.busy,
+          wordsUntilNextScan: suggestionProgress.wordsUntilNextScan,
+          liveWordsUntilNextScan: suggestionProgress.liveWordsUntilNextScan,
+          scanWordBudget: suggestionProgress.scanWordBudget,
+          step: suggestionProgress.step,
+          lastScanEmpty: suggestionProgress.lastScanEmpty,
+          error: suggestionProgress.error,
+          agentSteps,
+          updatedAt: Date.now(),
+        };
+        suggestionScanCards = [
+          nextCard,
+          ...s.suggestionScanCards.filter((card) => card.scanId !== scanId),
+        ]
+          .filter((card) => card.busy || now - card.updatedAt <= FINISHED_SCAN_CARD_MAX_AGE_MS)
+          .slice(0, 6);
       } else {
-        agentSteps = [];
+        suggestionScanCards = s.suggestionScanCards
+          .filter((card) => card.busy || now - card.updatedAt <= FINISHED_SCAN_CARD_MAX_AGE_MS)
+          .slice(0, 6);
       }
 
       return {
-        suggestionProgress,
-        agentSteps,
+        suggestionProgress: nextProgress,
+        suggestionScanCards,
       };
     }),
   setTasks: (tasks) => set({ tasks }),
@@ -265,12 +330,46 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
       archivedSuggestions: archived.filter((item) => !suggestionIds.has(item.id)),
     });
   },
-  acceptArchivedTask: (task) => {
+  acceptArchivedTask: async ({ task, targetSessionId, appConfig }) => {
+    const optimisticTask: TaskItem = {
+      ...task,
+      archived: false,
+      completed: false,
+      completedAt: undefined,
+      sessionId: targetSessionId,
+      size: "small",
+    };
+
     set((s) => ({
       archivedSuggestions: s.archivedSuggestions.filter((t) => t.id !== task.id),
-      tasks: [{ ...task, archived: false }, ...s.tasks],
+      tasks: [optimisticTask, ...s.tasks.filter((t) => t.id !== task.id)],
+      processingTaskIds: s.processingTaskIds.includes(task.id)
+        ? s.processingTaskIds
+        : [task.id, ...s.processingTaskIds],
     }));
-    void window.electronAPI.unarchiveTask(task.id);
+
+    const result = await window.electronAPI.addTask({
+      ...task,
+      archived: false,
+      completed: false,
+      completedAt: undefined,
+      sessionId: targetSessionId,
+      size: "small",
+    }, appConfig);
+
+    if (!result.ok) {
+      set((s) => ({
+        processingTaskIds: s.processingTaskIds.filter((id) => id !== task.id),
+        tasks: s.tasks.filter((t) => t.id !== task.id),
+        archivedSuggestions: [task, ...s.archivedSuggestions.filter((item) => item.id !== task.id)],
+      }));
+      return;
+    }
+
+    set((s) => ({
+      processingTaskIds: s.processingTaskIds.filter((id) => id !== task.id),
+      tasks: s.tasks.map((t) => (t.id === task.id ? result.task! : t)),
+    }));
   },
   deleteArchivedSuggestion: (id) => {
     set((s) => ({
@@ -313,7 +412,7 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
       forceWorkTabKey: 0,
       transcriptRefs: [],
       suggestionProgress: { busy: false, wordsUntilNextScan: 200, liveWordsUntilNextScan: 200 },
-      agentSteps: [],
+      suggestionScanCards: [],
     }),
 
   persistTask: async ({ targetSessionId, text, details, source, size = "large", id, createdAt, appConfig }) => {
@@ -341,8 +440,9 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
       id: suggestion.id,
       text: suggestion.text,
       details: suggestionDetails,
-      size: "large",
+      size: "small",
       completed: false,
+      suggestionKind: suggestion.kind,
       source: "ai",
       createdAt: suggestion.createdAt,
       sessionId: targetSessionId,
@@ -357,23 +457,30 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
         : [suggestion.id, ...s.processingTaskIds],
     }));
 
-    const unarchiveResult = await window.electronAPI.unarchiveTask(suggestion.id);
+    const unarchiveResult = existingArchivedTask
+      ? await window.electronAPI.addTask({
+          ...existingArchivedTask,
+          archived: false,
+          text: suggestion.text,
+          details: suggestionDetails,
+          suggestionKind: suggestion.kind,
+          source: "ai",
+          completed: false,
+          completedAt: undefined,
+          sessionId: targetSessionId,
+        }, appConfig)
+      : { ok: false as const };
     const result = unarchiveResult.ok
       ? {
           ok: true as const,
-          task: {
-            ...(existingArchivedTask ?? optimisticTask),
-            archived: false,
-            text: suggestion.text,
-            details: suggestionDetails,
-            sessionId: targetSessionId,
-          } satisfies TaskItem,
+          task: unarchiveResult.task,
         }
       : await get().persistTask({
           targetSessionId,
           text: suggestion.text,
           details: suggestionDetails,
           source: "ai",
+          size: "small",
           id: suggestion.id,
           createdAt: suggestion.createdAt,
           appConfig,

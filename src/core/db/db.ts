@@ -273,6 +273,24 @@ export function createDatabase(dbPath: string) {
         .run();
     },
 
+    updateTaskRecord(task: TaskItem) {
+      orm.update(tasks)
+        .set({
+          text: task.text,
+          details: task.details ?? null,
+          size: task.size,
+          completed: task.completed ? 1 : 0,
+          completedAt: task.completedAt ?? null,
+          archived: task.archived ? 1 : 0,
+          suggestionKind: task.suggestionKind ?? null,
+          source: task.source,
+          createdAt: task.createdAt,
+          sessionId: task.sessionId ?? null,
+        })
+        .where(eq(tasks.id, task.id))
+        .run();
+    },
+
     getTask(id: string): TaskItem | null {
       const [row] = orm
         .select()
