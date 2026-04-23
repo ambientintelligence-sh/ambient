@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/ambientintelligence-sh/ambient/compare/v1.5.1...v1.5.2) (2026-04-23)
+
+
+### Bug Fixes
+
+* agent scan intervals and related bugs  ([#24](https://github.com/ambientintelligence-sh/ambient/issues/24)) ([74f614f](https://github.com/ambientintelligence-sh/ambient/commit/74f614fb1968d306edde880f0df1f67530a451c3))
+
 ## [1.5.1](https://github.com/ambientintelligence-sh/ambient/compare/v1.5.0...v1.5.1) (2026-04-21)
 
 

@@ -2,7 +2,7 @@
   "name": "ambient",
   "productName": "Ambient",
   "private": true,
-  "version": "1.5.1",
+  "version": "1.5.2",
   "license": "AGPL-3.0-only",
   "description": "The end of work about work. Ambient listens, finds the signal, and dispatches agents in parallel while you stay in the zone.",
   "author": "Jiayi Li, Shuting Hu",
