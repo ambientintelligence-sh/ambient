@@ -34,9 +34,7 @@
     "electron:make": "electron-forge make"
   },
   "dependencies": {
-    "@ai-sdk/amazon-bedrock": "^4.0.63",
     "@ai-sdk/google": "^3.0.29",
-    "@ai-sdk/google-vertex": "4.0.17",
     "@anthropic-ai/claude-agent-sdk": "^0.2.104",
     "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
     "@fontsource-variable/inter": "^5.2.8",

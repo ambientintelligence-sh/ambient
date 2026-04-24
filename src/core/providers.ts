@@ -1,8 +1,6 @@
 import type { LanguageModel } from "ai";
-import { createVertex } from "@ai-sdk/google-vertex";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import type { Api, Model, ThinkingLevel } from "@mariozechner/pi-ai";
 import type { SessionConfig } from "./types";
 import { MODEL_CONFIG, getReasoningEffortForModel } from "./models";
@@ -28,13 +26,6 @@ export function createTranscriptionModel(config: SessionConfig): LanguageModel {
         provider: { sort: "latency" as const },
       });
     }
-    case "vertex": {
-      const vertex = createVertex({
-        project: config.vertexProject,
-        location: config.vertexLocation,
-      });
-      return vertex(config.transcriptionModelId);
-    }
     case "google": {
       const google = createGoogleGenerativeAI({
         apiKey: process.env.GEMINI_API_KEY,
@@ -42,9 +33,6 @@ export function createTranscriptionModel(config: SessionConfig): LanguageModel {
       return google(config.transcriptionModelId);
     }
   }
-  throw new Error(
-    `Unsupported transcription provider: ${String(config.transcriptionProvider)}`
-  );
 }
 
 // ChatGPT subscription uses a custom backend and flat-rate pricing. The Vercel
@@ -79,19 +67,6 @@ export function createAnalysisModel(config: SessionConfig): LanguageModel {
       });
       return google(config.analysisModelId);
     }
-    case "vertex": {
-      const vertex = createVertex({
-        project: config.vertexProject,
-        location: config.vertexLocation,
-      });
-      return vertex(config.analysisModelId);
-    }
-    case "bedrock": {
-      const bedrock = createAmazonBedrock({
-        region: config.bedrockRegion,
-      });
-      return bedrock(config.analysisModelId);
-    }
     case "openai-codex": {
       const openrouter = createOpenRouter({
         apiKey: process.env.OPENROUTER_API_KEY,
@@ -102,31 +77,20 @@ export function createAnalysisModel(config: SessionConfig): LanguageModel {
       });
     }
   }
-  throw new Error(
-    `Unsupported analysis provider: ${String(config.analysisProvider)}`
-  );
 }
 
 function createModelForProvider(
-  config: SessionConfig,
+  _config: SessionConfig,
   modelId: string,
   openRouterOptions?: { reasoning?: ReasoningOption; provider?: Record<string, unknown> },
 ): LanguageModel {
-  switch (config.analysisProvider) {
-    case "bedrock": {
-      const bedrock = createAmazonBedrock({ region: config.bedrockRegion });
-      return bedrock(modelId);
-    }
-    default: {
-      const openrouter = createOpenRouter({
-        apiKey: process.env.OPENROUTER_API_KEY,
-      });
-      return openrouter(modelId, {
-        provider: { sort: "throughput" as const },
-        ...openRouterOptions,
-      });
-    }
-  }
+  const openrouter = createOpenRouter({
+    apiKey: process.env.OPENROUTER_API_KEY,
+  });
+  return openrouter(modelId, {
+    provider: { sort: "throughput" as const },
+    ...openRouterOptions,
+  });
 }
 
 export function createUtilitiesModel(config: SessionConfig): LanguageModel {
@@ -205,21 +169,6 @@ function buildOpenRouterModel(modelId: string, taskProviders?: string[]): Model<
   };
 }
 
-function buildBedrockModel(modelId: string): Model<"bedrock-converse-stream"> {
-  return {
-    id: modelId,
-    name: modelId,
-    api: "bedrock-converse-stream",
-    provider: "amazon-bedrock",
-    baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com",
-    reasoning: true,
-    input: ["text", "image"],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 200_000,
-    maxTokens: 16_384,
-  };
-}
-
 function buildOpenAiCodexModel(modelId: string): Model<"openai-codex-responses"> {
   return {
     id: modelId,
@@ -252,13 +201,6 @@ export function createAgentPiModel(
   const thinkingLevel = reasoningEffortToThinkingLevel(
     configuredEffort ?? (config.analysisReasoning ? "medium" : undefined),
   );
-
-  if (config.analysisProvider === "bedrock") {
-    return {
-      model: buildBedrockModel(config.analysisModelId) as Model<Api>,
-      thinkingLevel,
-    };
-  }
 
   if (config.analysisProvider === "openai-codex") {
     const getApiKey = deps.getOpenAiCodexAccessToken;

@@ -179,14 +179,12 @@ export function getTranscriptionModelOption(
 
 export const ANALYSIS_PROVIDERS: Array<{ value: AppConfig["analysisProvider"]; label: string }> = [
   { value: "openrouter", label: "OpenRouter" },
-  { value: "bedrock", label: "AWS Bedrock" },
   { value: "openai-codex", label: "OpenAI (ChatGPT)" },
 ];
 
 export const PROVIDER_REQUIRED_KEYS: Record<string, string[]> = {
   openrouter: ["OPENROUTER_API_KEY"],
   google: ["GEMINI_API_KEY"],
-  bedrock: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
 };
 
 export function isProviderConfigured(

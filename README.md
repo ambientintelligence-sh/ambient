@@ -151,7 +151,7 @@ We think software that listens in on important conversations should earn trust t
    ```
 3. **Add your OpenRouter API key** in the app settings when prompted.
 
-That's it. The default configuration uses Gemini Flash via OpenRouter for both transcription and analysis — a single `OPENROUTER_API_KEY` is all you need. See [`.env.example`](./.env.example) for optional provider keys (Gemini direct, Vertex, Bedrock, Exa web search).
+That's it. The default configuration uses Gemini Flash via OpenRouter for both transcription and analysis — a single `OPENROUTER_API_KEY` is all you need. See [`.env.example`](./.env.example) for optional provider keys (Gemini direct, Exa web search).
 
 ## Development
 
