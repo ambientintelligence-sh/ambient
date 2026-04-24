@@ -2,6 +2,13 @@ export function normalizeText(text: string): string {
   return text.trim().replace(/\s+/g, " ");
 }
 
+const SCAN_TOKEN_REGEX =
+  /(?:\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}|[\p{L}\p{N}]+(?:['’.-][\p{L}\p{N}]+)*)/gu;
+
+export function countScanWords(text: string): number {
+  return text.match(SCAN_TOKEN_REGEX)?.length ?? 0;
+}
+
 export function cleanTranslationOutput(text: string): string {
   const lines = text
     .split("\n")

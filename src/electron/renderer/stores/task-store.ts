@@ -3,6 +3,7 @@ import type { AppConfig, TaskItem, TaskSize, TaskSuggestion } from "@core/types"
 
 const LIVE_SUGGESTION_MAX_AGE_MS = 5 * 60_000;
 const FINISHED_SCAN_CARD_MAX_AGE_MS = 6_000;
+const FAILED_SCAN_CARD_MAX_AGE_MS = 60_000;
 
 function buildAiSuggestionDetails(suggestion: TaskSuggestion): string | undefined {
   const sections = [
@@ -218,11 +219,19 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
           nextCard,
           ...s.suggestionScanCards.filter((card) => card.scanId !== scanId),
         ]
-          .filter((card) => card.busy || now - card.updatedAt <= FINISHED_SCAN_CARD_MAX_AGE_MS)
+          .filter((card) => {
+            if (card.busy) return true;
+            const maxAge = card.error ? FAILED_SCAN_CARD_MAX_AGE_MS : FINISHED_SCAN_CARD_MAX_AGE_MS;
+            return now - card.updatedAt <= maxAge;
+          })
           .slice(0, 6);
       } else {
         suggestionScanCards = s.suggestionScanCards
-          .filter((card) => card.busy || now - card.updatedAt <= FINISHED_SCAN_CARD_MAX_AGE_MS)
+          .filter((card) => {
+            if (card.busy) return true;
+            const maxAge = card.error ? FAILED_SCAN_CARD_MAX_AGE_MS : FINISHED_SCAN_CARD_MAX_AGE_MS;
+            return now - card.updatedAt <= maxAge;
+          })
           .slice(0, 6);
       }
 

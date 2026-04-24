@@ -6,6 +6,7 @@ import type {
   AgentStep,
   AgentsSummary,
   AppConfigOverrides,
+  Direction,
   FinalSummary,
   LanguageCode,
   ProviderTaskEvent,
@@ -35,11 +36,14 @@ export function buildSessionConfig(
   sourceLang: LanguageCode,
   targetLang: LanguageCode,
   appConfig?: AppConfigOverrides,
-  translationEnabled = false,
+  options?: {
+    direction?: Direction;
+    translationEnabled?: boolean;
+  },
 ): SessionConfig {
   const config = normalizeAppConfig(appConfig);
   return {
-    direction: config.direction,
+    direction: options?.direction ?? config.direction,
     sourceLang,
     targetLang,
     intervalMs: config.intervalMs,
@@ -61,7 +65,7 @@ export function buildSessionConfig(
     suggestionScanWordBudget: config.suggestionScanWordBudget,
     debug: config.debug,
     legacyAudio: config.legacyAudio,
-    translationEnabled,
+    translationEnabled: options?.translationEnabled ?? false,
     agentAutoApprove: config.agentAutoApprove,
     localToolsFiles: config.localToolsFiles,
     localToolsBash: config.localToolsBash,

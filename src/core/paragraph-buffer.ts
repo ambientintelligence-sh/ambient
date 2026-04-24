@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { LanguageModel } from "ai";
 import type { AudioSource, LanguageCode } from "./types";
 import { log } from "./logger";
-import { toReadableError } from "./text/text-utils";
+import { countScanWords, toReadableError } from "./text/text-utils";
 import {
   getTranscriptPolishPromptTemplate,
   renderPromptTemplate,
@@ -137,7 +137,7 @@ export class ParagraphBuffer {
 
   get pendingWordCount(): number {
     return [...this.pendingParagraphs.values()].reduce(
-      (sum, pending) => sum + pending.transcript.split(/\s+/).filter(Boolean).length,
+      (sum, pending) => sum + countScanWords(pending.transcript),
       0,
     );
   }
