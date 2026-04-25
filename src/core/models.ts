@@ -21,7 +21,7 @@ export type ModelPreset = {
   providers?: string[];
 };
 
-export type ModelProvider = "openrouter" | "bedrock" | "openai-codex";
+export type ModelProvider = "openrouter" | "openai-codex";
 
 export type ProviderRoleDefaults = {
   analysisModelId: string;
@@ -186,52 +186,6 @@ export const MODEL_CONFIG: Record<ModelProvider, ProviderConfig> = {
         modelId: "gpt-5.1-codex-mini",
         reasoning: true,
         reasoningEffort: "medium",
-      },
-    ],
-  },
-  bedrock: {
-    defaults: {
-      analysisModelId: "us.anthropic.claude-sonnet-4-6",
-      taskModelId: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-      utilityModelId: "openai.gpt-oss-20b-1:0",
-      synthesisModelId: "us.anthropic.claude-sonnet-4-6",
-      taskProviders: [],
-    },
-    models: [
-      {
-        label: "Claude Haiku 4.5",
-        modelId: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-        reasoning: false,
-      },
-      {
-        label: "Claude Sonnet 4.6",
-        modelId: "us.anthropic.claude-sonnet-4-6",
-        reasoning: false,
-      },
-      {
-        label: "Claude Opus 4.6",
-        modelId: "us.anthropic.claude-opus-4-6-v1",
-        reasoning: false,
-      },
-      {
-        label: "GPT-OSS 120B",
-        modelId: "openai.gpt-oss-120b-1:0",
-        reasoning: true,
-      },
-      {
-        label: "GPT-OSS 20B",
-        modelId: "openai.gpt-oss-20b-1:0",
-        reasoning: true,
-      },
-      {
-        label: "Kimi K2.5",
-        modelId: "moonshotai.kimi-k2.5",
-        reasoning: true,
-      },
-      {
-        label: "DeepSeek V3.2",
-        modelId: "deepseek.v3.2",
-        reasoning: true,
       },
     ],
   },

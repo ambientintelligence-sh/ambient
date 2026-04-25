@@ -462,20 +462,6 @@ function ApiKeysSection({
         )}
       </SettingsSection>
 
-      {isProviderConfigured("bedrock", status) && (
-        <SettingsSection icon={ServerIcon} title="AWS Bedrock" description="Configure the AWS region for Bedrock API calls.">
-          <div className="space-y-1">
-            <label className="text-2xs text-muted-foreground">
-              Region
-            </label>
-            <Input
-              value={config.bedrockRegion}
-              onChange={(e) => onConfigChange({ ...config, bedrockRegion: e.target.value })}
-              placeholder="us-east-1"
-            />
-          </div>
-        </SettingsSection>
-      )}
     </div>
   );
 }
@@ -1106,7 +1092,7 @@ export function SettingsPage({
           <SettingsSection icon={CpuIcon} title="Model Roles">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {(() => {
-                const providerKey = (config.analysisProvider === "openrouter" || config.analysisProvider === "bedrock" || config.analysisProvider === "openai-codex")
+                const providerKey = (config.analysisProvider === "openrouter" || config.analysisProvider === "openai-codex")
                   ? config.analysisProvider
                   : "openrouter" as const;
                 const providerConfig = MODEL_CONFIG[providerKey];
@@ -1122,7 +1108,7 @@ export function SettingsPage({
                         value={config.analysisProvider}
                         onValueChange={(v) => {
                           const provider = v as AppConfig["analysisProvider"];
-                          const nextConfig = (provider === "openrouter" || provider === "bedrock" || provider === "openai-codex")
+                          const nextConfig = (provider === "openrouter" || provider === "openai-codex")
                             ? MODEL_CONFIG[provider]
                             : null;
                           const defs = nextConfig?.defaults;

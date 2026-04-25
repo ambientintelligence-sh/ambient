@@ -244,7 +244,7 @@ export class Session {
   private micProcess: ChildProcess | null = null;
   private _micEnabled = false;
 
-  // Per-source transcription queues (Google/Vertex). Each source runs its own sequential worker.
+  // Per-source transcription queues. Each source runs its own sequential worker.
   private chunkQueues = new Map<AudioSource, Array<{ chunk: Buffer; capturedAt: number }>>([
     ["system", []],
     ["microphone", []],
@@ -521,7 +521,7 @@ export class Session {
   }
 
   get canTranslate(): boolean {
-    return this.config.transcriptionProvider === "vertex" || this.config.transcriptionProvider === "google" || this.config.transcriptionProvider === "openrouter";
+    return this.config.transcriptionProvider === "google" || this.config.transcriptionProvider === "openrouter";
   }
 
   get translationEnabled(): boolean {
@@ -534,8 +534,7 @@ export class Session {
 
   private get usesParagraphBuffering(): boolean {
     return (
-      (this.config.transcriptionProvider === "vertex"
-        || this.config.transcriptionProvider === "google"
+      (this.config.transcriptionProvider === "google"
         || this.config.transcriptionProvider === "openrouter")
       && !this._translationEnabled
     );
@@ -1438,7 +1437,7 @@ export class Session {
           );
 
       const transcriptionProviderOptions =
-        this.config.transcriptionProvider === "google" || this.config.transcriptionProvider === "vertex"
+        this.config.transcriptionProvider === "google"
           ? { google: { thinkingConfig: { includeThoughts: false, thinkingBudget: 0 } } }
           : undefined;
 
@@ -1699,7 +1698,7 @@ export class Session {
       );
 
       const analysisProvider = this.config.analysisProvider;
-      const providerOptions = analysisProvider === "google" || analysisProvider === "vertex"
+      const providerOptions = analysisProvider === "google"
         ? { google: { thinkingConfig: { includeThoughts: false, thinkingBudget: 2048 } } }
         : undefined;
 
@@ -1897,8 +1896,7 @@ export class Session {
     input: Parameters<typeof runSuggestionAgent>[0] & { scanId: string; label: string },
   ): Promise<TaskSuggestionDraft[]> {
     const { scanId, label, ...agentInput } = input;
-    const costProvider: AnalysisProvider | TranscriptionProvider =
-      this.config.analysisProvider === "bedrock" ? "bedrock" : "openrouter";
+    const costProvider: AnalysisProvider | TranscriptionProvider = "openrouter";
 
     const progressBase = {
       scanId,

@@ -47,9 +47,8 @@ export type DarkVariant = "papaya" | "slate" | "abyss" | "cyber-city";
 
 export type TranscriptionProvider =
   | "openrouter"
-  | "vertex"
   | "google";
-export type AnalysisProvider = "openrouter" | "google" | "vertex" | "bedrock" | "openai-codex";
+export type AnalysisProvider = "openrouter" | "google" | "openai-codex";
 export type { AnalysisModelPreset } from "./models";
 
 export type TranscriptBlock = {
@@ -199,9 +198,6 @@ export type SessionConfig = {
   taskProviders: string[];
   utilityModelId: string;
   synthesisModelId: string;
-  vertexProject?: string;
-  vertexLocation: string;
-  bedrockRegion: string;
   responseLength: ResponseLength;
   taskSuggestionAggressiveness: TaskSuggestionAggressiveness;
   suggestionScanWordBudget: SuggestionScanWordBudget;
@@ -247,9 +243,6 @@ export type AppConfig = {
   taskProviders: string[];
   utilityModelId: string;
   synthesisModelId: string;
-  vertexProject?: string;
-  vertexLocation: string;
-  bedrockRegion: string;
   responseLength: ResponseLength;
   taskSuggestionAggressiveness: TaskSuggestionAggressiveness;
   suggestionScanWordBudget: SuggestionScanWordBudget;
@@ -317,12 +310,6 @@ export type CustomMcpStatus = {
 
 const ENV = typeof process !== "undefined" ? process.env : undefined;
 
-export const DEFAULT_VERTEX_MODEL_ID =
-  ENV?.VERTEX_MODEL_ID ?? "gemini-3-flash-preview";
-export const DEFAULT_VERTEX_LOCATION =
-  ENV?.GOOGLE_VERTEX_PROJECT_LOCATION ?? "global";
-export const DEFAULT_BEDROCK_REGION =
-  ENV?.AWS_REGION ?? "us-east-1";
 export const DEFAULT_TRANSCRIPTION_MODEL_ID =
   ENV?.TRANSCRIPTION_MODEL_ID ?? "scribe_v2_realtime";
 export { getAnalysisModelPreset } from "./models";
@@ -386,9 +373,6 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   taskProviders: MODEL_CONFIG.openrouter.defaults.taskProviders,
   utilityModelId: MODEL_CONFIG.openrouter.defaults.utilityModelId,
   synthesisModelId: MODEL_CONFIG.openrouter.defaults.synthesisModelId,
-  vertexProject: ENV?.GOOGLE_VERTEX_PROJECT_ID,
-  vertexLocation: DEFAULT_VERTEX_LOCATION,
-  bedrockRegion: DEFAULT_BEDROCK_REGION,
   responseLength: "standard",
   taskSuggestionAggressiveness: DEFAULT_TASK_SUGGESTION_AGGRESSIVENESS,
   suggestionScanWordBudget: 200,
@@ -461,15 +445,12 @@ export function normalizeAppConfig(
       : DEFAULT_APP_CONFIG.direction;
   const transcriptionProvider: TranscriptionProvider =
     merged.transcriptionProvider === "openrouter" ||
-    merged.transcriptionProvider === "vertex" ||
     merged.transcriptionProvider === "google"
       ? merged.transcriptionProvider
       : DEFAULT_APP_CONFIG.transcriptionProvider;
   const analysisProvider: AnalysisProvider =
     merged.analysisProvider === "openrouter" ||
     merged.analysisProvider === "google" ||
-    merged.analysisProvider === "vertex" ||
-    merged.analysisProvider === "bedrock" ||
     merged.analysisProvider === "openai-codex"
       ? merged.analysisProvider
       : DEFAULT_APP_CONFIG.analysisProvider;
@@ -523,11 +504,6 @@ export function normalizeAppConfig(
     taskModelId: merged.taskModelId?.trim() || DEFAULT_APP_CONFIG.taskModelId,
     utilityModelId: merged.utilityModelId?.trim() || DEFAULT_APP_CONFIG.utilityModelId,
     synthesisModelId,
-    vertexLocation:
-      merged.vertexLocation?.trim() || DEFAULT_APP_CONFIG.vertexLocation,
-    vertexProject: merged.vertexProject?.trim() || undefined,
-    bedrockRegion:
-      merged.bedrockRegion?.trim() || DEFAULT_APP_CONFIG.bedrockRegion,
     responseLength:
       merged.responseLength === "concise" ||
       merged.responseLength === "standard" ||

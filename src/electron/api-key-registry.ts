@@ -14,18 +14,6 @@ export const API_KEY_DEFINITIONS: readonly ApiKeyDefinition[] = [
     providers: ["google"],
   },
   {
-    envVar: "AWS_ACCESS_KEY_ID",
-    label: "AWS Access Key ID",
-    placeholder: "AKIA...",
-    providers: ["bedrock"],
-  },
-  {
-    envVar: "AWS_SECRET_ACCESS_KEY",
-    label: "AWS Secret Access Key",
-    placeholder: "wJal...",
-    providers: ["bedrock"],
-  },
-  {
     envVar: "EXA_API_KEY",
     label: "Exa Search API Key",
     placeholder: "exa-...",

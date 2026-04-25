@@ -1,6 +1,6 @@
 import type { SessionConfig } from "./types";
 
-export function validateEnv(config: Pick<SessionConfig, "transcriptionProvider" | "analysisProvider" | "vertexProject" | "vertexLocation">) {
+export function validateEnv(config: Pick<SessionConfig, "transcriptionProvider" | "analysisProvider">) {
   const missing: string[] = [];
 
   const needsGoogle = config.transcriptionProvider === "google" || config.analysisProvider === "google";
@@ -8,16 +8,6 @@ export function validateEnv(config: Pick<SessionConfig, "transcriptionProvider" 
     config.transcriptionProvider === "openrouter" ||
     config.analysisProvider === "openrouter" ||
     config.analysisProvider === "openai-codex";
-  const needsBedrock = config.analysisProvider === "bedrock";
-
-  if (needsBedrock) {
-    if (!process.env.AWS_ACCESS_KEY_ID) {
-      missing.push("AWS_ACCESS_KEY_ID");
-    }
-    if (!process.env.AWS_SECRET_ACCESS_KEY) {
-      missing.push("AWS_SECRET_ACCESS_KEY");
-    }
-  }
 
   if (needsGoogle) {
     if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY && !process.env.GEMINI_API_KEY) {
