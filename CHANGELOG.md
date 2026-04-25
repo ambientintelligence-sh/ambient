@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.3](https://github.com/ambientintelligence-sh/ambient/compare/v1.5.2...v1.5.3) (2026-04-25)
+
+
+### Bug Fixes
+
+* suggestion scan, translation, and CJK regressions ([#26](https://github.com/ambientintelligence-sh/ambient/issues/26)) ([ecbdccb](https://github.com/ambientintelligence-sh/ambient/commit/ecbdccbde84aed9f9ae27dffc141b68bb8ad4110))
+
 ## [1.5.2](https://github.com/ambientintelligence-sh/ambient/compare/v1.5.1...v1.5.2) (2026-04-23)
 
 
