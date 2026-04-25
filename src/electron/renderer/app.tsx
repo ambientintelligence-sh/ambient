@@ -217,6 +217,13 @@ export function App() {
 
   // --- Session hook ---
   const handleResumed = (data: ResumeData) => {
+    if (data.meta?.sourceLang) {
+      setSourceLang(data.meta.sourceLang);
+    }
+    if (data.meta?.targetLang) {
+      setTargetLang(data.meta.targetLang);
+    }
+    setTranslateToSelection(data.meta?.translationEnabled ? (data.meta.targetLang ?? targetLang) : "off");
     sl().setSelectedSessionId(data.sessionId);
     ts().setTasks(data.tasks);
     ts().setProcessingTaskIds([]);
@@ -1688,8 +1695,24 @@ export function App() {
       )}
 
       {session.errorText && (
-        <div className="px-4 py-2 text-destructive text-xs border-t border-destructive/20 bg-destructive/5">
-          {session.errorText}
+        <div className="border-t border-destructive/20 bg-destructive/5 px-4 py-2.5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-destructive/80">
+                Scan Error
+              </div>
+              <div className="mt-1 text-xs leading-5 text-destructive break-words">
+                {session.errorText}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={session.clearError}
+              className="shrink-0 rounded-md border border-destructive/20 px-2 py-1 text-[11px] font-medium text-destructive/80 transition-colors hover:border-destructive/35 hover:text-destructive"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 

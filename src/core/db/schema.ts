@@ -17,6 +17,8 @@ export const sessions = sqliteTable("sessions", {
   blockCount: integer("block_count").default(0),
   sourceLang: text("source_lang"),
   targetLang: text("target_lang"),
+  translationEnabled: integer("translation_enabled").default(0),
+  translationDirection: text("translation_direction").default("auto"),
   projectId: text("project_id").references(() => projects.id),
   summaryNarrative: text("summary_narrative"),
   summaryActionItems: text("summary_action_items"),

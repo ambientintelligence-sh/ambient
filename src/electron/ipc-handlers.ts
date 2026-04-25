@@ -130,6 +130,10 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null, db: A
         currentSession.config.sourceLang,
         currentSession.config.targetLang,
         appConfig,
+        {
+          direction: currentSession.config.direction,
+          translationEnabled: currentSession.config.translationEnabled,
+        },
       );
       const currentConfigSerialized = JSON.stringify(currentSession.config);
       const desiredConfigSerialized = JSON.stringify(desiredConfig);
@@ -172,7 +176,10 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null, db: A
 
     const sourceLang = meta.sourceLang ?? "ko";
     const targetLang = meta.targetLang ?? "en";
-    const config = buildSessionConfig(sourceLang, targetLang, appConfig);
+    const config = buildSessionConfig(sourceLang, targetLang, appConfig, {
+      direction: meta.translationDirection ?? undefined,
+      translationEnabled: meta.translationEnabled,
+    });
 
     try {
       validateEnv(config);

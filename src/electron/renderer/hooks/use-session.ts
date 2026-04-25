@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef } from "react";
-import type { UIState, TranscriptBlock, Summary, LanguageCode, TaskItem, Insight, Agent, AppConfig, AudioSource } from "@core/types";
+import type { UIState, TranscriptBlock, Summary, LanguageCode, TaskItem, Insight, Agent, AppConfig, AudioSource, SessionMeta } from "@core/types";
 
 export type SessionState = {
   sessionId: string | null;
@@ -22,6 +22,7 @@ type ResumeData = {
   tasks: TaskItem[];
   insights: Insight[];
   agents: Agent[];
+  meta?: SessionMeta;
 };
 
 type SessionAction =
@@ -38,7 +39,8 @@ type SessionAction =
   | { kind: "session-resumed"; data: ResumeData }
   | { kind: "session-ended" }
   | { kind: "mic-auto-started" }
-  | { kind: "session-viewed"; sessionId: string; blocks: TranscriptBlock[]; keyPoints: string[] };
+  | { kind: "session-viewed"; sessionId: string; blocks: TranscriptBlock[]; keyPoints: string[] }
+  | { kind: "error-cleared" };
 
 const MAX_ROLLING_KEY_POINTS = 160;
 
@@ -124,6 +126,8 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
       return { ...state, statusText: action.text };
     case "error":
       return { ...state, errorText: action.text };
+    case "error-cleared":
+      return { ...state, errorText: "" };
     case "session-started":
       return {
         ...state,
@@ -263,6 +267,7 @@ export function useSession(
             tasks: result.tasks ?? [],
             insights: result.insights ?? [],
             agents: result.agents ?? [],
+            meta: result.meta,
           };
           dispatch({ kind: "session-resumed", data });
           onResumedRef.current?.(data);
@@ -315,5 +320,9 @@ export function useSession(
     dispatch({ kind: "mic-auto-started" });
   };
 
-  return { ...state, toggleRecording, viewSession, clearSession, clearMicAutoStart };
+  const clearError = () => {
+    dispatch({ kind: "error-cleared" });
+  };
+
+  return { ...state, toggleRecording, viewSession, clearSession, clearMicAutoStart, clearError };
 }

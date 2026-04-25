@@ -34,7 +34,9 @@ export function registerSessionHandlers({ db, getWindow, sessionRef, getExternal
     ) => {
       await shutdownCurrentSession(sessionRef, db);
 
-      const config = buildSessionConfig(sourceLang, targetLang, appConfig, !!translationEnabled);
+      const config = buildSessionConfig(sourceLang, targetLang, appConfig, {
+        translationEnabled: !!translationEnabled,
+      });
       try {
         validateEnv(config);
       } catch (error) {
@@ -44,12 +46,26 @@ export function registerSessionHandlers({ db, getWindow, sessionRef, getExternal
       const recent = db.getMostRecentSession();
       let sessionId: string;
       if (recent && !recent.endedAt && db.isSessionEmpty(recent.id)) {
-        db.reuseSession(recent.id, sourceLang, targetLang);
+        db.reuseSession(
+          recent.id,
+          sourceLang,
+          targetLang,
+          config.translationEnabled,
+          config.direction,
+        );
         sessionId = recent.id;
         log("INFO", `Reusing empty session: ${sessionId}`);
       } else {
         sessionId = crypto.randomUUID();
-        db.createSession(sessionId, sourceLang, targetLang, undefined, projectId);
+        db.createSession(
+          sessionId,
+          sourceLang,
+          targetLang,
+          undefined,
+          projectId,
+          config.translationEnabled,
+          config.direction,
+        );
       }
 
       const activeSession = new Session(config, db, sessionId, { getExternalTools, getCodexClient, getOpenAiCodexAccessToken, dataDir });
@@ -78,12 +94,11 @@ export function registerSessionHandlers({ db, getWindow, sessionRef, getExternal
 
       const sourceLang = meta.sourceLang ?? "ko";
       const targetLang = meta.targetLang ?? "en";
-      const config = buildSessionConfig(
-        sourceLang as LanguageCode,
-        targetLang as LanguageCode,
-        appConfig,
-        !!translationEnabled,
-      );
+      const restoredTranslationEnabled = !!translationEnabled || !!meta.translationEnabled;
+      const config = buildSessionConfig(sourceLang as LanguageCode, targetLang as LanguageCode, appConfig, {
+        direction: meta.translationDirection ?? undefined,
+        translationEnabled: restoredTranslationEnabled,
+      });
 
       try {
         validateEnv(config);
@@ -97,9 +112,17 @@ export function registerSessionHandlers({ db, getWindow, sessionRef, getExternal
 
       try {
         await activeSession.initialize();
+        const sessionMeta = db.updateSessionLanguages(
+          sessionId,
+          sourceLang as LanguageCode,
+          targetLang as LanguageCode,
+          config.translationEnabled,
+          config.direction,
+        ) ?? meta;
         return {
           ok: true,
           sessionId,
+          meta: sessionMeta,
           blocks: db.getBlocksForSession(sessionId),
           tasks: db.getTasksForSession(sessionId),
           insights: db.getInsightsForSession(sessionId),

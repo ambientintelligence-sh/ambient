@@ -26,6 +26,7 @@ import { createTranscriptionModel, createAnalysisModel, createTaskModel, createU
 import { log } from "./logger";
 import { pcmToWavBuffer, computeRms } from "./audio/audio-utils";
 import { toReadableError } from "./text/text-utils";
+import { countScanWords } from "./text/text-utils";
 import {
   analysisSchema,
   type AgentSuggestionItem,
@@ -330,7 +331,7 @@ export class Session {
   private emitIdleSuggestionProgress(lastScanEmpty = false): void {
     const allBlocks = [...this.contextState.transcriptBlocks.values()];
     const committedWordCount = allBlocks.reduce(
-      (sum, b) => sum + b.sourceText.split(/\s+/).filter(Boolean).length,
+      (sum, b) => sum + countScanWords(b.sourceText),
       0,
     );
     const pendingWordCount = this.paragraphBuffer.pendingWordCount;
@@ -869,6 +870,13 @@ export class Session {
     if (wasBuffering && this._translationEnabled) {
       void this.paragraphBuffer.commitPending();
     }
+    this.db?.updateSessionLanguages(
+      this.sessionId,
+      this.config.sourceLang,
+      this.config.targetLang,
+      this._translationEnabled,
+      this.config.direction,
+    );
     this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
     log("INFO", `Translation ${this._translationEnabled ? "enabled" : "disabled"}`);
     return this._translationEnabled;
@@ -881,7 +889,13 @@ export class Session {
       if (!wasBuffering && this.usesParagraphBuffering) {
         // Switched from translation to buffering — nothing to flush
       }
-      this.db?.updateSessionLanguages(this.sessionId, this.config.sourceLang, this.config.targetLang);
+      this.db?.updateSessionLanguages(
+        this.sessionId,
+        this.config.sourceLang,
+        this.config.targetLang,
+        this._translationEnabled,
+        this.config.direction,
+      );
       this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
       log("INFO", "Translation disabled via setTranslationMode");
       return;
@@ -894,7 +908,13 @@ export class Session {
       this.config.targetLang = targetLang;
     }
     this.rebuildTranscriptionSchemas();
-    this.db?.updateSessionLanguages(this.sessionId, this.config.sourceLang, this.config.targetLang);
+    this.db?.updateSessionLanguages(
+      this.sessionId,
+      this.config.sourceLang,
+      this.config.targetLang,
+      this._translationEnabled,
+      this.config.direction,
+    );
     if (wasBuffering) {
       void this.paragraphBuffer.commitPending();
     }
@@ -905,7 +925,13 @@ export class Session {
   setSourceLanguage(sourceLang: LanguageCode): void {
     this.config.sourceLang = sourceLang;
     this.rebuildTranscriptionSchemas();
-    this.db?.updateSessionLanguages(this.sessionId, this.config.sourceLang, this.config.targetLang);
+    this.db?.updateSessionLanguages(
+      this.sessionId,
+      this.config.sourceLang,
+      this.config.targetLang,
+      this._translationEnabled,
+      this.config.direction,
+    );
     this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
     log("INFO", `Source language updated: ${sourceLang}`);
   }
@@ -976,7 +1002,7 @@ export class Session {
   private maybeGenerateTitle(): void {
     if (this.titleGenerated || !this.db) return;
     const blocks = [...this.contextState.transcriptBlocks.values()].filter((b) => !b.partial);
-    const wordCount = blocks.reduce((n, b) => n + b.sourceText.split(/\s+/).filter(Boolean).length, 0);
+    const wordCount = blocks.reduce((n, b) => n + countScanWords(b.sourceText), 0);
     if (wordCount < 50) return;
     this.titleGenerated = true;
     void this.generateSessionTitle(blocks);
@@ -1779,7 +1805,7 @@ export class Session {
     }
 
     const committedWordCount = allBlocks.reduce(
-      (sum, b) => sum + b.sourceText.split(/\s+/).filter(Boolean).length,
+      (sum, b) => sum + countScanWords(b.sourceText),
       0,
     );
     const hasNewTaskBlocks = allBlocks.length > this.lastTaskAnalysisBlockCount;
@@ -1824,11 +1850,11 @@ export class Session {
       lastScanEmpty = taskSuggestions.length === 0;
       this.lastTaskAnalysisBlockCount = Math.max(this.lastTaskAnalysisBlockCount, analysisTargetBlockCount);
     } catch (taskError) {
-      if (this.config.debug) {
-        log("WARN", `Agent suggestion generation failed: ${toReadableError(taskError)}`);
-      }
+      const readableTaskError = toReadableError(taskError);
+      log("WARN", `Suggestion scan failed: ${formatModelErrorForLog(taskError)}`);
+      this.events.emit("error", `Suggestion scan failed: ${readableTaskError}`);
       if (request.force) {
-        this.events.emit("status", `Suggestion scan failed: ${toReadableError(taskError)}`);
+        this.events.emit("status", `Suggestion scan failed: ${readableTaskError}`);
         setTimeout(() => this.events.emit("status", ""), 5000);
       }
     } finally {
@@ -1847,6 +1873,7 @@ export class Session {
     }
 
     this.emitIdleSuggestionProgress(lastScanEmpty);
+    this.events.emit("error", "");
 
     if (request.force) {
       const suffix = taskSuggestionsEmitted === 1 ? "" : "s";

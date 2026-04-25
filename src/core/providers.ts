@@ -248,8 +248,9 @@ export function createAgentPiModel(
   config: SessionConfig,
   deps: CreateAgentPiModelDeps = {},
 ): AgentPiModel {
+  const configuredEffort = getReasoningEffortForModel(config.analysisModelId);
   const thinkingLevel = reasoningEffortToThinkingLevel(
-    getReasoningEffortForModel(config.analysisModelId),
+    configuredEffort ?? (config.analysisReasoning ? "medium" : undefined),
   );
 
   if (config.analysisProvider === "bedrock") {

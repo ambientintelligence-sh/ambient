@@ -14,6 +14,7 @@ import type {
   TranscriptBlock,
   AudioSource,
   LanguageCode,
+  Direction,
   Agent,
   AgentStep,
   FinalSummary,
@@ -47,13 +48,23 @@ export function createDatabase(dbPath: string) {
   const orm: BetterSQLite3Database = drizzle({ client: sqlite });
 
   return {
-    createSession(id: string, sourceLang?: LanguageCode, targetLang?: LanguageCode, title?: string, projectId?: string) {
+    createSession(
+      id: string,
+      sourceLang?: LanguageCode,
+      targetLang?: LanguageCode,
+      title?: string,
+      projectId?: string,
+      translationEnabled?: boolean,
+      translationDirection?: Direction,
+    ) {
       orm.insert(sessions).values({
         id,
         startedAt: Date.now(),
         title: title ?? null,
         sourceLang: sourceLang ?? null,
         targetLang: targetLang ?? null,
+        translationEnabled: translationEnabled ? 1 : 0,
+        translationDirection: translationDirection ?? "auto",
         projectId: projectId ?? null,
       }).run();
     },
@@ -151,11 +162,19 @@ export function createDatabase(dbPath: string) {
       return this.getSession(sessionId);
     },
 
-    updateSessionLanguages(sessionId: string, sourceLang?: LanguageCode, targetLang?: LanguageCode): SessionMeta | null {
+    updateSessionLanguages(
+      sessionId: string,
+      sourceLang?: LanguageCode,
+      targetLang?: LanguageCode,
+      translationEnabled?: boolean,
+      translationDirection?: Direction,
+    ): SessionMeta | null {
       orm.update(sessions)
         .set({
           sourceLang: sourceLang ?? null,
           targetLang: targetLang ?? null,
+          translationEnabled: translationEnabled == null ? undefined : (translationEnabled ? 1 : 0),
+          translationDirection: translationDirection ?? undefined,
         })
         .where(eq(sessions.id, sessionId))
         .run();
@@ -190,13 +209,21 @@ export function createDatabase(dbPath: string) {
         && (taskRow?.n ?? 0) === 0;
     },
 
-    reuseSession(id: string, sourceLang?: LanguageCode, targetLang?: LanguageCode) {
+    reuseSession(
+      id: string,
+      sourceLang?: LanguageCode,
+      targetLang?: LanguageCode,
+      translationEnabled?: boolean,
+      translationDirection?: Direction,
+    ) {
       orm.update(sessions)
         .set({
           startedAt: Date.now(),
           endedAt: null,
           sourceLang: sourceLang ?? null,
           targetLang: targetLang ?? null,
+          translationEnabled: translationEnabled ? 1 : 0,
+          translationDirection: translationDirection ?? "auto",
         })
         .where(eq(sessions.id, id))
         .run();
@@ -674,6 +701,8 @@ function mapSessionRow(r: typeof sessions.$inferSelect, agentCount = 0): Session
     agentCount,
     sourceLang: (r.sourceLang as LanguageCode) ?? undefined,
     targetLang: (r.targetLang as LanguageCode) ?? undefined,
+    translationEnabled: r.translationEnabled === 1,
+    translationDirection: (r.translationDirection as Direction) ?? "auto",
     projectId: r.projectId ?? undefined,
   };
 }
@@ -747,7 +776,9 @@ function runMigrations(db: Database.Database) {
       title TEXT,
       block_count INTEGER DEFAULT 0,
       source_lang TEXT,
-      target_lang TEXT
+      target_lang TEXT,
+      translation_enabled INTEGER DEFAULT 0,
+      translation_direction TEXT DEFAULT 'auto'
     );
 
     CREATE TABLE IF NOT EXISTS blocks (
@@ -829,6 +860,23 @@ function runMigrations(db: Database.Database) {
   if (!colNames.has("target_lang")) {
     db.exec("ALTER TABLE sessions ADD COLUMN target_lang TEXT");
   }
+  if (!colNames.has("translation_enabled")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN translation_enabled INTEGER DEFAULT 0");
+  }
+  if (!colNames.has("translation_direction")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN translation_direction TEXT DEFAULT 'auto'");
+  }
+  db.exec(`
+    UPDATE sessions
+    SET translation_enabled = 1
+    WHERE COALESCE(translation_enabled, 0) = 0
+      AND EXISTS (
+        SELECT 1
+        FROM blocks
+        WHERE blocks.session_id = sessions.id
+          AND COALESCE(blocks.translation, '') <> ''
+      )
+  `);
 
   const taskCols = db.prepare("PRAGMA table_info(tasks)").all() as Array<{ name: string }>;
   const taskColNames = new Set(taskCols.map((c) => c.name));

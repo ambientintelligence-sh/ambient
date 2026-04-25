@@ -165,6 +165,8 @@ export type SessionMeta = Readonly<{
   agentCount: number;
   sourceLang?: LanguageCode;
   targetLang?: LanguageCode;
+  translationEnabled?: boolean;
+  translationDirection?: Direction;
   projectId?: string;
 }>;
 

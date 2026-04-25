@@ -297,6 +297,12 @@ function AgentActivityCard({
   const isNothingFound = isFinished && !!progress.lastScanEmpty;
 
   useEffect(() => {
+    if (hasError) {
+      setOpacity(1);
+      setBarPct(100);
+      setDismissed(false);
+      return;
+    }
     if (!isFinished) {
       setOpacity(1);
       setBarPct(100);
@@ -325,11 +331,13 @@ function AgentActivityCard({
           <div className="min-w-0 flex-1">
             <div className="text-xs text-foreground/80">{cardLabel}</div>
             <div className="mt-0.5 text-2xs text-destructive/80">Scan failed</div>
-            <div className="mt-1 text-2xs text-muted-foreground/70 line-clamp-2">{progress.error}</div>
+            <div className="mt-1 text-2xs leading-5 text-muted-foreground/80 break-words">
+              {progress.error}
+            </div>
+            <div className="mt-2">
+              <ManualScanButton onRequestTaskScan={onRequestTaskScan} />
+            </div>
           </div>
-        </div>
-        <div className="absolute inset-x-2 bottom-1 h-[2px] overflow-hidden rounded-full bg-destructive/10">
-          <div className="h-full rounded-full bg-destructive/25" style={{ width: `${barPct}%`, transition: "width 100ms linear" }} />
         </div>
       </li>
     );
