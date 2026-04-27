@@ -1,4 +1,4 @@
-import type { BrowserWindow } from "electron";
+import { BrowserWindow } from "electron";
 import type { AppDatabase } from "@core/db/db";
 import { Session } from "@core/session";
 import type {
@@ -22,13 +22,22 @@ import type { SessionRef } from "./types";
 import { log } from "@core/logger";
 
 export function sendToRenderer(
-  getWindow: () => BrowserWindow | null,
+  _getWindow: () => BrowserWindow | null,
   channel: string,
   ...args: unknown[]
 ) {
-  const win = getWindow();
-  if (win && !win.isDestroyed()) {
-    win.webContents.send(channel, ...args);
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(channel, ...args);
+    }
+  }
+}
+
+export function broadcastActiveSession(sessionId: string | null) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send("session:active-changed", sessionId);
+    }
   }
 }
 
@@ -80,6 +89,7 @@ export function wireSessionEvents(
   db: AppDatabase,
 ) {
   const isCurrentSession = () => sessionRef.current?.sessionId === activeSession.sessionId;
+  broadcastActiveSession(activeSession.sessionId);
 
   activeSession.events.on("state-change", (state: UIState) => {
     if (!isCurrentSession()) return;
@@ -188,6 +198,7 @@ export async function shutdownCurrentSession(sessionRef: SessionRef, db: AppData
     } finally {
       if (sessionRef.current?.sessionId === activeSession.sessionId) {
         sessionRef.current = null;
+        broadcastActiveSession(null);
       }
       db.endSession(activeSession.sessionId);
     }

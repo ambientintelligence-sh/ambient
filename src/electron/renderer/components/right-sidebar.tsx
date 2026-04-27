@@ -15,6 +15,7 @@ import {
   AlertTriangleIcon,
   ListChecksIcon,
   ArchiveIcon,
+  PanelRightOpenIcon,
 } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { WorkoutRunIcon } from "@hugeicons/core-free-icons";
@@ -89,13 +90,17 @@ type RightSidebarProps = {
   onRemoveTranscriptRef?: (index: number) => void;
   onSubmitTaskInput?: (text: string, refs: string[]) => void;
   onRequestTaskScan?: () => void;
+  onPopOut?: () => void;
+  hideScanCounter?: boolean;
+  hideScanActivity?: boolean;
+  hideSuggestions?: boolean;
 };
 
 function isLineClamped(el: HTMLElement): boolean {
   return el.scrollHeight - el.clientHeight > 1 || el.scrollWidth - el.clientWidth > 1;
 }
 
-function SuggestionItem({
+export function SuggestionItem({
   suggestion,
   onAccept,
   onDismiss,
@@ -205,7 +210,7 @@ function SuggestionItem({
 
 const STEP_NOISE = new Set(["Thinking…", "Gathering context…", "Drafting suggestions…"]);
 
-function SuggestionCounterRow({
+export function SuggestionCounterRow({
   progress,
   configBudget,
 }: {
@@ -278,7 +283,7 @@ function ManualScanButton({ onRequestTaskScan }: { onRequestTaskScan?: () => voi
   );
 }
 
-function AgentActivityCard({
+export function AgentActivityCard({
   progress,
   agentSteps,
   onRequestTaskScan,
@@ -384,13 +389,17 @@ function AgentActivityCard({
 
   const visibleSteps = agentSteps.filter((s) => !STEP_NOISE.has(s));
   const activeStep = progress.step && !STEP_NOISE.has(progress.step) ? progress.step : undefined;
-  const completedCount = activeStep
-    ? Math.max(0, visibleSteps.lastIndexOf(activeStep))
+  const lastMeaningfulStepRef = useRef<string | undefined>(undefined);
+  if (activeStep) lastMeaningfulStepRef.current = activeStep;
+  else if (visibleSteps.length > 0) lastMeaningfulStepRef.current = visibleSteps[visibleSteps.length - 1];
+  const stableStep = lastMeaningfulStepRef.current;
+  const completedCount = stableStep
+    ? Math.max(0, visibleSteps.lastIndexOf(stableStep))
     : visibleSteps.length;
   const statusText = completedCount > 0
     ? `${completedCount} step${completedCount === 1 ? "" : "s"} done`
     : "Scanning";
-  const title = activeStep ?? "Working on suggestions";
+  const title = stableStep ?? "Working on suggestions";
   const isWaiting = progress.busy && (progress.step === "Preparing scan…" || !progress.step);
 
   return (
@@ -641,6 +650,10 @@ export function RightSidebar({
   onRemoveTranscriptRef,
   onSubmitTaskInput,
   onRequestTaskScan,
+  onPopOut,
+  hideScanCounter = false,
+  hideScanActivity = false,
+  hideSuggestions = false,
 }: RightSidebarProps) {
   const [modeBySession, setModeBySession] = useLocalStorage<Record<string, RightRailMode>>("ambient-right-rail-mode", {});
   const [completedOpen, setCompletedOpen] = useState(false);
@@ -731,17 +744,30 @@ export function RightSidebar({
   return (
     <div className="w-full h-full shrink-0 border-l border-sidebar-border/35 flex flex-col min-h-0 bg-sidebar/90">
       <div className="px-2 py-2 shrink-0">
-        <div className="grid grid-cols-2 gap-1 rounded-md bg-foreground/[0.045] p-1 dark:bg-muted/50">
-          <RailModeButton
-            active={mode === "agents"}
-            onClick={() => setMode("agents")}
-            label={`Agents (${totalAgentsCount})`}
-          />
-          <RailModeButton
-            active={mode === "work"}
-            onClick={() => setMode("work")}
-            label={`Tasks (${openTasksCount})`}
-          />
+        <div className="flex items-center gap-1">
+          <div className="flex-1 grid grid-cols-2 gap-1 rounded-md bg-foreground/[0.045] p-1 dark:bg-muted/50">
+            <RailModeButton
+              active={mode === "agents"}
+              onClick={() => setMode("agents")}
+              label={`Agents (${totalAgentsCount})`}
+            />
+            <RailModeButton
+              active={mode === "work"}
+              onClick={() => setMode("work")}
+              label={`Tasks (${openTasksCount})`}
+            />
+          </div>
+          {onPopOut && (
+            <button
+              type="button"
+              onClick={onPopOut}
+              title="Pop out into its own window"
+              aria-label="Pop out agents panel"
+              className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.045] hover:text-foreground dark:hover:bg-muted/50"
+            >
+              <PanelRightOpenIcon className="size-3.5" />
+            </button>
+          )}
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3">
@@ -858,36 +884,40 @@ export function RightSidebar({
 
             {/* Suggestions */}
             <div>
-              <div className="sticky top-0 z-20 -mx-1 mb-2 rounded-xl bg-sidebar/88 px-1 py-1 backdrop-blur supports-[backdrop-filter]:bg-sidebar/72">
-                <SectionLabel as="span">Suggested</SectionLabel>
-              </div>
-              {sessionActive && suggestionProgress && (
+              {!hideSuggestions && (
+                <div className="sticky top-0 z-20 -mx-1 mb-2 rounded-xl bg-sidebar/88 px-1 py-1 backdrop-blur supports-[backdrop-filter]:bg-sidebar/72">
+                  <SectionLabel as="span">Suggested</SectionLabel>
+                </div>
+              )}
+              {sessionActive && suggestionProgress && !hideScanCounter && (
                 <SuggestionCounterRow progress={suggestionProgress} configBudget={scanWordBudget} />
               )}
-              {(suggestions.length > 0 || (sessionActive && suggestionProgress)) ? (
-                <ul className="space-y-1">
-                  {sessionActive && activeSuggestionCards.map((card) => (
-                    <AgentActivityCard
-                      key={card.scanId}
-                      progress={card}
-                      agentSteps={card.agentSteps}
-                      onRequestTaskScan={onRequestTaskScan}
-                    />
-                  ))}
-                  {suggestions.map((s) => (
-                    <SuggestionItem
-                      key={s.id}
-                      suggestion={s}
-                      onAccept={() => onAcceptSuggestion?.(s)}
-                      onDismiss={() => onDismissSuggestion?.(s.id)}
-                    />
-                  ))}
-                </ul>
-              ) : archivedSuggestions.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic">
-                  Suggested tasks will appear here
-                </p>
-              ) : null}
+              {!hideSuggestions && (
+                (suggestions.length > 0 || (sessionActive && suggestionProgress)) ? (
+                  <ul className="space-y-1">
+                    {sessionActive && !hideScanActivity && activeSuggestionCards.map((card) => (
+                      <AgentActivityCard
+                        key={card.scanId}
+                        progress={card}
+                        agentSteps={card.agentSteps}
+                        onRequestTaskScan={onRequestTaskScan}
+                      />
+                    ))}
+                    {suggestions.map((s) => (
+                      <SuggestionItem
+                        key={s.id}
+                        suggestion={s}
+                        onAccept={() => onAcceptSuggestion?.(s)}
+                        onDismiss={() => onDismissSuggestion?.(s.id)}
+                      />
+                    ))}
+                  </ul>
+                ) : archivedSuggestions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic">
+                    Suggested tasks will appear here
+                  </p>
+                ) : null
+              )}
               {archivedSuggestions.length > 0 && (
                 <button
                   type="button"

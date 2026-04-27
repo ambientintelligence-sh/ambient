@@ -114,6 +114,7 @@ type AgentDetailPanelProps = {
   onCancel?: (agentId: string) => void;
   onRelaunch?: (agent: Agent) => void;
   onArchive?: (agent: Agent) => void;
+  hideTaskCard?: boolean;
 };
 
 function isWaitingOnUser(steps: readonly AgentStep[]): boolean {
@@ -466,6 +467,7 @@ export function AgentDetailPanel({
   onCancel,
   onRelaunch,
   onArchive,
+  hideTaskCard = false,
 }: AgentDetailPanelProps) {
   const [followUpError, setFollowUpError] = useState("");
   const [timelineNow, setTimelineNow] = useState(() => Date.now());
@@ -829,7 +831,7 @@ export function AgentDetailPanel({
         </div>
       </div>
 
-      <TaskContextCard task={agent.task} taskContext={agent.taskContext} />
+      {!hideTaskCard && <TaskContextCard task={agent.task} taskContext={agent.taskContext} />}
 
       {/* Step timeline */}
       <Conversation className="flex-1 min-h-0">

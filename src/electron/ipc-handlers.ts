@@ -90,6 +90,10 @@ const sessionRef: SessionRef = { current: null };
 let registeredDb: AppDatabase | null = null;
 let integrationManager: IntegrationManager | null = null;
 
+export function getActiveSessionId(): string | null {
+  return sessionRef.current?.sessionId ?? null;
+}
+
 export function shutdownSessionOnAppQuit() {
   if (!registeredDb) return;
   void shutdownCurrentSession(sessionRef, registeredDb);

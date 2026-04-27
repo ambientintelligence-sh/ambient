@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, ArrowRightLeftIcon, CircleIcon, MicIcon, MicOffIcon, Settings2Icon, SquareIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
+import { ArrowLeftIcon, ArrowRightLeftIcon, CircleIcon, MicIcon, MicOffIcon, PanelRightOpenIcon, Settings2Icon, SquareIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -35,6 +35,8 @@ type ToolbarHeaderProps = {
   onSetTranslationMode?: (direction: Direction | "off", targetLang?: LanguageCode) => void;
   settingsOpen?: boolean;
   onToggleSettings?: () => void;
+  onPopOut?: () => void;
+  popupOpen?: boolean;
 };
 
 function StatusBadge({ status }: { status: UIState["status"] }) {
@@ -102,6 +104,8 @@ export function ToolbarHeader({
   onSetTranslationMode,
   settingsOpen,
   onToggleSettings,
+  onPopOut,
+  popupOpen = false,
 }: ToolbarHeaderProps) {
   const isDeviceAudioActive =
     uiState?.status === "recording" || uiState?.status === "connecting";
@@ -296,6 +300,19 @@ export function ToolbarHeader({
             </>
           )}
           <Separator orientation="vertical" className="h-4" />
+          {onPopOut && (
+            <Button
+              variant={popupOpen ? "secondary" : "outline"}
+              size="sm"
+              onClick={onPopOut}
+              className="gap-1.5"
+              aria-label={popupOpen ? "Close mini window" : "Open mini window"}
+              title={popupOpen ? "Close mini window" : "Open mini window"}
+            >
+              <PanelRightOpenIcon className="size-3.5" />
+              <span className="text-xs">{popupOpen ? "Close mini" : "Mini view"}</span>
+            </Button>
+          )}
           <Button
             variant={settingsOpen ? "secondary" : "ghost"}
             size="icon-sm"

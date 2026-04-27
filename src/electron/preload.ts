@@ -211,6 +211,16 @@ export type ElectronAPI = {
 
   checkForUpdate: () => Promise<UpdateInfo | null>;
   onUpdateAvailable: (callback: (info: UpdateInfo) => void) => () => void;
+
+  openAgentsPopup: (sessionId: string | null) => Promise<void>;
+  closeAgentsPopup: () => Promise<void>;
+  getAgentsPopupState: () => Promise<{ open: boolean; sessionId: string | null }>;
+  hydrateAgentsPopup: (sessionId: string) => Promise<{ tasks: TaskItem[]; agents: Agent[]; archivedTasks: TaskItem[] }>;
+  onPopupStateChange: (callback: (state: { open: boolean; sessionId: string | null }) => void) => () => void;
+  resizeAgentsPopup: (height: number) => Promise<void>;
+
+  getActiveSessionId: () => Promise<string | null>;
+  onActiveSessionChanged: (callback: (sessionId: string | null) => void) => () => void;
 };
 
 function createListener<T>(channel: string) {
@@ -393,6 +403,16 @@ const api: ElectronAPI = {
 
   checkForUpdate: () => ipcRenderer.invoke("check-for-update"),
   onUpdateAvailable: createListener<UpdateInfo>("app:update-available"),
+
+  openAgentsPopup: (sessionId) => ipcRenderer.invoke("popup:open", sessionId),
+  closeAgentsPopup: () => ipcRenderer.invoke("popup:close"),
+  getAgentsPopupState: () => ipcRenderer.invoke("popup:get-state"),
+  hydrateAgentsPopup: (sessionId) => ipcRenderer.invoke("popup:hydrate", sessionId),
+  onPopupStateChange: createListener<{ open: boolean; sessionId: string | null }>("popup:state-change"),
+  resizeAgentsPopup: (height) => ipcRenderer.invoke("popup:resize-height", height),
+
+  getActiveSessionId: () => ipcRenderer.invoke("session:get-active-id"),
+  onActiveSessionChanged: createListener<string | null>("session:active-changed"),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);

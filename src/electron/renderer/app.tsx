@@ -105,6 +105,7 @@ export function App() {
   const [rightPanelWidth, setRightPanelWidth] = useLocalStorage<number>("ambient-right-panel-width", 300);
   const pendingNewSessionRouteRef = useRef(false);
   const pendingCaptureStartRef = useRef<{ mic: boolean; deviceAudio: boolean } | null>(null);
+  const [popupSessionId, setPopupSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     const hasStoredSelection = localStorage.getItem("ambient-translate-to-selection") !== null;
@@ -294,7 +295,13 @@ export function App() {
       window.electronAPI.onUpdateAvailable((info) => {
         useUIStore.getState().setUpdateAvailable(info);
       }),
+      window.electronAPI.onPopupStateChange((state) => {
+        setPopupSessionId(state.open ? state.sessionId : null);
+      }),
     ];
+    void window.electronAPI.getAgentsPopupState().then((state) => {
+      setPopupSessionId(state.open ? state.sessionId : null);
+    });
     return () => cleanups.forEach((fn) => fn());
   }, []);
 
@@ -1458,6 +1465,15 @@ export function App() {
           }
           ui().toggleSettings();
         }}
+        popupOpen={popupSessionId !== null}
+        onPopOut={() => {
+          if (popupSessionId !== null) {
+            void window.electronAPI.closeAgentsPopup();
+          } else {
+            const sid = selectedSessionId ?? session.sessionId ?? null;
+            void window.electronAPI.openAgentsPopup(sid);
+          }
+        }}
       />
 
       <div ref={panelLayoutRef} className="flex flex-1 min-h-0">
@@ -1574,48 +1590,57 @@ export function App() {
                 ) : null
               }
             />
-            <div
-              role="separator"
-              aria-label="Resize right panel"
-              aria-orientation="vertical"
-              className="group relative w-1.5 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-border/50"
-              onMouseDown={handleResizeMouseDown("right")}
-            >
-              <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/80 transition-colors group-hover:bg-foreground/30" />
-            </div>
-            <div className="shrink-0 min-h-0" style={{ width: rightPanelWidth }}>
-              <RightSidebar
-                tasks={tasks}
-                suggestions={suggestions}
-                suggestionProgress={suggestionProgress}
-                suggestionScanCards={suggestionScanCards}
-                scanWordBudget={appConfig.suggestionScanWordBudget}
-                agents={agents}
-                selectedAgentId={selectedAgentId}
-                forceWorkTabKey={forceWorkTabKey}
-                onSelectAgent={selectAgent}
-                onLaunchAgent={handleLaunchAgent}
-                onNewAgent={handleNewAgent}
-                onAddTask={handleAddTaskFromDebrief}
-                onToggleTask={handleToggleTask}
-                onDeleteTask={handleDeleteTask}
-                onUpdateTask={handleUpdateTask}
-                processingTaskIds={processingTaskIds}
-                onAcceptSuggestion={handleAcceptSuggestion}
-                onDismissSuggestion={handleDismissSuggestion}
-                archivedSuggestions={archivedSuggestions}
-                onAcceptArchivedTask={handleAcceptArchivedTask}
-                onDeleteArchivedSuggestion={handleDeleteArchivedSuggestion}
-                sessionId={selectedSessionId ?? session.sessionId ?? undefined}
-                sessionActive={sessionActive}
-                transcriptRefs={transcriptRefs}
-                onRemoveTranscriptRef={(index: number) => ts().removeTranscriptRef(index)}
-                onSubmitTaskInput={handleSubmitTaskInput}
-                onRequestTaskScan={() => {
-                  void window.electronAPI.requestTaskScan();
-                }}
-              />
-            </div>
+            {(() => {
+              const currentSessionId = selectedSessionId ?? session.sessionId ?? undefined;
+              const rightPanelDetached = popupSessionId !== null && popupSessionId === currentSessionId;
+              if (rightPanelDetached) return null;
+              return (
+                <>
+                  <div
+                    role="separator"
+                    aria-label="Resize right panel"
+                    aria-orientation="vertical"
+                    className="group relative w-1.5 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-border/50"
+                    onMouseDown={handleResizeMouseDown("right")}
+                  >
+                    <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/80 transition-colors group-hover:bg-foreground/30" />
+                  </div>
+                  <div className="shrink-0 min-h-0" style={{ width: rightPanelWidth }}>
+                    <RightSidebar
+                      tasks={tasks}
+                      suggestions={suggestions}
+                      suggestionProgress={suggestionProgress}
+                      suggestionScanCards={suggestionScanCards}
+                      scanWordBudget={appConfig.suggestionScanWordBudget}
+                      agents={agents}
+                      selectedAgentId={selectedAgentId}
+                      forceWorkTabKey={forceWorkTabKey}
+                      onSelectAgent={selectAgent}
+                      onLaunchAgent={handleLaunchAgent}
+                      onNewAgent={handleNewAgent}
+                      onAddTask={handleAddTaskFromDebrief}
+                      onToggleTask={handleToggleTask}
+                      onDeleteTask={handleDeleteTask}
+                      onUpdateTask={handleUpdateTask}
+                      processingTaskIds={processingTaskIds}
+                      onAcceptSuggestion={handleAcceptSuggestion}
+                      onDismissSuggestion={handleDismissSuggestion}
+                      archivedSuggestions={archivedSuggestions}
+                      onAcceptArchivedTask={handleAcceptArchivedTask}
+                      onDeleteArchivedSuggestion={handleDeleteArchivedSuggestion}
+                      sessionId={currentSessionId}
+                      sessionActive={sessionActive}
+                      transcriptRefs={transcriptRefs}
+                      onRemoveTranscriptRef={(index: number) => ts().removeTranscriptRef(index)}
+                      onSubmitTaskInput={handleSubmitTaskInput}
+                      onRequestTaskScan={() => {
+                        void window.electronAPI.requestTaskScan();
+                      }}
+                    />
+                  </div>
+                </>
+              );
+            })()}
           </>
         )}
       </div>
