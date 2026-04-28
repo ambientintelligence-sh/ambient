@@ -27,6 +27,7 @@ import { useMicCapture } from "./hooks/use-mic-capture";
 import { RightSidebar, AgentActivityCard, SuggestionItem } from "./components/right-sidebar";
 import { AgentDetailPanel } from "./components/agent-detail-panel";
 import { NewAgentPanel } from "./components/new-agent-panel";
+import { ErrorBoundary } from "./components/error-boundary";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,6 +39,7 @@ import {
 } from "@/components/ui/dialog";
 import { useTaskStore } from "./stores/task-store";
 import { useUIStore } from "./stores/ui-store";
+import { rlog } from "./lib/renderer-log";
 
 function joinTaskDetails(...sections: Array<string | undefined>): string | undefined {
   const normalized = sections.map((s) => s?.trim() ?? "").filter(Boolean);
@@ -211,6 +213,17 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
   useEffect(() => {
     if (pendingApprovalTask || selectedAgentId || newAgentMode) setExpanded(true);
   }, [pendingApprovalTask, selectedAgentId, newAgentMode]);
+
+  // On first hydration of an active session that already has tasks or agents,
+  // auto-expand so the user isn't greeted with an apparently empty toolbar.
+  const didAutoExpandRef = useRef(false);
+  useEffect(() => {
+    if (!hydrated || didAutoExpandRef.current || !currentSessionId) return;
+    if (tasks.length > 0 || agents.length > 0) {
+      setExpanded(true);
+    }
+    didAutoExpandRef.current = true;
+  }, [hydrated, currentSessionId, tasks.length, agents.length]);
   useEffect(() => {
     if (expanded) {
       setUnseenAgents(0);
@@ -223,8 +236,21 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
     void window.electronAPI.getActiveSessionId().then((id) => {
       if (id) setCurrentSessionId(id);
     });
+    void window.electronAPI.getActiveSessionState().then((state) => {
+      if (state) setUiState(state);
+    });
     const cleanups = [
-      window.electronAPI.onActiveSessionChanged((id) => setCurrentSessionId(id)),
+      window.electronAPI.onActiveSessionChanged((id) => {
+        setCurrentSessionId(id);
+        if (!id) setUiState(null);
+        else {
+          // New session became active while popup is open — pull a fresh snapshot
+          // so we don't wait for the next state-change event.
+          void window.electronAPI.getActiveSessionState().then((state) => {
+            if (state) setUiState(state);
+          });
+        }
+      }),
       window.electronAPI.onStateChange((state) => setUiState(state)),
     ];
     return () => cleanups.forEach((fn) => fn());
@@ -244,16 +270,21 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
     }
     setHydrated(false);
     void (async () => {
-      const data = await window.electronAPI.hydrateAgentsPopup(currentSessionId);
-      if (cancelled) return;
-      ts().setTasks(data.tasks);
-      ts().hydrateSuggestionsFromArchive(data.archivedTasks);
-      seedAgents(currentSessionId, data.agents);
-      const sessionList = await window.electronAPI.getSessions(200);
-      if (cancelled) return;
-      const meta = sessionList.find((s) => s.id === currentSessionId);
-      setSessionTitle(meta?.title || "Untitled session");
-      setHydrated(true);
+      try {
+        const data = await window.electronAPI.hydrateAgentsPopup(currentSessionId);
+        if (cancelled) return;
+        ts().setTasks(data.tasks);
+        ts().hydrateSuggestionsFromArchive(data.archivedTasks);
+        seedAgents(currentSessionId, data.agents);
+        const sessionList = await window.electronAPI.getSessions(200);
+        if (cancelled) return;
+        const meta = sessionList.find((s) => s.id === currentSessionId);
+        setSessionTitle(meta?.title || "Untitled session");
+        setHydrated(true);
+      } catch (err) {
+        rlog("ERROR", "Popup hydration failed", err);
+        if (!cancelled) setHydrated(true);
+      }
     })();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -269,6 +300,11 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
       }),
       window.electronAPI.onSuggestionProgress((progress) => {
         ts().setSuggestionProgress(progress);
+      }),
+      window.electronAPI.onTaskAdded((task) => {
+        if (currentSessionId && task.sessionId !== currentSessionId) return;
+        const exists = useTaskStore.getState().tasks.some((t) => t.id === task.id);
+        if (!exists) ts().addTask(task);
       }),
       window.electronAPI.onSessionTitleGenerated((sid, title) => {
         if (sid === currentSessionId) setSessionTitle(title);
@@ -357,6 +393,7 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
       ts().markTaskCompleted(task.id);
       return true;
     }
+    rlog("WARN", `Popup launchTaskAgent failed`, result);
     return false;
   };
 
@@ -593,10 +630,12 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
           ) : currentSessionId ? (
             <span className="inline-block size-2 rounded-full bg-muted-foreground/40 shrink-0" />
           ) : null}
-          {(expanded && sessionTitle) || (isCaptureActive && uiState?.status === "connecting") ? (
-            <span className="text-2xs text-muted-foreground truncate">
-              {uiState?.status === "connecting" ? "Connecting…" : sessionTitle}
-            </span>
+          {uiState?.status === "connecting" ? (
+            <span className="text-2xs text-muted-foreground truncate">Connecting…</span>
+          ) : isCaptureActive ? (
+            <span className="text-2xs text-red-600/80 dark:text-red-300/80 truncate">Recording</span>
+          ) : expanded && sessionTitle ? (
+            <span className="text-2xs text-muted-foreground truncate">{sessionTitle}</span>
           ) : null}
         </div>
 
@@ -669,6 +708,7 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
           </div>
         ) : (
           <div className="h-full [&>div]:bg-transparent [&>div]:border-l-0">
+          <ErrorBoundary tag="popup-sidebar">
           <RightSidebar
             tasks={tasks}
             suggestions={suggestions}
@@ -698,6 +738,7 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
             hideScanActivity
             hideSuggestions
           />
+          </ErrorBoundary>
           </div>
         )}
         {overlayActive && (
@@ -720,28 +761,30 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
               </button>
             </div>
             <div className="flex-1 min-h-0 flex flex-col">
-            {newAgentMode ? (
-              <NewAgentPanel
-                onLaunch={handleLaunchCustomAgent}
-                onClose={() => ui().setNewAgentMode(false)}
-              />
-            ) : selectedAgent ? (
-              <AgentDetailPanel
-                agent={selectedAgent}
-                agents={agents}
-                onSelectAgent={selectAgent}
-                onClose={() => closeAgent(selectedAgent.id)}
-                onFollowUp={handleFollowUp}
-                onAnswerQuestion={handleAnswerAgentQuestion}
-                onSkipQuestion={handleSkipAgentQuestion}
-                onAnswerToolApproval={handleAnswerAgentToolApproval}
-                onAnswerPlanApproval={handleAnswerPlanApproval}
-                onCancel={handleCancelAgent}
-                onRelaunch={handleRelaunchAgent}
-                onArchive={handleArchiveAgent}
-                hideTaskCard
-              />
-            ) : null}
+            <ErrorBoundary tag="popup-overlay">
+              {newAgentMode ? (
+                <NewAgentPanel
+                  onLaunch={handleLaunchCustomAgent}
+                  onClose={() => ui().setNewAgentMode(false)}
+                />
+              ) : selectedAgent ? (
+                <AgentDetailPanel
+                  agent={selectedAgent}
+                  agents={agents}
+                  onSelectAgent={selectAgent}
+                  onClose={() => closeAgent(selectedAgent.id)}
+                  onFollowUp={handleFollowUp}
+                  onAnswerQuestion={handleAnswerAgentQuestion}
+                  onSkipQuestion={handleSkipAgentQuestion}
+                  onAnswerToolApproval={handleAnswerAgentToolApproval}
+                  onAnswerPlanApproval={handleAnswerPlanApproval}
+                  onCancel={handleCancelAgent}
+                  onRelaunch={handleRelaunchAgent}
+                  onArchive={handleArchiveAgent}
+                  hideTaskCard
+                />
+              ) : null}
+            </ErrorBoundary>
             </div>
           </div>
         )}

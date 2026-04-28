@@ -27,6 +27,7 @@ import { RightSidebar } from "./components/right-sidebar";
 import { AgentDetailPanel } from "./components/agent-detail-panel";
 import { NewAgentPanel } from "./components/new-agent-panel";
 import { MiddlePanelTabs } from "./components/middle-panel-tabs";
+import { ErrorBoundary } from "./components/error-boundary";
 import { Footer } from "./components/footer";
 import { SettingsPage } from "./components/settings-page";
 import { SplashScreen } from "./components/splash-screen";
@@ -1531,6 +1532,7 @@ export function App() {
             >
               <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/80 transition-colors group-hover:bg-foreground/30" />
             </div>
+            <ErrorBoundary tag="main-middle-panel">
             <MiddlePanelTabs
               sessionId={selectedSessionId ?? session.sessionId ?? null}
               summaryState={finalSummaryState}
@@ -1545,51 +1547,58 @@ export function App() {
               onCloseNewAgent={() => ui().setNewAgentMode(false)}
               onGenerateSummary={handleGenerateSummary}
               transcriptContent={
-                <TranscriptArea
-                  ref={transcriptRef}
-                  blocks={session.blocks}
-                  systemPartial={session.systemPartial}
-                  micPartial={session.micPartial}
-                  canTranslate={session.uiState?.canTranslate ?? false}
-                  translationEnabled={session.uiState?.translationEnabled ?? false}
-                  onAddTranscriptRef={(text: string) => ts().addTranscriptRef(text)}
-                />
+                <ErrorBoundary tag="main-transcript">
+                  <TranscriptArea
+                    ref={transcriptRef}
+                    blocks={session.blocks}
+                    systemPartial={session.systemPartial}
+                    micPartial={session.micPartial}
+                    canTranslate={session.uiState?.canTranslate ?? false}
+                    translationEnabled={session.uiState?.translationEnabled ?? false}
+                    onAddTranscriptRef={(text: string) => ts().addTranscriptRef(text)}
+                  />
+                </ErrorBoundary>
               }
               summaryContent={
-                <SessionSummaryPanel
-                  state={finalSummaryState}
-                  existingTaskTexts={existingTaskTexts}
-                  onClose={() => ui().setFinalSummaryState({ kind: "idle" })}
-                  onAcceptItems={handleAcceptSummaryItems}
-                  onTodosAccepted={handleTodosAccepted}
-                  onRegenerate={handleRegenerateSummary}
-                  asTabbedPanel
-                />
+                <ErrorBoundary tag="main-summary">
+                  <SessionSummaryPanel
+                    state={finalSummaryState}
+                    existingTaskTexts={existingTaskTexts}
+                    onClose={() => ui().setFinalSummaryState({ kind: "idle" })}
+                    onAcceptItems={handleAcceptSummaryItems}
+                    onTodosAccepted={handleTodosAccepted}
+                    onRegenerate={handleRegenerateSummary}
+                    asTabbedPanel
+                  />
+                </ErrorBoundary>
               }
               agentContent={
-                newAgentMode ? (
-                  <NewAgentPanel
-                    onLaunch={handleLaunchCustomAgent}
-                    onClose={() => ui().setNewAgentMode(false)}
-                  />
-                ) : selectedAgent ? (
-                  <AgentDetailPanel
-                    agent={selectedAgent}
-                    agents={agents}
-                    onSelectAgent={selectAgent}
-                    onClose={() => closeAgent(selectedAgent.id)}
-                    onFollowUp={handleFollowUp}
-                    onAnswerQuestion={handleAnswerAgentQuestion}
-                    onSkipQuestion={handleSkipAgentQuestion}
-                    onAnswerToolApproval={handleAnswerAgentToolApproval}
-                    onAnswerPlanApproval={handleAnswerPlanApproval}
-                    onCancel={handleCancelAgent}
-                    onRelaunch={handleRelaunchAgent}
-                    onArchive={handleArchiveAgent}
-                  />
-                ) : null
+                <ErrorBoundary tag="main-agent">
+                  {newAgentMode ? (
+                    <NewAgentPanel
+                      onLaunch={handleLaunchCustomAgent}
+                      onClose={() => ui().setNewAgentMode(false)}
+                    />
+                  ) : selectedAgent ? (
+                    <AgentDetailPanel
+                      agent={selectedAgent}
+                      agents={agents}
+                      onSelectAgent={selectAgent}
+                      onClose={() => closeAgent(selectedAgent.id)}
+                      onFollowUp={handleFollowUp}
+                      onAnswerQuestion={handleAnswerAgentQuestion}
+                      onSkipQuestion={handleSkipAgentQuestion}
+                      onAnswerToolApproval={handleAnswerAgentToolApproval}
+                      onAnswerPlanApproval={handleAnswerPlanApproval}
+                      onCancel={handleCancelAgent}
+                      onRelaunch={handleRelaunchAgent}
+                      onArchive={handleArchiveAgent}
+                    />
+                  ) : null}
+                </ErrorBoundary>
               }
             />
+            </ErrorBoundary>
             {(() => {
               const currentSessionId = selectedSessionId ?? session.sessionId ?? undefined;
               const rightPanelDetached = popupSessionId !== null && popupSessionId === currentSessionId;
@@ -1606,6 +1615,7 @@ export function App() {
                     <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/80 transition-colors group-hover:bg-foreground/30" />
                   </div>
                   <div className="shrink-0 min-h-0" style={{ width: rightPanelWidth }}>
+                    <ErrorBoundary tag="main-right-sidebar">
                     <RightSidebar
                       tasks={tasks}
                       suggestions={suggestions}
@@ -1637,6 +1647,7 @@ export function App() {
                         void window.electronAPI.requestTaskScan();
                       }}
                     />
+                    </ErrorBoundary>
                   </div>
                 </>
               );

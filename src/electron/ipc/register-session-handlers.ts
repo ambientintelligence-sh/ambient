@@ -54,7 +54,6 @@ export function registerSessionHandlers({ db, getWindow, sessionRef, getExternal
           config.direction,
         );
         sessionId = recent.id;
-        log("INFO", `Reusing empty session: ${sessionId}`);
       } else {
         sessionId = crypto.randomUUID();
         db.createSession(

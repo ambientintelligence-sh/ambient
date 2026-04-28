@@ -59,7 +59,7 @@ export type SuggestionAgentResult = {
   steps: number;
 };
 
-const STEP_BUDGET = 8;
+const STEP_BUDGET = 20;
 
 function truncateLabel(text: string, max = 40): string {
   const clean = text.trim().replaceAll(/\s+/g, " ");
@@ -317,7 +317,6 @@ export async function runSuggestionAgent(
     researchText = (extractFinalText(finalMessages) || lastNonEmptyText).trim();
     if (deps.debug) {
       const preview = researchText.length > 800 ? `${researchText.slice(0, 800)}...` : researchText;
-      log("INFO", `Suggestion agent research note: ${preview || `<empty; deltas=${deltaCount}>`}`);
     }
   } catch (error) {
     if (deps.debug) {
@@ -329,9 +328,6 @@ export async function runSuggestionAgent(
   emitStep("Drafting suggestions…");
 
   if (!researchText || /\bNO_SUGGESTIONS\b/.test(researchText)) {
-    if (deps.debug) {
-      log("INFO", `Suggestion agent returned NO_SUGGESTIONS (${researchText ? "explicit" : "empty research note"})`);
-    }
     return {
       suggestions: [],
       usage: { inputTokens: researchInputTokens, outputTokens: researchOutputTokens },

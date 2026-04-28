@@ -821,10 +821,6 @@ async function runAgentWithMessages(
       });
     }
 
-    log(
-      "INFO",
-      `Agent stream ${agent.id}: deltas=${deltaCount}, totalMs=${Date.now() - runStartedAt}`,
-    );
     onComplete(finalText, finalMessages);
   } catch (error) {
     const rawMessage = error instanceof Error ? error.message : String(error);

@@ -220,7 +220,10 @@ export type ElectronAPI = {
   resizeAgentsPopup: (height: number) => Promise<void>;
 
   getActiveSessionId: () => Promise<string | null>;
+  getActiveSessionState: () => Promise<UIState | null>;
   onActiveSessionChanged: (callback: (sessionId: string | null) => void) => () => void;
+
+  logRenderer: (level: "WARN" | "ERROR", msg: string) => void;
 };
 
 function createListener<T>(channel: string) {
@@ -412,6 +415,8 @@ const api: ElectronAPI = {
   resizeAgentsPopup: (height) => ipcRenderer.invoke("popup:resize-height", height),
 
   getActiveSessionId: () => ipcRenderer.invoke("session:get-active-id"),
+  getActiveSessionState: () => ipcRenderer.invoke("session:get-state"),
+  logRenderer: (level, msg) => ipcRenderer.send("log:renderer", level, msg),
   onActiveSessionChanged: createListener<string | null>("session:active-changed"),
 };
 

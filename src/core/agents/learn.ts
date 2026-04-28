@@ -95,8 +95,6 @@ export async function extractAgentLearnings(
 ): Promise<void> {
   if (!agent.result) return;
 
-  log("INFO", `Learning extraction for agent ${agent.id}`);
-
   const existingMd = readAgentsMd();
   const existingSections = parseSections(existingMd);
   const existingItems = new Set(
@@ -165,7 +163,6 @@ ${conversation}`;
 
     const rendered = renderAgentsMd(existingSections);
     writeAgentsMd(rendered);
-    log("INFO", `Extracted ${newLearnings.length} new learnings to agents.md`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log("WARN", `Learning extraction failed: ${message}`);

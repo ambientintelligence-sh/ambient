@@ -128,7 +128,6 @@ export function createMcpToolRegistry(options: {
       if (!isUnauthorizedLike(error)) {
         throw error;
       }
-      log("INFO", `${config.label} ${kind} requested interactive OAuth authorization.`);
     }
 
     const expectedState = await store.getOAuthPendingState(config.id);
@@ -137,7 +136,6 @@ export function createMcpToolRegistry(options: {
     }
 
     const code = await waitForOAuthAuthorizationCode(config, expectedState);
-    log("INFO", `${config.label} OAuth callback received for ${kind}. Exchanging authorization code.`);
     await runtime.transport.finishAuth(code);
     await closeRuntime(runtime);
 
@@ -191,7 +189,6 @@ export function createMcpToolRegistry(options: {
       await store.setOAuthCodeVerifier(providerId, undefined);
       await store.setOAuthTokens(providerId, undefined);
       await store.setOAuthClientInformation(providerId, undefined);
-      log("INFO", `Starting ${config.label} MCP connect using streamable transport.`);
 
       let runtime = createOAuthRuntime(config, "streamable");
       try {

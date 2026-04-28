@@ -21,7 +21,9 @@ function getLogFile(): string {
   return logFile;
 }
 
-export function log(level: "INFO" | "ERROR" | "WARN", msg: string) {
+type Level = "WARN" | "ERROR";
+
+export function log(level: Level, msg: string) {
   const ts = new Date().toISOString();
   const line = `[${ts}] ${level}: ${msg}\n`;
   try {
@@ -29,5 +31,6 @@ export function log(level: "INFO" | "ERROR" | "WARN", msg: string) {
   } catch {
     // Silently ignore log write failures (e.g. during early startup)
   }
-  console.log(line);
+  if (level === "ERROR") console.error(line);
+  else console.warn(line);
 }

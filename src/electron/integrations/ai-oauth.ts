@@ -42,7 +42,6 @@ export async function loginOpenAiCodex(
   try {
     const creds = await loginOpenAICodex({
       onAuth: ({ url }) => {
-        log("INFO", "ChatGPT OAuth: opening browser for authorization");
         void shell.openExternal(url);
       },
       // The browser-callback path is the only one we expose — no TUI paste fallback.
@@ -50,9 +49,6 @@ export async function loginOpenAiCodex(
         throw new Error(
           "ChatGPT OAuth requires the browser callback to complete. Please finish login in the browser.",
         );
-      },
-      onProgress: (message: string) => {
-        log("INFO", `ChatGPT OAuth: ${message}`);
       },
       originator: "ambient",
     });
@@ -66,8 +62,6 @@ export async function loginOpenAiCodex(
         accountId,
       },
     );
-    log("INFO", `ChatGPT OAuth: login succeeded${accountId ? ` (account ${accountId})` : ""}`);
-
     return {
       loggedIn: true,
       accountId,
@@ -83,7 +77,6 @@ export async function loginOpenAiCodex(
 /** Remove stored ChatGPT OAuth credentials. */
 export async function logoutOpenAiCodex(store: SecureCredentialStore): Promise<void> {
   await store.clearAiOAuthProvider(OPENAI_CODEX_PROVIDER_ID);
-  log("INFO", "ChatGPT OAuth: cleared stored credentials");
 }
 
 /** Current login status for display in Settings. */
@@ -132,7 +125,6 @@ export async function getOpenAiCodexAccessToken(
       refreshed as AiOAuthCredentials,
       { accountId },
     );
-    log("INFO", "ChatGPT OAuth: refreshed access token");
     return refreshed.access;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

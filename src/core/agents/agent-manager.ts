@@ -93,7 +93,6 @@ async function generateAgentTitle(
     current.task = object.title;
     deps.db?.updateAgentTask(agent.id, object.title);
     deps.events.emit("agent-title-generated", agent.id, object.title);
-    log("INFO", `Agent title generated for ${agent.id}: "${object.title}"`);
   } catch (err) {
     log("WARN", `Failed to generate agent title for ${agent.id}: ${err}`);
   }
@@ -183,7 +182,6 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
     if (exaLoadAttempted) return exaInstance;
     exaLoadAttempted = true;
     if (!deps.exaApiKey) {
-      log("INFO", "Exa SDK skipped: EXA_API_KEY not set. Agents will run without web search.");
       return null;
     }
     try {
@@ -364,9 +362,6 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
 
   function makeAgentCallbacks(agent: Agent) {
     return {
-      onStepFinish: (info: { finishReason: string; toolCalls?: Array<{ toolName: string }> }) => {
-        log("INFO", `Agent ${agent.id} step: reason=${info.finishReason}${info.toolCalls?.length ? `, tools=${info.toolCalls.map((t) => t.toolName).join(",")}` : ""}`);
-      },
       onStep: (step: AgentStep) => {
         const existingIdx = agent.steps.findIndex((s) => s.id === step.id);
         if (existingIdx >= 0) {
@@ -390,7 +385,6 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         cancelFlush(agent.id);
         deps.db?.updateAgent(agent.id, { status: "completed", result, steps: agent.steps, completedAt: agent.completedAt });
         deps.events.emit("agent-completed", agent.id, result);
-        log("INFO", `Agent completed: ${agent.id}`);
         if (deps.db) {
           try {
             deps.db.indexAgentFts(agent.id, agent.task, result, agent.taskContext ?? null);
@@ -450,7 +444,6 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
     agents.set(agent.id, agent);
     deps.db?.insertAgent(agent);
     deps.events.emit("agent-started", agent);
-    log("INFO", `Agent launched: ${agent.id} (${kind})${taskId ? ` for task ${taskId}` : ""}`);
 
     if (kind === "custom") {
       void generateAgentTitle(agent, deps, agents);
@@ -589,7 +582,6 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
       });
     })();
 
-    log("INFO", `Agent follow-up: ${agentId}`);
     return { ok: true };
   }
 
@@ -613,7 +605,6 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
           result: agent.result,
           completedAt: agent.completedAt,
         });
-        log("INFO", `Hydrated stale running agent ${agent.id} as failed`);
       }
 
       agents.set(agent.id, agent);
@@ -621,9 +612,6 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
       if (history.length > 0) {
         conversationHistory.set(agent.id, history);
       }
-    }
-    if (items.length > 0) {
-      log("INFO", `Hydrated ${items.length} agent(s) from database`);
     }
   }
 
@@ -755,7 +743,6 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
     cancelFlush(agentId);
     deps.db?.archiveAgent(agentId);
     deps.events.emit("agent-archived", agentId);
-    log("INFO", `Agent archived: ${agentId}`);
     return true;
   }
 
@@ -798,7 +785,6 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
 
     deps.db?.updateAgent(agentId, { status: "running", steps: agent.steps, result: undefined, completedAt: undefined });
     deps.events.emit("agent-started", agent);
-    log("INFO", `Agent relaunched: ${agentId}`);
 
     const exa = tryGetExa();
 

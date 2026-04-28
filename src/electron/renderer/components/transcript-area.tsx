@@ -22,6 +22,7 @@ type TranscriptAreaProps = {
 
 const PARAGRAPH_MAX_MS = 30_000;
 const SELECTION_MENU_DEBOUNCE_MS = 180;
+const MAX_RENDERED_PARAGRAPHS = 200;
 
 function groupIntoParagraphs(blocks: readonly TranscriptBlock[]): TranscriptBlock[][] {
   const paragraphs: TranscriptBlock[][] = [];
@@ -150,7 +151,12 @@ export const TranscriptArea = forwardRef<HTMLDivElement, TranscriptAreaProps>(
     const bottomRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const selectionMenuTimerRef = useRef<number | null>(null);
-    const paragraphs = groupIntoParagraphs(blocks);
+    const allParagraphs = groupIntoParagraphs(blocks);
+    const [showAllEarlier, setShowAllEarlier] = useState(false);
+    const hiddenEarlierCount = Math.max(0, allParagraphs.length - MAX_RENDERED_PARAGRAPHS);
+    const paragraphs = showAllEarlier || hiddenEarlierCount === 0
+      ? allParagraphs
+      : allParagraphs.slice(-MAX_RENDERED_PARAGRAPHS);
     const [selectionText, setSelectionText] = useState("");
     const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
     const [addedFeedback, setAddedFeedback] = useState(false);
@@ -343,15 +349,27 @@ export const TranscriptArea = forwardRef<HTMLDivElement, TranscriptAreaProps>(
               Speak or add a note to get started...
             </p>
           ) : (
-            paragraphs.map((p, i) => (
-              <Paragraph
-                key={String(p[0].id)}
-                blocks={p}
-                isLast={i === paragraphs.length - 1}
-                canTranslate={canTranslate ?? false}
-                translationEnabled={translationEnabled ?? false}
-              />
-            ))
+            <>
+              {hiddenEarlierCount > 0 && !showAllEarlier && (
+                <button
+                  type="button"
+                  className="mb-3 flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setShowAllEarlier(true)}
+                >
+                  <ChevronUpIcon className="size-3" />
+                  Show {hiddenEarlierCount} earlier paragraph{hiddenEarlierCount === 1 ? "" : "s"}
+                </button>
+              )}
+              {paragraphs.map((p, i) => (
+                <Paragraph
+                  key={String(p[0].id)}
+                  blocks={p}
+                  isLast={i === paragraphs.length - 1}
+                  canTranslate={canTranslate ?? false}
+                  translationEnabled={translationEnabled ?? false}
+                />
+              ))}
+            </>
           )}
           {systemPartial && (
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground/50 italic animate-pulse">

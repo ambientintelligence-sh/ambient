@@ -41,7 +41,6 @@ function getCodexClient(): CodexClient | null {
       log("WARN", `Codex auto-connect failed: ${result.error}`);
       return null;
     }
-    log("INFO", "Codex auto-connected on first agent launch");
   }
   return {
     isConnected: true,
@@ -59,7 +58,6 @@ function getClaudeClient(): ClaudeClient | null {
       log("WARN", `Claude Code auto-connect failed: ${result.error}`);
       return null;
     }
-    log("INFO", "Claude Code auto-connected on first agent launch");
   }
   return {
     isConnected: true,
@@ -92,6 +90,13 @@ let integrationManager: IntegrationManager | null = null;
 
 export function getActiveSessionId(): string | null {
   return sessionRef.current?.sessionId ?? null;
+}
+
+export function getActiveSessionState(): import("@core/types").UIState | null {
+  const session = sessionRef.current;
+  if (!session) return null;
+  const status = session.recording || session.micEnabled ? "recording" : "paused";
+  return session.getUIState(status);
 }
 
 export function shutdownSessionOnAppQuit() {

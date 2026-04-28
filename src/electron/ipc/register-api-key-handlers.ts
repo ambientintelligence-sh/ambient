@@ -1,7 +1,6 @@
 import { ipcMain } from "electron";
 import type { SecureCredentialStore } from "../integrations/secure-credential-store";
 import { API_KEY_DEFINITIONS } from "../api-key-registry";
-import { log } from "@core/logger";
 
 const GEMINI_ALIAS = "GOOGLE_GENERATIVE_AI_API_KEY";
 
@@ -32,7 +31,6 @@ export function registerApiKeyHandlers(store: SecureCredentialStore) {
     if (envVar === "GEMINI_API_KEY") {
       process.env[GEMINI_ALIAS] = trimmed;
     }
-    log("INFO", `API key saved: ${envVar}`);
     return { ok: true };
   });
 
@@ -42,7 +40,6 @@ export function registerApiKeyHandlers(store: SecureCredentialStore) {
     if (envVar === "GEMINI_API_KEY") {
       delete process.env[GEMINI_ALIAS];
     }
-    log("INFO", `API key deleted: ${envVar}`);
     return { ok: true };
   });
 }

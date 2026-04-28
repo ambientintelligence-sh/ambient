@@ -622,7 +622,6 @@ export async function buildAgentTools(deps: AgentToolDeps): Promise<BuildToolsRe
   const codexClient = deps.getCodexClient?.();
   if (codexClient?.isConnected) {
     codexRegistered = true;
-    log("INFO", "Registering codex + codexResult tools in agent toolset");
 
     const agentId = deps.agentId;
     const emitProviderTaskEvent = deps.emitProviderTaskEvent;
@@ -706,7 +705,6 @@ export async function buildAgentTools(deps: AgentToolDeps): Promise<BuildToolsRe
   const claudeClient = deps.getClaudeClient?.();
   if (claudeClient?.isConnected) {
     claudeRegistered = true;
-    log("INFO", "Registering claude + claudeResult tools in agent toolset");
 
     const agentId = deps.agentId;
     const emitProviderTaskEvent = deps.emitProviderTaskEvent;

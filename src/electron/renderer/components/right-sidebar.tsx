@@ -296,6 +296,7 @@ export function AgentActivityCard({
   const [opacity, setOpacity] = useState(1);
   const [barPct, setBarPct] = useState(100);
   const [dismissed, setDismissed] = useState(false);
+  const lastMeaningfulStepRef = useRef<string | undefined>(undefined);
   const cardLabel = progress.label ?? "Suggestion agent";
   const isFinished = !progress.busy;
   const hasError = !!progress.error;
@@ -389,7 +390,6 @@ export function AgentActivityCard({
 
   const visibleSteps = agentSteps.filter((s) => !STEP_NOISE.has(s));
   const activeStep = progress.step && !STEP_NOISE.has(progress.step) ? progress.step : undefined;
-  const lastMeaningfulStepRef = useRef<string | undefined>(undefined);
   if (activeStep) lastMeaningfulStepRef.current = activeStep;
   else if (visibleSteps.length > 0) lastMeaningfulStepRef.current = visibleSteps[visibleSteps.length - 1];
   const stableStep = lastMeaningfulStepRef.current;

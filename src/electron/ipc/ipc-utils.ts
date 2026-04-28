@@ -19,7 +19,7 @@ import type {
 } from "@core/types";
 import { normalizeAppConfig } from "@core/types";
 import type { SessionRef } from "./types";
-import { log } from "@core/logger";
+
 
 export function sendToRenderer(
   _getWindow: () => BrowserWindow | null,
@@ -192,7 +192,6 @@ export function wireSessionEvents(
 export async function shutdownCurrentSession(sessionRef: SessionRef, db: AppDatabase): Promise<void> {
   if (sessionRef.current) {
     const activeSession = sessionRef.current;
-    log("INFO", `Shutting down active session: ${activeSession.sessionId}`);
     try {
       await activeSession.shutdown();
     } finally {

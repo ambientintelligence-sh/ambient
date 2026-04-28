@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import "dotenv/config";
-import { registerIpcHandlers, shutdownSessionOnAppQuit, getActiveSessionId } from "./ipc-handlers";
+import { registerIpcHandlers, shutdownSessionOnAppQuit, getActiveSessionId, getActiveSessionState } from "./ipc-handlers";
 import { disposeRunJsRuntime } from "@core/agents/run-js-tool";
 import { createDatabase, type AppDatabase } from "@core/db/db";
 import { seedDemoData } from "@core/db/seed-demo";
@@ -52,14 +52,23 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      backgroundThrottling: false,
     },
   });
 
+  mainWindow.webContents.setBackgroundThrottling(false);
   loadRenderer(mainWindow);
 
   if (process.env.NODE_ENV === "development" || MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.webContents.openDevTools({ mode: "detach" });
   }
+
+  mainWindow.webContents.on("render-process-gone", (_e, details) => {
+    log("ERROR", `Main renderer gone: reason=${details.reason} exitCode=${details.exitCode}`);
+  });
+  mainWindow.webContents.on("unresponsive", () => {
+    log("WARN", "Main renderer unresponsive");
+  });
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -91,11 +100,33 @@ export function openPopupWindow(sessionId: string | null) {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      backgroundThrottling: false,
     },
   });
 
+  popupWindow.webContents.setBackgroundThrottling(false);
+
   const hash = sessionId ? `popup?sessionId=${encodeURIComponent(sessionId)}` : "popup";
   loadRenderer(popupWindow, hash);
+
+  // Defer hiding the main window until the popup has finished loading so the user
+  // never sees a blank flash during the transition.
+  popupWindow.webContents.once("did-finish-load", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.hide();
+    }
+  });
+
+  // If the popup renderer crashes, restore the main window so the user is not stranded.
+  popupWindow.webContents.on("render-process-gone", (_e, details) => {
+    log("ERROR", `Popup renderer gone: reason=${details.reason} exitCode=${details.exitCode}`);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    }
+  });
+  popupWindow.webContents.on("unresponsive", () => {
+    log("WARN", "Popup renderer unresponsive");
+  });
 
   popupWindow.on("closed", () => {
     popupWindow = null;
@@ -106,9 +137,6 @@ export function openPopupWindow(sessionId: string | null) {
     }
   });
 
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.hide();
-  }
   broadcastPopupState();
 }
 
@@ -137,9 +165,6 @@ app.whenReady().then(async () => {
         process.env.GOOGLE_GENERATIVE_AI_API_KEY = value;
       }
     }
-    if (Object.keys(storedKeys).length > 0) {
-      log("INFO", `Loaded ${Object.keys(storedKeys).length} stored API key(s)`);
-    }
   }
 
   const dbPath = path.join(userData, "ambient.db");
@@ -150,7 +175,6 @@ app.whenReady().then(async () => {
   if (existingSessions.length === 0) {
     seedDemoData(db.raw);
     wasSeeded = true;
-    log("INFO", "Seeded demo data for first-time user");
   }
 
   const staleAgentCount = db.failStaleRunningAgents("Interrupted because the app quit before completion.");
@@ -170,6 +194,12 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle("popup:get-state", () => getPopupSnapshotState());
   ipcMain.handle("session:get-active-id", () => getActiveSessionId());
+  ipcMain.handle("session:get-state", () => getActiveSessionState());
+  ipcMain.on("log:renderer", (event, level: "WARN" | "ERROR", msg: string) => {
+    const isPopup = popupWindow && !popupWindow.isDestroyed() && event.sender.id === popupWindow.webContents.id;
+    const tag = isPopup ? "popup" : "main-renderer";
+    log(level, `[${tag}] ${msg}`);
+  });
   ipcMain.handle("popup:resize-height", (_event, height: number) => {
     if (!popupWindow || popupWindow.isDestroyed()) return;
     const target = Math.max(POPUP_MIN_HEIGHT, Math.round(height));

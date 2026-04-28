@@ -2,7 +2,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app";
 import { PopupApp } from "./popup-app";
+import { ErrorBoundary } from "./components/error-boundary";
 import { applyThemeClass, readStoredThemeMode, resolveShouldUseDark } from "./lib/theme";
+import { installRendererErrorHooks } from "./lib/renderer-log";
 import "./styles/global.css";
 
 applyThemeClass(resolveShouldUseDark(readStoredThemeMode()));
@@ -19,13 +21,18 @@ function parsePopupSessionId(): string | null {
   return params.get("sessionId");
 }
 
+const tag = isPopupRoute() ? "popup" : "main";
+installRendererErrorHooks(tag);
+
 const root = document.getElementById("root");
 if (root) {
   createRoot(root).render(
     <StrictMode>
-      {isPopupRoute()
-        ? <PopupApp initialSessionId={parsePopupSessionId()} />
-        : <App />}
+      <ErrorBoundary tag={tag}>
+        {isPopupRoute()
+          ? <PopupApp initialSessionId={parsePopupSessionId()} />
+          : <App />}
+      </ErrorBoundary>
     </StrictMode>
   );
 }

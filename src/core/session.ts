@@ -24,7 +24,7 @@ import type {
 } from "./types";
 import { createTranscriptionModel, createAnalysisModel, createTaskModel, createUtilitiesModel, createSynthesisModel, createAgentPiModel } from "./providers";
 import { log } from "./logger";
-import { pcmToWavBuffer, computeRms } from "./audio/audio-utils";
+import { pcmToWavBuffer } from "./audio/audio-utils";
 import { toReadableError } from "./text/text-utils";
 import { countScanWords } from "./text/text-utils";
 import {
@@ -349,10 +349,6 @@ export class Session {
       }
       return;
     }
-    log(
-      "INFO",
-      `suggestion-progress: blocks=${allBlocks.length} committedWords=${committedWordCount} pendingWords=${pendingWordCount} words=${liveWordCount} queuedScanWords=${this.queuedTaskAnalysisWordCount} committedNewWords=${committedNewWords} liveNewWords=${liveNewWords} remaining=${wordsUntilNextScan} liveRemaining=${liveWordsUntilNextScan}`,
-    );
     this.events.emit("suggestion-progress", {
       busy: false,
       wordsUntilNextScan,
@@ -433,7 +429,6 @@ export class Session {
         this.agentManager.hydrateAgents(persistedAgents);
       }
     }
-    log("INFO", `AgentManager initialized${process.env.EXA_API_KEY ? " (web search enabled)" : " (web search disabled — no EXA_API_KEY)"}`);
 
     this.events.on("block-added", () => {
       this.emitIdleSuggestionProgress();
@@ -558,18 +553,15 @@ export class Session {
 
       if (existingSessionKeyPoints.length > 0) {
         this.contextState.allKeyPoints.push(...existingSessionKeyPoints);
-        log("INFO", `Loaded ${existingSessionKeyPoints.length} key points for session ${this.sessionId}`);
       }
       if (existingEducationalInsights.length > 0) {
         this.contextState.allEducationalInsights.push(...existingEducationalInsights);
-        log("INFO", `Loaded ${existingEducationalInsights.length} educational insights for session ${this.sessionId}`);
       }
 
       const archivedTasks = this.db.getArchivedTasksForSession(this.sessionId);
       if (archivedTasks.length > 0) {
         const archivedTexts = archivedTasks.map((t) => t.text);
         this.recentSuggestedTaskTexts.push(...archivedTexts);
-        log("INFO", `Loaded ${archivedTexts.length} archived suggestions for dedup in session ${this.sessionId}`);
       }
     }
 
@@ -582,13 +574,11 @@ export class Session {
       if (!this.legacyDevice) {
         throw new Error("No loopback device found. Use --device to override.");
       }
-      log("INFO", `Selected device: [${this.legacyDevice.index}] ${this.legacyDevice.name}`);
     } else {
       const { supported, version } = checkMacOSVersion();
       if (!supported) {
         throw new Error(`ScreenCaptureKit requires macOS 14.2 or later (detected macOS ${version}).`);
       }
-      log("INFO", "Using ScreenCaptureKit for system audio capture");
     }
 
     this.events.emit("state-change", this.getUIState("idle"));
@@ -747,7 +737,6 @@ export class Session {
       this.micProcess.stdout?.on("data", (data: Buffer) => {
         if (!micDataReceived) {
           micDataReceived = true;
-          log("INFO", `Mic: receiving audio data`);
           this.events.emit("status", "Mic active — listening...");
         }
 
@@ -757,7 +746,6 @@ export class Session {
           const hasNonZero = data.some((b) => b !== 0);
           if (hasNonZero) {
             micNonZeroSeen = true;
-            log("INFO", "Mic: non-zero audio detected — signal OK");
           } else if (micTotalBytes > 16000 * 2 * 3) {
             // 3 seconds of pure zeros — almost certainly a permissions issue
             log("WARN", `Mic: ${micTotalBytes} bytes received, all zeros — likely macOS mic permission issue`);
@@ -774,7 +762,6 @@ export class Session {
         const msg = data.toString().trim();
         if (msg) {
           micStderrBuffer += msg + "\n";
-          log("INFO", `mic ffmpeg: ${msg}`);
         }
       });
 
@@ -797,7 +784,6 @@ export class Session {
         }
       });
 
-      log("INFO", `Mic started: device=${device}, cmd: ffmpeg -loglevel info -f avfoundation -thread_queue_size 1024 -i none:${device} -ac 1 -ar 16000 -f s16le -acodec pcm_s16le -nostdin -`);
       this.events.emit("status", "Starting microphone...");
       this.events.emit("state-change", this.getUIState(this.isRecording || this._micEnabled ? "recording" : "paused"));
     } catch (error) {
@@ -821,7 +807,6 @@ export class Session {
       this.startAnalysisTimer();
     }
 
-    log("INFO", "Mic started via renderer capture (Web Audio API)");
     this.events.emit("status", "Mic active — listening...");
     this.events.emit("state-change", this.getUIState(this.isRecording || this._micEnabled ? "recording" : "paused"));
   }
@@ -858,7 +843,6 @@ export class Session {
       this.stopAnalysisTimer();
     }
 
-    log("INFO", "Mic stopped");
     this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
   }
 
@@ -877,7 +861,6 @@ export class Session {
       this.config.direction,
     );
     this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
-    log("INFO", `Translation ${this._translationEnabled ? "enabled" : "disabled"}`);
     return this._translationEnabled;
   }
 
@@ -896,7 +879,6 @@ export class Session {
         this.config.direction,
       );
       this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
-      log("INFO", "Translation disabled via setTranslationMode");
       return;
     }
 
@@ -918,7 +900,6 @@ export class Session {
       void this.paragraphBuffer.commitPending();
     }
     this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
-    log("INFO", `Translation mode: direction=${direction}, target=${targetLang ?? this.config.targetLang}`);
   }
 
   setSourceLanguage(sourceLang: LanguageCode): void {
@@ -932,14 +913,12 @@ export class Session {
       this.config.direction,
     );
     this.events.emit("state-change", this.getUIState(this.isRecording ? "recording" : "paused"));
-    log("INFO", `Source language updated: ${sourceLang}`);
   }
 
   setSuggestionScanWordBudget(suggestionScanWordBudget: SessionConfig["suggestionScanWordBudget"]): void {
     if (this.config.suggestionScanWordBudget === suggestionScanWordBudget) return;
     this.config.suggestionScanWordBudget = suggestionScanWordBudget;
     this.emitIdleSuggestionProgress();
-    log("INFO", `Suggestion scan word budget updated: ${suggestionScanWordBudget}`);
   }
 
   addNote(text: string): TranscriptBlock {
@@ -1100,7 +1079,6 @@ export class Session {
   }
 
   async shutdown(): Promise<void> {
-    log("INFO", "Session shutdown");
     if (this._micEnabled) this.stopMic();
     if (this.isRecording) this.stopRecording(true);
     await this.waitForTranscriptionDrain();
@@ -1128,10 +1106,6 @@ export class Session {
 
   async classifyTaskSize(text: string): Promise<TaskSizeClassification> {
     const result = await classifyTaskSizeWithModel(this.taskModel, text);
-    log(
-      "INFO",
-      `Task size classified: size=${result.size} reason=${result.reason}`
-    );
     return result;
   }
 
@@ -1266,7 +1240,6 @@ export class Session {
       if (Math.floor(this.micDebugWindowCount / 20) > Math.floor(prev / 20)) {
         const { peakRms, silenceThreshold, speechStarted } = pipeline.vadState;
         const speechBufMs = (pipeline.vadState.speechBuffer.length / (16000 * 2)) * 1000;
-        log("INFO", `Mic levels: peakRms=${peakRms.toFixed(0)} threshold=${silenceThreshold} speechStarted=${speechStarted} speechBuf=${speechBufMs.toFixed(0)}ms queue=${this.chunkQueues.get("microphone")!.length}`);
         this.events.emit("status", `Mic: peak=${peakRms.toFixed(0)} thr=${silenceThreshold}${speechStarted ? ` speaking ${speechBufMs.toFixed(0)}ms` : ""}`);
         pipeline.vadState.peakRms = 0;
       }
@@ -1276,13 +1249,6 @@ export class Session {
     }
 
     for (const chunk of chunks) {
-      const durationMs = (chunk.length / (16000 * 2)) * 1000;
-
-      if (pipeline.source === "microphone") {
-        log("INFO", `Mic VAD: speech chunk ${durationMs.toFixed(0)}ms rms=${computeRms(chunk).toFixed(0)}, queue=${this.chunkQueues.get("microphone")!.length}`);
-
-      }
-
       this.enqueueChunk(pipeline, chunk);
       void this.processQueue(pipeline.source);
     }
@@ -1414,16 +1380,8 @@ export class Session {
 
       const useTranslation = this._translationEnabled && this.canTranslate;
 
-      if (this.config.debug) {
-        log("INFO", `Transcription request [${this.config.transcriptionProvider}]: src=${audioSource} chunk=${chunkDurationMs.toFixed(0)}ms, queue=${queue.length}, inflight=${this.inFlight.get(source)}`);
-      }
-
       const schema = useTranslation ? this.audioTranscriptionSchema : this.transcriptionOnlySchema;
       const wavBuffer = pcmToWavBuffer(chunk, 16000);
-
-      if (this.config.debug) {
-        log("INFO", `Audio buffer: ${(wavBuffer.byteLength / 1024).toFixed(0)}KB`);
-      }
 
       const prompt = useTranslation
         ? buildAudioPromptForStructured(
@@ -1468,7 +1426,6 @@ export class Session {
       this.trackCost(inTok, outTok, "audio", this.config.transcriptionProvider);
 
       if (this.config.debug) {
-        log("INFO", `Transcription response [${this.config.transcriptionProvider}]: ${Date.now() - startTime}ms, tokens: ${inTok}→${outTok}, queue: ${queue.length}`);
         this.events.emit("status", `Response: ${Date.now() - startTime}ms | T: ${inTok}→${outTok}`);
       }
 
@@ -1685,9 +1642,6 @@ export class Session {
     this.analysisInFlight = true;
     this.analysisRequested = false;
     let analysisSucceeded = false;
-    const startTime = Date.now();
-    let analysisElapsedMs = 0;
-    let analysisKeyPointsCount = 0;
 
     try {
       const previousKeyPoints = this.contextState.allKeyPoints.slice(-20);
@@ -1710,14 +1664,12 @@ export class Session {
         providerOptions,
       });
 
-      analysisElapsedMs = Date.now() - startTime;
       this.trackCost(usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, "text", this.config.analysisProvider);
       this.lastAnalysisBlockCount = Math.max(this.lastAnalysisBlockCount, analysisTargetBlockCount);
       analysisSucceeded = true;
 
       // Update key points / summary — persist each as an insight so history survives
       this.contextState.allKeyPoints.push(...analysisResult.keyPoints);
-      analysisKeyPointsCount = analysisResult.keyPoints.length;
       for (const text of analysisResult.keyPoints) {
         const kpInsight: Insight = {
           id: crypto.randomUUID(),
@@ -1731,9 +1683,6 @@ export class Session {
       this.lastSummary = { keyPoints: analysisResult.keyPoints, updatedAt: Date.now() };
       this.events.emit("summary-updated", this.lastSummary);
 
-      if (this.config.debug) {
-        log("INFO", `Analysis response: ${analysisElapsedMs}ms, keyPoints=${analysisKeyPointsCount}`);
-      }
     } catch (error) {
       if (this.config.debug) {
         log("WARN", `Analysis failed: ${toReadableError(error)}`);
@@ -1953,13 +1902,6 @@ export class Session {
           "text",
           costProvider,
         );
-
-        if (this.config.debug) {
-          log(
-            "INFO",
-            `Suggestion agent [${label}]: steps=${result.steps}, candidates=${result.suggestions.length}`,
-          );
-        }
 
         normalized = result.suggestions
           .map((raw) => this.normalizeAgentSuggestion(raw))
