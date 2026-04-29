@@ -37,6 +37,7 @@ import {
   buildSessionTitlePrompt,
 } from "./analysis/analysis";
 import { runSuggestionAgent } from "./analysis/suggestion-agent";
+import { captureScreenshot } from "./screenshot";
 import { classifyTaskSize as classifyTaskSizeWithModel, type TaskSizeClassification } from "./analysis/task-size";
 import type { AppDatabase } from "./db/db";
 import {
@@ -406,6 +407,7 @@ export class Session {
       learningEnabled: config.learningEnabled,
       searchTranscriptHistory: this.db ? (q: string, l?: number) => this.db!.searchBlocks(q, l) : undefined,
       searchAgentHistory: this.db ? (q: string, l?: number) => this.db!.searchAgents(q, l) : undefined,
+      captureScreenshot,
       getExternalTools: this.getExternalTools,
       getCodexClient: this.getCodexClient,
       getClaudeClient: this.getClaudeClient,
@@ -1882,6 +1884,7 @@ export class Session {
           ? (q: string, l?: number) => db.searchBlocks(q, l)
           : undefined,
         exa: this.agentManager?.getExaClient() ?? null,
+        captureScreenshot,
         onStep: (label) => {
           this.emitSuggestionProgress({
             ...progressBase,

@@ -12,6 +12,7 @@ import { log } from "../logger";
 import { toReadableError } from "../text/text-utils";
 import { generateStructuredObject } from "../ai/structured-output";
 import type { AgentPiModel } from "../providers";
+import type { ScreenshotResult } from "../screenshot";
 import {
   agentSuggestionSchema,
   type AgentSuggestionItem,
@@ -38,6 +39,7 @@ export type SuggestionAgentDeps = {
   ) => { blocks: string; returned: number; total: number; remaining: number };
   searchTranscriptHistory?: (query: string, limit?: number) => unknown[];
   exa?: ExaClient | null;
+  captureScreenshot?: () => Promise<ScreenshotResult>;
   onStep?: (label: string) => void;
   debug?: boolean;
 };
@@ -106,8 +108,10 @@ const SYSTEM_PROMPT = [
   "- getTranscriptContext: read older blocks from this session to check whether the speakers already covered, resolved, or contradicted something.",
   "- searchTranscriptHistory: search prior sessions to catch stale duplicates or \"we already decided X last time\" moments.",
   "- searchWeb: look up current external facts (specific prices, exact figures, legal/regulatory context, recent news, official docs, recent releases). Use when the conversation hinges on a public claim you can quickly check.",
+  "- captureScreenshot: take a screenshot of the user's primary display and see what they're working on — what app, document, slide, chart, code, or message is in front of them. Use this freely whenever it would help orient your suggestion. You don't need a strong reason; if visual context might add anything (the speakers say \"this slide\", \"the doc\", \"their inbox\", or you just don't know what they're looking at), take a look.",
   "",
   "Guidelines:",
+  "- When the conversation references something visible (\"this slide\", \"the doc\", \"their inbox\", \"this chart\"), call captureScreenshot to see it before reasoning about it. It's a cheap way to ground your suggestion in what the user is actually looking at.",
   "- Prefer suggestions that lead with a concrete thing — a specific number, name, date, decision, contradiction, concern, or prior commitment. Tool output is great, but a sharp observation from the transcript itself is also valid.",
   "- If the transcript includes a concrete public claim that is easy to check externally — a number, market size, timeline, legal/regulatory claim, named organization, historical comparison, or 'X is bigger than Y' framing — do a quick web lookup before surfacing it.",
   "- Treat one searchWeb call as the default verification pass. It already returns a few results. Compare the top 3-5 snippets and decide. Only do a second web search if the first results are thin, conflicting, or miss the exact figure you need.",
@@ -163,6 +167,8 @@ const SearchWebSchema = Type.Object({
   query: Type.String({ description: "The search query" }),
 });
 
+const CaptureScreenshotSchema = Type.Object({});
+
 function buildTools(deps: SuggestionAgentDeps, emitStep: (label: string) => void): AgentTool<TSchema>[] {
   const tools: AgentTool<TSchema>[] = [];
 
@@ -189,6 +195,59 @@ function buildTools(deps: SuggestionAgentDeps, emitStep: (label: string) => void
       execute: async (_id, { query, limit }: Static<typeof SearchHistorySchema>) => {
         emitStep(`Searching past sessions for "${truncateLabel(query)}"…`);
         return jsonResult(search(query, limit ?? 10));
+      },
+    });
+  }
+
+  if (deps.captureScreenshot) {
+    const capture = deps.captureScreenshot;
+    tools.push({
+      name: "captureScreenshot",
+      label: "Look at the screen",
+      description:
+        "Capture a screenshot of the user's primary display right now and look at it. Use this freely whenever seeing what's on screen would help you understand what the user is doing — what app they're in, what document/slide/chart they're looking at, what code they're editing, what they're reacting to. You don't need a strong justification; if it might add useful context, take a look.",
+      parameters: CaptureScreenshotSchema,
+      execute: async () => {
+        emitStep("Looking at your screen…");
+        try {
+          const res = await capture();
+          if (res.ok === false) {
+            if (deps.debug) {
+              log("WARN", `Suggestion agent captureScreenshot failed: ${res.error}`);
+            }
+            return jsonResult({
+              error: res.error,
+              permissionRequired: res.permissionRequired ?? false,
+            });
+          }
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Screenshot of ${res.displayLabel} (${res.width}x${res.height}).`,
+              },
+              {
+                type: "image" as const,
+                data: res.data,
+                mimeType: res.mimeType,
+              },
+            ],
+            details: {
+              width: res.width,
+              height: res.height,
+              displayLabel: res.displayLabel,
+            },
+          };
+        } catch (error) {
+          const message = toReadableError(error);
+          if (deps.debug) {
+            log("WARN", `Suggestion agent captureScreenshot threw: ${message}`);
+          }
+          return jsonResult({
+            error: message,
+            hint: "Screenshot capture failed. Continue with transcript-only reasoning.",
+          });
+        }
       },
     });
   }
