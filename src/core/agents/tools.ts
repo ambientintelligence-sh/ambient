@@ -24,6 +24,7 @@ import {
 } from "./mcp-tool-resolution";
 import { buildRunJsTool } from "./run-js-tool";
 import { log } from "../logger";
+import type { ScreenshotResult } from "../screenshot";
 
 /**
  * Tools that affect the user's machine (writes, shells out, evaluates code).
@@ -54,6 +55,7 @@ export type AgentToolDeps = {
   ) => { blocks: string; returned: number; total: number; remaining: number };
   searchTranscriptHistory?: (query: string, limit?: number) => unknown[];
   searchAgentHistory?: (query: string, limit?: number) => unknown[];
+  captureScreenshot?: () => Promise<ScreenshotResult>;
   getExternalTools?: () => Promise<AgentExternalToolSet>;
   getCodexClient?: import("./codex-client").GetCodexClient;
   getClaudeClient?: import("./claude-client").GetClaudeClient;
@@ -176,6 +178,8 @@ const SearchWithLimitSchema = Type.Object({
   limit: Type.Optional(Type.Number({ description: "Max results to return (default 20)" })),
 });
 
+const CaptureScreenshotSchema = Type.Object({});
+
 const SearchMcpToolsSchema = Type.Object({
   query: Type.Optional(Type.String({ description: "Search query for the tool name or description. Leave empty to browse a provider." })),
   provider: Type.Optional(Type.String({ description: "Optional provider filter, for example notion or linear." })),
@@ -260,6 +264,54 @@ export async function buildAgentTools(deps: AgentToolDeps): Promise<BuildToolsRe
           return jsonResult({
             error: message,
             hint: "Web search is temporarily unavailable. Continue with available context, or ask the user if they want to proceed without web search.",
+          });
+        }
+      },
+    });
+  }
+
+  // --- captureScreenshot -----------------------------------------------
+  if (deps.captureScreenshot) {
+    const capture = deps.captureScreenshot;
+    tools.push({
+      name: "captureScreenshot",
+      label: "Look at the screen",
+      description:
+        "Capture a screenshot of the user's primary display right now and look at it. Use when seeing what the user is working on would help — what app, document, slide, chart, code, or message is in front of them. Returns one PNG image.",
+      parameters: CaptureScreenshotSchema,
+      execute: async () => {
+        try {
+          const res = await capture();
+          if (res.ok === false) {
+            return jsonResult({
+              error: res.error,
+              permissionRequired: res.permissionRequired ?? false,
+            });
+          }
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Screenshot of ${res.displayLabel} (${res.width}x${res.height}).`,
+              },
+              {
+                type: "image",
+                data: res.data,
+                mimeType: res.mimeType,
+              },
+            ],
+            details: {
+              width: res.width,
+              height: res.height,
+              displayLabel: res.displayLabel,
+            },
+          };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          log("WARN", `captureScreenshot failed: ${message}`);
+          return jsonResult({
+            error: message,
+            hint: "Screenshot capture failed. Continue without it.",
           });
         }
       },

@@ -42,6 +42,7 @@ type AgentManagerDeps = {
   responseLength?: import("../types").ResponseLength;
   searchTranscriptHistory?: (query: string, limit?: number) => unknown[];
   searchAgentHistory?: (query: string, limit?: number) => unknown[];
+  captureScreenshot?: () => Promise<import("../screenshot").ScreenshotResult>;
   getExternalTools?: () => Promise<AgentExternalToolSet>;
   getCodexClient?: import("./codex-client").GetCodexClient;
   getClaudeClient?: import("./claude-client").GetClaudeClient;
@@ -469,6 +470,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         responseLength: deps.responseLength,
         searchTranscriptHistory: deps.searchTranscriptHistory,
         searchAgentHistory: deps.searchAgentHistory,
+        captureScreenshot: deps.captureScreenshot,
         getExternalTools: deps.getExternalTools,
         getCodexClient: deps.getCodexClient,
         getClaudeClient: deps.getClaudeClient,
@@ -549,6 +551,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         responseLength: deps.responseLength,
         searchTranscriptHistory: deps.searchTranscriptHistory,
         searchAgentHistory: deps.searchAgentHistory,
+        captureScreenshot: deps.captureScreenshot,
         getExternalTools: deps.getExternalTools,
         getCodexClient: deps.getCodexClient,
         getClaudeClient: deps.getClaudeClient,
@@ -804,6 +807,7 @@ export function createAgentManager(deps: AgentManagerDeps): AgentManager {
         responseLength: deps.responseLength,
         searchTranscriptHistory: deps.searchTranscriptHistory,
         searchAgentHistory: deps.searchAgentHistory,
+        captureScreenshot: deps.captureScreenshot,
         getExternalTools: deps.getExternalTools,
         getCodexClient: deps.getCodexClient,
         getClaudeClient: deps.getClaudeClient,

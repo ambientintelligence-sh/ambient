@@ -60,6 +60,7 @@ export type AgentDeps = {
   responseLength?: import("../types").ResponseLength;
   searchTranscriptHistory?: (query: string, limit?: number) => unknown[];
   searchAgentHistory?: (query: string, limit?: number) => unknown[];
+  captureScreenshot?: () => Promise<import("../screenshot").ScreenshotResult>;
   getExternalTools?: () => Promise<AgentExternalToolSet>;
   getCodexClient?: import("./codex-client").GetCodexClient;
   getClaudeClient?: import("./claude-client").GetClaudeClient;
@@ -526,6 +527,7 @@ async function runAgentWithMessages(
     responseLength,
     searchTranscriptHistory,
     searchAgentHistory,
+    captureScreenshot,
     getExternalTools,
     getCodexClient,
     getClaudeClient,
@@ -551,6 +553,7 @@ async function runAgentWithMessages(
       getTranscriptContext,
       searchTranscriptHistory,
       searchAgentHistory,
+      captureScreenshot,
       getExternalTools,
       getCodexClient,
       getClaudeClient,
