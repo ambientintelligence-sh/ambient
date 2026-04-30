@@ -182,6 +182,9 @@ export type ElectronAPI = {
   onStatus: (callback: (text: string) => void) => () => void;
   onError: (callback: (text: string) => void) => () => void;
   onTaskAdded: (callback: (task: TaskItem) => void) => () => void;
+  onTasksChanged: (
+    callback: (sessionId: string, tasks: TaskItem[], archivedTasks: TaskItem[], changedTaskId?: string) => void
+  ) => () => void;
   onTaskSuggested: (callback: (suggestion: TaskSuggestion) => void) => () => void;
   onSuggestionProgress: (callback: (progress: {
     scanId?: string;
@@ -214,6 +217,8 @@ export type ElectronAPI = {
 
   openAgentsPopup: (sessionId: string | null) => Promise<void>;
   closeAgentsPopup: () => Promise<void>;
+  openAgentInMainApp: (sessionId: string, agentId: string) => Promise<void>;
+  onOpenAgentInMainApp: (callback: (sessionId: string, agentId: string) => void) => () => void;
   getAgentsPopupState: () => Promise<{ open: boolean; sessionId: string | null }>;
   hydrateAgentsPopup: (sessionId: string) => Promise<{ tasks: TaskItem[]; agents: Agent[]; archivedTasks: TaskItem[] }>;
   onPopupStateChange: (callback: (state: { open: boolean; sessionId: string | null }) => void) => () => void;
@@ -357,6 +362,19 @@ const api: ElectronAPI = {
   onStatus: createListener<string>("session:status"),
   onError: createListener<string>("session:error"),
   onTaskAdded: createListener<TaskItem>("session:task-added"),
+  onTasksChanged: (
+    callback: (sessionId: string, tasks: TaskItem[], archivedTasks: TaskItem[], changedTaskId?: string) => void
+  ) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      sessionId: string,
+      tasks: TaskItem[],
+      archivedTasks: TaskItem[],
+      changedTaskId?: string,
+    ) => callback(sessionId, tasks, archivedTasks, changedTaskId);
+    ipcRenderer.on("session:tasks-changed", handler);
+    return () => ipcRenderer.removeListener("session:tasks-changed", handler);
+  },
   onTaskSuggested: createListener<TaskSuggestion>("session:task-suggested"),
   onSuggestionProgress: createListener<{
     scanId?: string;
@@ -409,6 +427,12 @@ const api: ElectronAPI = {
 
   openAgentsPopup: (sessionId) => ipcRenderer.invoke("popup:open", sessionId),
   closeAgentsPopup: () => ipcRenderer.invoke("popup:close"),
+  openAgentInMainApp: (sessionId, agentId) => ipcRenderer.invoke("app:open-agent", sessionId, agentId),
+  onOpenAgentInMainApp: (callback: (sessionId: string, agentId: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, sessionId: string, agentId: string) => callback(sessionId, agentId);
+    ipcRenderer.on("app:open-agent", handler);
+    return () => ipcRenderer.removeListener("app:open-agent", handler);
+  },
   getAgentsPopupState: () => ipcRenderer.invoke("popup:get-state"),
   hydrateAgentsPopup: (sessionId) => ipcRenderer.invoke("popup:hydrate", sessionId),
   onPopupStateChange: createListener<{ open: boolean; sessionId: string | null }>("popup:state-change"),

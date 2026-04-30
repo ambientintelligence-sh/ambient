@@ -221,50 +221,24 @@ export function SuggestionCounterRow({
   const committedRemaining = Math.min(progress.wordsUntilNextScan, scanWordBudget);
   const liveRemainingRaw = progress.liveWordsUntilNextScan ?? progress.wordsUntilNextScan;
   const liveRemaining = Math.min(liveRemainingRaw, scanWordBudget);
-  const committedAccumulated = Math.max(0, Math.min(scanWordBudget, scanWordBudget - committedRemaining));
-  const liveAccumulated = Math.max(0, Math.min(scanWordBudget, scanWordBudget - liveRemaining));
-  const committedRatio = committedAccumulated / scanWordBudget;
-  const liveRatio = liveAccumulated / scanWordBudget;
-  const bufferedWords = Math.max(0, committedRemaining - liveRemaining);
-  const label = progress.busy
-    ? "Next scan counter paused"
-    : `Next scan in ${committedRemaining} word${committedRemaining === 1 ? "" : "s"}`;
+  const committedRatio = Math.max(0, Math.min(1, (scanWordBudget - committedRemaining) / scanWordBudget));
+  const liveRatio = Math.max(0, Math.min(1, (scanWordBudget - liveRemaining) / scanWordBudget));
+  const visibleRatio = Math.max(committedRatio, liveRatio);
 
   return (
-    <div className="mb-2 rounded-xl border border-border/60 bg-sidebar/60 px-2.5 py-2">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-[11px] font-medium text-foreground/75">{label}</div>
-        <div className="text-[10px] tabular-nums text-muted-foreground/70">{Math.round(committedRatio * 100)}%</div>
+    <div className="mb-2 px-1">
+      <div
+        aria-label="Suggestion scan progress"
+        className="h-1 overflow-hidden rounded-full bg-muted"
+      >
+        <div
+          className={[
+            "h-full rounded-full bg-primary/55 transition-[width] duration-300 ease-out",
+            progress.busy ? "animate-pulse" : "",
+          ].join(" ")}
+          style={{ width: progress.busy ? "100%" : `${Math.round(visibleRatio * 100)}%` }}
+        />
       </div>
-      <div className="mt-2 relative flex gap-1.5">
-        {Array.from({ length: 10 }, (_, index) => {
-          const filled = committedRatio * 10 >= index + 1;
-          const active = !filled && committedRatio * 10 > index;
-          const buffered = !filled && liveRatio * 10 >= index + 1;
-          const bufferedActive = !filled && !buffered && liveRatio * 10 > index;
-          return (
-            <span
-              key={index}
-              className={`h-1.5 flex-1 rounded-full transition-colors ${
-                filled
-                  ? "bg-primary/55"
-                  : buffered
-                  ? "bg-primary/20"
-                  : active
-                  ? "bg-primary/30"
-                  : bufferedActive
-                  ? "bg-primary/15"
-                  : "bg-muted"
-              }`}
-            />
-          );
-        })}
-      </div>
-      {bufferedWords > 0 && (
-        <div className="mt-1 text-[10px] text-muted-foreground/70">
-          {bufferedWords} live word{bufferedWords === 1 ? "" : "s"} waiting to commit
-        </div>
-      )}
     </div>
   );
 }

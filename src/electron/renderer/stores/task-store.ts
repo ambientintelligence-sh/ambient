@@ -127,7 +127,7 @@ type TaskActions = {
   appendSuggestion: (suggestion: TaskSuggestion) => void;
   appendSuggestions: (incoming: TaskSuggestion[]) => void;
   removeSuggestion: (id: string) => void;
-  dismissSuggestion: (id: string) => void;
+  dismissSuggestion: (id: string, appConfig?: AppConfig) => void;
 
   setArchivedSuggestions: (archived: TaskItem[]) => void;
   hydrateSuggestionsFromArchive: (archived: TaskItem[]) => void;
@@ -242,7 +242,12 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
     }),
   setTasks: (tasks) => set({ tasks }),
   updateTasks: (updater) => set((s) => ({ tasks: updater(s.tasks) })),
-  addTask: (task) => set((s) => ({ tasks: [task, ...s.tasks] })),
+  addTask: (task) =>
+    set((s) => ({
+      tasks: s.tasks.some((existing) => existing.id === task.id)
+        ? s.tasks.map((existing) => (existing.id === task.id ? task : existing))
+        : [task, ...s.tasks],
+    })),
   deleteTask: (id) => set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) })),
   toggleTask: (id) => {
     const state = get();
@@ -300,7 +305,7 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
   removeSuggestion: (id) =>
     set((s) => ({ suggestions: s.suggestions.filter((item) => item.id !== id) })),
 
-  dismissSuggestion: (id) => {
+  dismissSuggestion: (id, appConfig) => {
     const state = get();
     const suggestion = state.suggestions.find((s) => s.id === id);
     if (suggestion) {
@@ -321,6 +326,9 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
         suggestions: s.suggestions.filter((item) => item.id !== id),
         archivedSuggestions: [archivedTask, ...s.archivedSuggestions],
       }));
+      if (appConfig && suggestion.sessionId) {
+        void window.electronAPI.addTask(archivedTask, appConfig);
+      }
     } else {
       set((s) => ({ suggestions: s.suggestions.filter((item) => item.id !== id) }));
     }

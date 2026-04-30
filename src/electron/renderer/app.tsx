@@ -5,6 +5,7 @@ import type {
   AppConfig,
   Language,
   LanguageCode,
+  SessionMeta,
   TaskItem,
   AgentQuestionSelection,
   AgentToolApprovalResponse,
@@ -168,6 +169,7 @@ export function App() {
 
   const onboardingPhaseRef = useRef(onboardingPhase);
   onboardingPhaseRef.current = onboardingPhase;
+  const currentSessionIdRef = useRef<string | null>(null);
 
   const existingTaskTexts = new Set(tasks.map((t) => t.text));
 
@@ -250,6 +252,7 @@ export function App() {
     sessionRestartKey,
     translateToSelection !== "off",
   );
+  currentSessionIdRef.current = selectedSessionId ?? session.sessionId ?? null;
   const isDeviceAudioActive =
     session.uiState?.status === "recording" || session.uiState?.status === "connecting";
   const isMicActive = session.uiState?.micEnabled ?? false;
@@ -283,6 +286,28 @@ export function App() {
     const cleanups = [
       window.electronAPI.onTaskSuggested((suggestion) => {
         useTaskStore.getState().appendSuggestion(suggestion);
+      }),
+      window.electronAPI.onTaskAdded((task) => {
+        const currentSessionId = currentSessionIdRef.current;
+        if (task.sessionId && task.sessionId !== currentSessionId) return;
+        const store = useTaskStore.getState();
+        if (!store.tasks.some((existing) => existing.id === task.id)) {
+          store.addTask(task);
+        }
+        store.setSuggestions(store.suggestions.filter((suggestion) => suggestion.id !== task.id));
+      }),
+      window.electronAPI.onTasksChanged((sessionId, nextTasks, nextArchivedTasks, changedTaskId) => {
+        if (!currentSessionIdRef.current || sessionId !== currentSessionIdRef.current) return;
+        const store = useTaskStore.getState();
+        const activeTaskIds = new Set(nextTasks.map((task) => task.id));
+        const nextSuggestions = store.suggestions.filter((suggestion) => {
+          if (activeTaskIds.has(suggestion.id)) return false;
+          return !changedTaskId || suggestion.id !== changedTaskId;
+        });
+        const liveSuggestionIds = new Set(nextSuggestions.map((suggestion) => suggestion.id));
+        store.setTasks(nextTasks);
+        store.setArchivedSuggestions(nextArchivedTasks.filter((task) => !liveSuggestionIds.has(task.id)));
+        store.setSuggestions(nextSuggestions);
       }),
       window.electronAPI.onSuggestionProgress((progress) => {
         useTaskStore.getState().setSuggestionProgress(progress);
@@ -463,6 +488,28 @@ export function App() {
 
   useEffect(() => {
     if (!session.sessionId) return;
+    const optimisticSession: SessionMeta = {
+      id: session.sessionId,
+      startedAt: Date.now(),
+      title: "Untitled Session",
+      blockCount: 0,
+      agentCount: agents.length,
+      sourceLang,
+      targetLang,
+      translationEnabled: translateToSelection !== "off",
+      projectId: integrationActiveProjectId ?? undefined,
+    };
+    const ensureOptimisticSession = () => {
+      sl().updateSessions((prev) => {
+        const existing = prev.find((entry) => entry.id === session.sessionId);
+        if (existing) return prev;
+        return [optimisticSession, ...prev];
+      });
+      if (!sessionsRef.current.some((entry) => entry.id === session.sessionId)) {
+        sessionsRef.current = [optimisticSession, ...sessionsRef.current];
+      }
+    };
+    ensureOptimisticSession();
     seedAgents(session.sessionId, agents);
     sl().setSelectedSessionId(session.sessionId);
     const currentPath = buildSessionPath(session.sessionId);
@@ -472,7 +519,11 @@ export function App() {
     } else if (parseSessionRoute(window.location.hash).normalizedPath !== currentPath) {
       replaceSessionPath(session.sessionId);
     }
-    void refreshSessionsRef.current();
+    void refreshSessionsRef.current().then((loaded) => {
+      if (!loaded.some((entry) => entry.id === session.sessionId)) {
+        ensureOptimisticSession();
+      }
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.sessionId]);
 
@@ -1038,7 +1089,7 @@ export function App() {
   };
 
   const handleDismissSuggestion = (id: string) => {
-    ts().dismissSuggestion(id);
+    ts().dismissSuggestion(id, appConfig);
   };
 
   const handleDeleteArchivedSuggestion = (id: string) => {
@@ -1176,6 +1227,20 @@ export function App() {
     seedAgents(sid, []);
     sl().setSessionActive(true);
   };
+
+  useEffect(() => {
+    return window.electronAPI.onOpenAgentInMainApp((sid, agentId) => {
+      void (async () => {
+        if (currentSessionIdRef.current !== sid) {
+          await handleSelectSession(sid);
+        }
+        ui().setSettingsOpen(false);
+        ui().setNewAgentMode(false);
+        selectAgent(agentId);
+      })();
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSessionId, session.sessionId]);
 
   const handleDeleteSession = async (id: string) => {
     await window.electronAPI.deleteSession(id);
@@ -1599,12 +1664,7 @@ export function App() {
               }
             />
             </ErrorBoundary>
-            {(() => {
-              const currentSessionId = selectedSessionId ?? session.sessionId ?? undefined;
-              const rightPanelDetached = popupSessionId !== null && popupSessionId === currentSessionId;
-              if (rightPanelDetached) return null;
-              return (
-                <>
+            <>
                   <div
                     role="separator"
                     aria-label="Resize right panel"
@@ -1638,7 +1698,7 @@ export function App() {
                       archivedSuggestions={archivedSuggestions}
                       onAcceptArchivedTask={handleAcceptArchivedTask}
                       onDeleteArchivedSuggestion={handleDeleteArchivedSuggestion}
-                      sessionId={currentSessionId}
+                      sessionId={selectedSessionId ?? session.sessionId ?? undefined}
                       sessionActive={sessionActive}
                       transcriptRefs={transcriptRefs}
                       onRemoveTranscriptRef={(index: number) => ts().removeTranscriptRef(index)}
@@ -1649,9 +1709,7 @@ export function App() {
                     />
                     </ErrorBoundary>
                   </div>
-                </>
-              );
-            })()}
+            </>
           </>
         )}
       </div>

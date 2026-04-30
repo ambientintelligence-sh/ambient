@@ -2,6 +2,7 @@ import { ipcMain } from "electron";
 import type { AppConfigOverrides, TaskItem } from "@core/types";
 import { log } from "@core/logger";
 import type { EnsureSession, IpcDeps } from "./types";
+import { sendToRenderer } from "./ipc-utils";
 
 type TaskInsightDeps = IpcDeps & {
   ensureSession: EnsureSession;
@@ -9,9 +10,22 @@ type TaskInsightDeps = IpcDeps & {
 
 export function registerTaskInsightHandlers({
   db,
+  getWindow,
   ensureSession,
   sessionRef,
 }: TaskInsightDeps) {
+  const broadcastTasksChanged = (sessionId?: string | null, changedTaskId?: string) => {
+    if (!sessionId) return;
+    sendToRenderer(
+      getWindow,
+      "session:tasks-changed",
+      sessionId,
+      db.getTasksForSession(sessionId),
+      db.getArchivedTasksForSession(sessionId),
+      changedTaskId,
+    );
+  };
+
   const buildTaskClassifierInput = (title: string, details?: string) => {
     const trimmedTitle = title.trim();
     const trimmedDetails = details?.trim();
@@ -75,6 +89,7 @@ export function registerTaskInsightHandlers({
     } else {
       db.insertTask(persistedTask);
     }
+    broadcastTasksChanged(persistedTask.sessionId, persistedTask.id);
     return { ok: true, task: persistedTask };
   });
 
@@ -93,6 +108,7 @@ export function registerTaskInsightHandlers({
         appConfig,
       );
       db.updateTaskText(id, trimmed, classification.size);
+      broadcastTasksChanged(existing.sessionId, id);
 
       return {
         ok: true,
@@ -110,6 +126,7 @@ export function registerTaskInsightHandlers({
     const task = tasks.find((item) => item.id === id);
     if (!task) return { ok: false, error: "Task not found" };
     db.updateTask(id, !task.completed);
+    broadcastTasksChanged(task.sessionId, id);
     return { ok: true };
   });
 
@@ -117,6 +134,7 @@ export function registerTaskInsightHandlers({
     const task = db.getTask(id);
     if (!task) return { ok: false, error: "Task not found" };
     db.deleteTask(id);
+    broadcastTasksChanged(task.sessionId, id);
     return { ok: true };
   });
 
@@ -156,6 +174,7 @@ export function registerTaskInsightHandlers({
     const task = db.getTask(id);
     if (!task) return { ok: false, error: "Task not found" };
     db.archiveTask(id);
+    broadcastTasksChanged(task.sessionId, id);
     return { ok: true };
   });
 
@@ -163,6 +182,7 @@ export function registerTaskInsightHandlers({
     const task = db.getTask(id);
     if (!task) return { ok: false, error: "Task not found" };
     db.unarchiveTask(id);
+    broadcastTasksChanged(task.sessionId, id);
     return { ok: true };
   });
 

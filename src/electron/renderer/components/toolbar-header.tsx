@@ -42,7 +42,7 @@ type ToolbarHeaderProps = {
 function StatusBadge({ status }: { status: UIState["status"] }) {
   if (status === "recording" || status === "connecting") {
     return (
-      <Badge className="gap-1.5 rounded-full bg-red-50 px-2.5 font-normal text-red-700 hover:bg-red-50 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/10">
+      <Badge className="w-[112px] justify-center gap-1.5 rounded-full bg-red-50 px-2.5 font-normal text-red-700 hover:bg-red-50 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/10">
         <span className="relative flex size-2">
           <span className="absolute inset-0 rounded-full bg-red-500/35 animate-ping" />
           <span className="relative inline-flex size-2 rounded-full bg-red-500" />
@@ -55,7 +55,7 @@ function StatusBadge({ status }: { status: UIState["status"] }) {
   }
 
   return (
-    <Badge variant="secondary" className="gap-1.5 rounded-full px-2.5 font-normal">
+    <Badge variant="secondary" className="w-[112px] justify-center gap-1.5 rounded-full px-2.5 font-normal">
       <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground/40" />
       Idle
     </Badge>
@@ -145,11 +145,11 @@ export function ToolbarHeader({
   return (
     <div className="shrink-0">
       <div
-        className="titlebar-drag border-b border-border pl-20 pr-4 flex items-center gap-3 h-11 text-sm relative"
+        className="titlebar-drag border-b border-border pl-20 pr-3 flex min-w-0 items-center gap-2 h-11 text-sm relative"
         data-window-title="Ambient"
       >
         {/* Logo */}
-        <div className="titlebar-no-drag flex items-center gap-0.5">
+        <div className="titlebar-no-drag flex shrink-0 items-center gap-0.5">
           <img
             src={logoUrl}
             alt="Ambient logo"
@@ -164,7 +164,7 @@ export function ToolbarHeader({
         <Separator orientation="vertical" className="h-4" />
 
         {/* Language controls */}
-        <div className="flex items-center gap-2 titlebar-no-drag">
+        <div className="flex min-w-0 items-center gap-2 titlebar-no-drag">
           <span className="shrink-0 text-xs text-muted-foreground">Translate</span>
           <Select
             value={sourceLang}
@@ -177,7 +177,7 @@ export function ToolbarHeader({
             }}
             disabled={loading || isDeviceAudioActive}
           >
-            <SelectTrigger size="sm" className="w-40">
+            <SelectTrigger size="sm" className="w-36">
               <SelectValue>
                 {loading ? "..." : renderLabel(languages, sourceLang)}
               </SelectValue>
@@ -211,7 +211,7 @@ export function ToolbarHeader({
           >
             <SelectTrigger
               size="sm"
-              className={`w-44 ${translationEnabled ? "border-primary/40" : ""}`}
+              className={`w-40 ${translationEnabled ? "border-primary/40" : ""}`}
             >
               <SelectValue>
                 {translateToSelection === "off" ? "Translation off" : getTranslateDisplayLabel(translateToSelection)}
@@ -235,7 +235,7 @@ export function ToolbarHeader({
         <Separator orientation="vertical" className="h-4" />
 
         {/* Recording controls */}
-        <div className="flex items-center gap-1.5 titlebar-no-drag">
+        <div className="flex shrink-0 items-center gap-1.5 titlebar-no-drag">
           <Button
             variant="ghost"
             size="sm"
@@ -272,7 +272,7 @@ export function ToolbarHeader({
             size="sm"
             variant="outline"
             onClick={onRecordToggle}
-            className={isCapturing ? "gap-1.5 border-destructive/50 text-destructive hover:bg-destructive/10" : "gap-1.5"}
+            className={isCapturing ? "w-[92px] gap-1.5 border-destructive/50 text-destructive hover:bg-destructive/10" : "w-[92px] gap-1.5"}
             aria-label={isCapturing ? "Stop recording" : "Start recording"}
           >
             {isCapturing ? (
@@ -285,7 +285,7 @@ export function ToolbarHeader({
         </div>
 
         {/* Status info (right-aligned) */}
-        <div className="ml-auto flex items-center gap-2 titlebar-no-drag">
+        <div className="ml-auto flex shrink-0 items-center gap-2 titlebar-no-drag">
           {uiState && (
             <>
               <StatusBadge status={statusForBadge} />

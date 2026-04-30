@@ -27,6 +27,17 @@ function broadcastPopupState() {
   }
 }
 
+function syncPopupVisibilityForMainFocus() {
+  if (!popupWindow || popupWindow.isDestroyed()) return;
+  if (mainWindow?.isFocused()) {
+    popupWindow.hide();
+    return;
+  }
+  if (!popupWindow.isVisible()) {
+    popupWindow.showInactive();
+  }
+}
+
 function loadRenderer(win: BrowserWindow, hash?: string) {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     const url = hash ? `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#${hash}` : MAIN_WINDOW_VITE_DEV_SERVER_URL;
@@ -74,10 +85,12 @@ function createWindow() {
     mainWindow = null;
     closePopupWindow();
   });
+  mainWindow.on("focus", syncPopupVisibilityForMainFocus);
+  mainWindow.on("blur", syncPopupVisibilityForMainFocus);
 }
 
 const POPUP_WIDTH = 380;
-const POPUP_MIN_HEIGHT = 120;
+const POPUP_MIN_HEIGHT = 40;
 
 export function openPopupWindow(sessionId: string | null) {
   if (popupWindow && !popupWindow.isDestroyed()) {
@@ -89,11 +102,12 @@ export function openPopupWindow(sessionId: string | null) {
 
   popupWindow = new BrowserWindow({
     width: POPUP_WIDTH,
-    height: 520,
+    height: POPUP_MIN_HEIGHT,
     minWidth: 320,
     minHeight: POPUP_MIN_HEIGHT,
-    titleBarStyle: "hiddenInset",
-    backgroundColor: "#0A0A0A",
+    frame: false,
+    transparent: true,
+    backgroundColor: "#00000000",
     acceptFirstMouse: true,
     resizable: true,
     webPreferences: {
@@ -105,24 +119,17 @@ export function openPopupWindow(sessionId: string | null) {
   });
 
   popupWindow.webContents.setBackgroundThrottling(false);
+  popupWindow.setHasShadow(false);
+  popupWindow.setAlwaysOnTop(true, "floating");
+  popupWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
   const hash = sessionId ? `popup?sessionId=${encodeURIComponent(sessionId)}` : "popup";
   loadRenderer(popupWindow, hash);
 
-  // Defer hiding the main window until the popup has finished loading so the user
-  // never sees a blank flash during the transition.
-  popupWindow.webContents.once("did-finish-load", () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.hide();
-    }
-  });
-
-  // If the popup renderer crashes, restore the main window so the user is not stranded.
+  // Keep the main window available. The popup is a companion workflow surface,
+  // not a replacement for the full Ambient app.
   popupWindow.webContents.on("render-process-gone", (_e, details) => {
     log("ERROR", `Popup renderer gone: reason=${details.reason} exitCode=${details.exitCode}`);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-    }
   });
   popupWindow.webContents.on("unresponsive", () => {
     log("WARN", "Popup renderer unresponsive");
@@ -132,10 +139,8 @@ export function openPopupWindow(sessionId: string | null) {
     popupWindow = null;
     popupSessionId = null;
     broadcastPopupState();
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-    }
   });
+  popupWindow.on("blur", syncPopupVisibilityForMainFocus);
 
   broadcastPopupState();
 }
@@ -191,6 +196,13 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle("popup:close", () => {
     closePopupWindow();
+  });
+  ipcMain.handle("app:open-agent", (_event, sessionId: string, agentId: string) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+      mainWindow.webContents.send("app:open-agent", sessionId, agentId);
+    }
   });
   ipcMain.handle("popup:get-state", () => getPopupSnapshotState());
   ipcMain.handle("session:get-active-id", () => getActiveSessionId());
