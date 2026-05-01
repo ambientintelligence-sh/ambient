@@ -13,6 +13,7 @@ import { registerTaskInsightHandlers } from "./ipc/register-task-insight-handler
 import { registerIntegrationHandlers } from "./ipc/register-integration-handlers";
 import { registerApiKeyHandlers } from "./ipc/register-api-key-handlers";
 import { registerAiOAuthHandlers } from "./ipc/register-ai-oauth-handlers";
+import { registerAppHandlers } from "./ipc/register-app-handlers";
 import { registerSkillHandlers } from "./ipc/register-skill-handlers";
 import { registerLearningHandlers } from "./ipc/register-learning-handlers";
 import { buildSessionConfig, shutdownCurrentSession, wireSessionEvents } from "./ipc/ipc-utils";
@@ -122,6 +123,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null, db: A
   integrationManager = createIntegrationManager(userData, store);
   const manager = integrationManager;
 
+  registerAppHandlers();
   registerApiKeyHandlers(store);
   registerAiOAuthHandlers(store);
 

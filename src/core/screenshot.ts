@@ -17,13 +17,20 @@ export type ScreenshotResult =
 
 let openedSettingsThisRun = false;
 
-function openScreenRecordingSettings(): void {
+export function openScreenRecordingSettings(force = false): void {
   if (process.platform !== "darwin") return;
-  if (openedSettingsThisRun) return;
+  if (openedSettingsThisRun && !force) return;
   openedSettingsThisRun = true;
   void shell.openExternal(
     "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
   );
+}
+
+export type MediaAccessStatus = ReturnType<typeof systemPreferences.getMediaAccessStatus>;
+
+export function getScreenRecordingPermissionStatus(): MediaAccessStatus {
+  if (process.platform !== "darwin") return "granted";
+  return systemPreferences.getMediaAccessStatus("screen");
 }
 
 /**
@@ -43,7 +50,7 @@ function openScreenRecordingSettings(): void {
  */
 export async function captureScreenshot(): Promise<ScreenshotResult> {
   const isDarwin = process.platform === "darwin";
-  const preStatus = isDarwin ? systemPreferences.getMediaAccessStatus("screen") : "granted";
+  const preStatus = getScreenRecordingPermissionStatus();
 
   const primary = screen.getPrimaryDisplay();
   const { width, height } = primary.size;
