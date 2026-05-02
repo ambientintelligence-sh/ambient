@@ -30,6 +30,10 @@ import type {
 } from "@core/types";
 import type { SkillMetadata } from "@core/agents/skills";
 import type { UpdateInfo } from "@core/update-checker";
+import type {
+  AppPermissionStatus,
+  MacPermissionName,
+} from "./ipc/register-app-handlers";
 
 export type ElectronAPI = {
   wasSeeded: () => Promise<boolean>;
@@ -214,6 +218,12 @@ export type ElectronAPI = {
 
   checkForUpdate: () => Promise<UpdateInfo | null>;
   onUpdateAvailable: (callback: (info: UpdateInfo) => void) => () => void;
+
+  getLoginItemStatus: () => Promise<{ openAtLogin: boolean; openAsHidden: boolean; wasOpenedAtLogin: boolean; wasOpenedAsHidden: boolean; restoreState: boolean }>;
+  setOpenAtLogin: (openAtLogin: boolean) => Promise<{ openAtLogin: boolean; openAsHidden: boolean; wasOpenedAtLogin: boolean; wasOpenedAsHidden: boolean; restoreState: boolean }>;
+  getPermissionStatus: () => Promise<AppPermissionStatus>;
+  requestPermission: (name: MacPermissionName) => Promise<{ ok: boolean; status: AppPermissionStatus; error?: string }>;
+  openPermissionSettings: (name: MacPermissionName) => Promise<{ ok: boolean }>;
 
   openAgentsPopup: (sessionId: string | null) => Promise<void>;
   closeAgentsPopup: () => Promise<void>;
@@ -424,6 +434,12 @@ const api: ElectronAPI = {
 
   checkForUpdate: () => ipcRenderer.invoke("check-for-update"),
   onUpdateAvailable: createListener<UpdateInfo>("app:update-available"),
+
+  getLoginItemStatus: () => ipcRenderer.invoke("app:get-login-item-status"),
+  setOpenAtLogin: (openAtLogin) => ipcRenderer.invoke("app:set-open-at-login", openAtLogin),
+  getPermissionStatus: () => ipcRenderer.invoke("app:get-permission-status"),
+  requestPermission: (name) => ipcRenderer.invoke("app:request-permission", name),
+  openPermissionSettings: (name) => ipcRenderer.invoke("app:open-permission-settings", name),
 
   openAgentsPopup: (sessionId) => ipcRenderer.invoke("popup:open", sessionId),
   closeAgentsPopup: () => ipcRenderer.invoke("popup:close"),

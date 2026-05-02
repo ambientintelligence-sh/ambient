@@ -28,12 +28,15 @@ import { WorkoutRunIcon } from "@hugeicons/core-free-icons";
 import {
   CheckCircleIcon,
   CpuIcon,
+  ExternalLinkIcon,
   EyeIcon,
   EyeOffIcon,
   KeyIcon,
   MicIcon,
+  MonitorIcon,
   PaletteIcon,
   PlugIcon,
+  RefreshCwIcon,
   RotateCcwIcon,
   ServerIcon,
   ShieldCheckIcon,
@@ -62,7 +65,7 @@ import {
   renderApiKeyIcon,
 } from "./settings-config";
 
-type SettingsTab = "general" | "transcription" | "models" | "api-keys" | "skills" | "memory" | "integrations";
+type SettingsTab = "general" | "permissions" | "transcription" | "models" | "api-keys" | "skills" | "memory" | "integrations";
 
 function AgentsTabIcon({ className }: { className?: string }) {
   return <HugeiconsIcon icon={WorkoutRunIcon} className={className} />;
@@ -70,6 +73,7 @@ function AgentsTabIcon({ className }: { className?: string }) {
 
 const SETTINGS_TABS: readonly { id: SettingsTab; label: string; icon: ComponentType<{ className?: string }> }[] = [
   { id: "general", label: "General", icon: SlidersHorizontalIcon },
+  { id: "permissions", label: "Permissions", icon: ShieldCheckIcon },
   { id: "memory", label: "Agents", icon: AgentsTabIcon },
   { id: "models", label: "Models", icon: CpuIcon },
   { id: "transcription", label: "Transcription", icon: MicIcon },
@@ -195,6 +199,202 @@ function SettingRow({
         </p>
       </div>
       <div className="shrink-0">{control}</div>
+    </div>
+  );
+}
+
+type PermissionName = "microphone" | "screen";
+type PermissionStatus = Awaited<ReturnType<typeof window.electronAPI.getPermissionStatus>>;
+type LoginItemStatus = Awaited<ReturnType<typeof window.electronAPI.getLoginItemStatus>>;
+
+const PERMISSION_LABELS: Record<PermissionName, string> = {
+  microphone: "Microphone",
+  screen: "Screen & System Audio",
+};
+
+function permissionBadge(status: PermissionStatus[PermissionName] | undefined) {
+  switch (status) {
+    case "granted":
+      return {
+        className: "bg-green-500/15 text-green-600 dark:text-green-400",
+        label: "Granted",
+      };
+    case "denied":
+    case "restricted":
+      return {
+        className: "bg-destructive/15 text-destructive",
+        label: status === "restricted" ? "Restricted" : "Denied",
+      };
+    case "not-determined":
+      return {
+        className: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+        label: "Needs Check",
+      };
+    case "unsupported":
+      return {
+        className: "bg-muted text-muted-foreground",
+        label: "Unsupported",
+      };
+    default:
+      return {
+        className: "bg-muted text-muted-foreground",
+        label: "Unknown",
+      };
+  }
+}
+
+function PermissionRow({
+  name,
+  description,
+  status,
+  busy,
+  onRequest,
+  onOpenSettings,
+}: {
+  name: PermissionName;
+  description: string;
+  status?: PermissionStatus[PermissionName];
+  busy: boolean;
+  onRequest: (name: PermissionName) => void;
+  onOpenSettings: (name: PermissionName) => void;
+}) {
+  const badge = permissionBadge(status);
+  const granted = status === "granted";
+  const unsupported = status === "unsupported";
+
+  return (
+    <div className="border border-border/60 bg-background px-3 py-3 rounded-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            {name === "microphone" ? (
+              <MicIcon className="size-3.5 text-muted-foreground" />
+            ) : (
+              <MonitorIcon className="size-3.5 text-muted-foreground" />
+            )}
+            <p className="text-xs font-semibold text-foreground">
+              {PERMISSION_LABELS[name]}
+            </p>
+          </div>
+          <p className="mt-1 text-2xs text-muted-foreground leading-relaxed">
+            {description}
+          </p>
+        </div>
+        <span className={`shrink-0 text-2xs px-1.5 py-0.5 rounded-full ${badge.className}`}>
+          {badge.label}
+        </span>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant={granted ? "outline" : "default"}
+          onClick={() => onRequest(name)}
+          disabled={busy || unsupported}
+        >
+          <RefreshCwIcon className="size-3.5" data-icon="inline-start" />
+          {granted ? "Recheck" : "Check Access"}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => onOpenSettings(name)}
+          disabled={busy || unsupported}
+        >
+          <ExternalLinkIcon className="size-3.5" data-icon="inline-start" />
+          Open Settings
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PermissionsTab() {
+  const [permissionStatus, setPermissionStatus] = useState<PermissionStatus | null>(null);
+  const [loginItemStatus, setLoginItemStatus] = useState<LoginItemStatus | null>(null);
+  const [busyPermission, setBusyPermission] = useState<PermissionName | null>(null);
+  const [permissionError, setPermissionError] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
+
+  const refreshStatus = async () => {
+    const [permissions, loginItem] = await Promise.all([
+      window.electronAPI.getPermissionStatus(),
+      window.electronAPI.getLoginItemStatus(),
+    ]);
+    setPermissionStatus(permissions);
+    setLoginItemStatus(loginItem);
+  };
+
+  useEffect(() => {
+    void refreshStatus();
+  }, []);
+
+  const requestPermission = async (name: PermissionName) => {
+    setBusyPermission(name);
+    setPermissionError("");
+    const result = await window.electronAPI.requestPermission(name);
+    setPermissionStatus(result.status);
+    setBusyPermission(null);
+    if (!result.ok) {
+      setPermissionError(result.error ?? `${PERMISSION_LABELS[name]} permission is not available yet.`);
+    }
+  };
+
+  const openPermissionSettings = async (name: PermissionName) => {
+    await window.electronAPI.openPermissionSettings(name);
+  };
+
+  const setOpenAtLogin = async (openAtLogin: boolean) => {
+    setLoginBusy(true);
+    const next = await window.electronAPI.setOpenAtLogin(openAtLogin);
+    setLoginItemStatus(next);
+    setLoginBusy(false);
+  };
+
+  return (
+    <div className="space-y-5">
+      <SettingsSection
+        icon={ShieldCheckIcon}
+        title="macOS Permissions"
+        description="Confirm capture access before agents need screen or audio context."
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <PermissionRow
+            name="microphone"
+            description="Required when Ambient captures your voice through the microphone."
+            status={permissionStatus?.microphone}
+            busy={busyPermission === "microphone"}
+            onRequest={requestPermission}
+            onOpenSettings={openPermissionSettings}
+          />
+          <PermissionRow
+            name="screen"
+            description="Required for agent screenshots and for macOS screen/system audio capture."
+            status={permissionStatus?.screen}
+            busy={busyPermission === "screen"}
+            onRequest={requestPermission}
+            onOpenSettings={openPermissionSettings}
+          />
+        </div>
+        {permissionError && (
+          <p className="mt-3 text-2xs text-destructive leading-relaxed">
+            {permissionError}
+          </p>
+        )}
+      </SettingsSection>
+
+      <SettingsSection icon={MonitorIcon} title="Startup">
+        <SettingRow
+          label="Open at Login"
+          description="Launch Ambient when you sign in so permission prompts and capture tools are ready."
+          control={
+            <Switch
+              checked={!!loginItemStatus?.openAtLogin}
+              onCheckedChange={(v) => void setOpenAtLogin(v)}
+              disabled={loginBusy}
+            />
+          }
+        />
+      </SettingsSection>
     </div>
   );
 }
@@ -965,6 +1165,10 @@ export function SettingsPage({
           </SettingsSection>
 
           </div>
+          </TabsContent>
+
+          <TabsContent value="permissions">
+            <PermissionsTab />
           </TabsContent>
 
           <TabsContent value="transcription">
