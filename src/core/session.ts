@@ -21,6 +21,7 @@ import type {
   Insight,
   TranscriptionProvider,
   AnalysisProvider,
+  SuggestionSurface,
 } from "./types";
 import { createTranscriptionModel, createAnalysisModel, createTaskModel, createUtilitiesModel, createSynthesisModel, createAgentPiModel } from "./providers";
 import { log } from "./logger";
@@ -105,6 +106,7 @@ type AudioPipeline = {
 };
 
 type TaskSuggestionDraft = {
+  surface: SuggestionSurface;
   text: string;
   flag?: string;
   details?: string;
@@ -147,6 +149,35 @@ function buildSuggestionArchiveDetails(candidate: TaskSuggestionDraft): string |
     candidate.transcriptExcerpt?.trim() ? `Original transcript excerpt:\n${candidate.transcriptExcerpt.trim()}` : "",
   ].filter(Boolean);
   return sections.length > 0 ? sections.join("\n\n") : undefined;
+}
+
+function buildCalloutInsightText(candidate: TaskSuggestionDraft): string {
+  const sections = [
+    candidate.flag?.trim(),
+    candidate.text.trim(),
+    candidate.details?.trim(),
+    candidate.transcriptExcerpt?.trim() ? `Transcript: ${candidate.transcriptExcerpt.trim()}` : "",
+  ].filter(Boolean);
+  return sections.join("\n\n");
+}
+
+function summarizeConnectedMcpTools(toolSet: AgentExternalToolSet): string[] {
+  const byProvider = new Map<string, string[]>();
+  for (const tool of Object.values(toolSet)) {
+    const provider = tool.provider.trim();
+    const name = tool.name.trim();
+    if (!provider || !name) continue;
+    const description = tool.description?.trim().replace(/\s+/g, " ");
+    const entry = description ? `${name}: ${description}` : name;
+    const tools = byProvider.get(provider) ?? [];
+    if (tools.length < 6) tools.push(entry);
+    byProvider.set(provider, tools);
+  }
+
+  return [...byProvider.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(0, 8)
+    .map(([provider, tools]) => `${provider}: ${tools.join("; ")}`);
 }
 
 function stringifyErrorPart(value: unknown): string | null {
@@ -564,6 +595,12 @@ export class Session {
       if (archivedTasks.length > 0) {
         const archivedTexts = archivedTasks.map((t) => t.text);
         this.recentSuggestedTaskTexts.push(...archivedTexts);
+      }
+      const existingCallouts = existingSessionInsights
+        .filter((insight) => insight.kind === "callout")
+        .map((insight) => insight.text);
+      if (existingCallouts.length > 0) {
+        this.recentSuggestedTaskTexts.push(...existingCallouts);
       }
     }
 
@@ -1783,8 +1820,18 @@ export class Session {
     const now = Date.now();
     let taskSuggestions: TaskSuggestionDraft[] = [];
     let lastScanEmpty = true;
+    let connectedMcpTools: string[] = [];
 
     try {
+      if (this.getExternalTools) {
+        try {
+          connectedMcpTools = summarizeConnectedMcpTools(await this.getExternalTools());
+        } catch (error) {
+          if (this.config.debug) {
+            log("WARN", `Failed to summarize connected MCP tools for suggestion agent: ${toReadableError(error)}`);
+          }
+        }
+      }
       this.lastTaskAnalysisAt = now;
       this.lastTaskAnalysisWordCount = Math.max(this.lastTaskAnalysisWordCount, committedWordCount);
       taskSuggestions = await this.generateTaskSuggestionsAgentic({
@@ -1795,6 +1842,7 @@ export class Session {
         historicalSuggestions: this.recentSuggestedTaskTexts,
         keyPoints: previousKeyPoints,
         educationalContext: previousEducationalInsights.slice(-20),
+        connectedMcpTools,
         aggressiveness: this.config.taskSuggestionAggressiveness,
       });
       lastScanEmpty = taskSuggestions.length === 0;
@@ -1935,6 +1983,7 @@ export class Session {
 
     const suggestion: TaskSuggestion = {
       id: crypto.randomUUID(),
+      surface: candidate.surface,
       text: normalized,
       flag: candidate.flag?.trim() || undefined,
       details: candidate.details?.trim() || undefined,
@@ -1947,7 +1996,15 @@ export class Session {
     if (this.recentSuggestedTaskTexts.length > 500) {
       this.recentSuggestedTaskTexts = this.recentSuggestedTaskTexts.slice(-500);
     }
-    if (this.db && !this.db.getTask(suggestion.id)) {
+    if (this.db && candidate.surface === "callout") {
+      this.db.insertInsight({
+        id: suggestion.id,
+        kind: "callout",
+        text: buildCalloutInsightText(candidate),
+        sessionId: this.sessionId,
+        createdAt: suggestion.createdAt,
+      });
+    } else if (this.db && !this.db.getTask(suggestion.id)) {
       this.db.insertTask({
         id: suggestion.id,
         text: suggestion.text,
@@ -1971,6 +2028,7 @@ export class Session {
     const text = rawSuggestion.text.trim();
     if (!text) return null;
     return {
+      surface: rawSuggestion.surface,
       text,
       kind: rawSuggestion.kind,
       flag: rawSuggestion.flag?.trim() || undefined,

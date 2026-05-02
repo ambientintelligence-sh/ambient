@@ -60,7 +60,7 @@ const DEFAULT_TASK_CREATION_SHARED_PROMPT = `Shared task creation standard (appl
 const DEFAULT_AGENT_SUGGESTION_PROMPT = `{{key_points_section}}
 
 Recent transcript:
-{{transcript}}{{existing_tasks_section}}{{historical_suggestions_section}}{{educational_context_section}}{{suggestion_aggressiveness_section}}`;
+{{transcript}}{{existing_tasks_section}}{{historical_suggestions_section}}{{educational_context_section}}{{connected_mcp_tools_section}}{{suggestion_aggressiveness_section}}`;
 
 const DEFAULT_TASK_FROM_SELECTION_PROMPT = `You convert highlighted transcript text into one concrete task.
 

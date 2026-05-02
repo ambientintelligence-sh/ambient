@@ -10,7 +10,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   ChevronLeftIcon,
-  CheckIcon,
+  PlayIcon,
   XIcon,
   ClockIcon,
   AlertCircleIcon,
@@ -109,17 +109,18 @@ function MiniScanBar({
 
 function MiniSuggestionCard({
   suggestion,
-  onQueue,
+  onDispatch,
   onDismiss,
   style,
   surface = "panel",
 }: {
   suggestion: TaskSuggestion;
-  onQueue: () => void;
+  onDispatch: () => void;
   onDismiss: () => void;
   style?: React.CSSProperties;
   surface?: "panel" | "collapsed";
 }) {
+  const isCallout = suggestion.surface === "callout";
   const hasContext = Boolean(suggestion.flag?.trim() || suggestion.details?.trim() || suggestion.transcriptExcerpt?.trim());
 
   return (
@@ -129,6 +130,7 @@ function MiniSuggestionCard({
         surface === "collapsed"
           ? "border border-border/25 bg-background/96 dark:bg-background/90"
           : "bg-background/92 shadow-[0_18px_46px_rgba(0,0,0,0.18)] dark:bg-background/84",
+        isCallout ? "border-border/35" : "",
       ].join(" ")}
       style={style}
     >
@@ -161,14 +163,16 @@ function MiniSuggestionCard({
           <XIcon className="size-3" />
           Dismiss
         </button>
-        <button
-          type="button"
-          onClick={onQueue}
-          className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md bg-primary px-2 text-[11px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          <CheckIcon className="size-3" />
-          Run
-        </button>
+        {!isCallout && (
+          <button
+            type="button"
+            onClick={onDispatch}
+            className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md bg-primary px-2 text-[11px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <PlayIcon className="size-3" />
+            Dispatch Agent
+          </button>
+        )}
       </div>
     </li>
   );
@@ -176,11 +180,11 @@ function MiniSuggestionCard({
 
 function MiniSuggestionStack({
   suggestions,
-  onQueueSuggestion,
+  onDispatchSuggestion,
   onDismissSuggestion,
 }: {
   suggestions: TaskSuggestion[];
-  onQueueSuggestion: (suggestion: TaskSuggestion) => void;
+  onDispatchSuggestion: (suggestion: TaskSuggestion) => void;
   onDismissSuggestion: (id: string) => void;
 }) {
   const visible = suggestions.slice(0, 3);
@@ -213,7 +217,7 @@ function MiniSuggestionStack({
         <div className="relative z-30 transition-all duration-300 ease-out">
           <MiniSuggestionCard
             suggestion={topSuggestion}
-            onQueue={() => onQueueSuggestion(topSuggestion)}
+            onDispatch={() => onDispatchSuggestion(topSuggestion)}
             onDismiss={() => onDismissSuggestion(topSuggestion.id)}
             surface="collapsed"
           />
@@ -226,14 +230,14 @@ function MiniSuggestionStack({
 function MiniWorkflowPanel({
   suggestions,
   agents,
-  onQueueSuggestion,
+  onDispatchSuggestion,
   onDismissSuggestion,
   onOpenAgent,
   panelRef,
 }: {
   suggestions: TaskSuggestion[];
   agents: Agent[];
-  onQueueSuggestion: (suggestion: TaskSuggestion) => void;
+  onDispatchSuggestion: (suggestion: TaskSuggestion) => void;
   onDismissSuggestion: (id: string) => void;
   onOpenAgent: (agent: Agent) => void;
   panelRef?: React.Ref<HTMLDivElement>;
@@ -274,7 +278,7 @@ function MiniWorkflowPanel({
               <MiniSuggestionCard
                 key={suggestion.id}
                 suggestion={suggestion}
-                onQueue={() => onQueueSuggestion(suggestion)}
+                onDispatch={() => onDispatchSuggestion(suggestion)}
                 onDismiss={() => onDismissSuggestion(suggestion.id)}
                 style={{ animationDelay: `${index * 45}ms` }}
               />
@@ -761,6 +765,10 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
   };
 
   const handleAcceptSuggestion = async (suggestion: TaskSuggestion) => {
+    if (suggestion.surface === "callout") {
+      handleDismissSuggestion(suggestion.id);
+      return;
+    }
     const targetSessionId = suggestion.sessionId ?? currentSessionId;
     if (!targetSessionId) return;
     await ts().acceptSuggestion({ suggestion, targetSessionId, appConfig });
@@ -982,7 +990,7 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
           {currentSessionId && suggestions.length > 0 && (
             <MiniSuggestionStack
               suggestions={suggestions}
-              onQueueSuggestion={(suggestion) => { void handleAcceptSuggestion(suggestion); }}
+              onDispatchSuggestion={(suggestion) => { void handleAcceptSuggestion(suggestion); }}
               onDismissSuggestion={handleDismissSuggestion}
             />
           )}
@@ -998,6 +1006,7 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
                     progress={card}
                     agentSteps={card.agentSteps}
                     onRequestTaskScan={() => { void window.electronAPI.requestTaskScan(); }}
+                    surface="popup"
                   />
                 ))}
             </ul>
@@ -1027,7 +1036,7 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
             suggestions={suggestions}
             agents={agents}
             panelRef={expandedPanelRef}
-            onQueueSuggestion={(suggestion) => { void handleAcceptSuggestion(suggestion); }}
+            onDispatchSuggestion={(suggestion) => { void handleAcceptSuggestion(suggestion); }}
             onDismissSuggestion={handleDismissSuggestion}
             onOpenAgent={(agent) => {
               if (!currentSessionId) return;

@@ -138,15 +138,21 @@ export function SuggestionItem({
   }, [suggestion.createdAt]);
 
   const KindIcon = suggestion.kind ? SUGGESTION_KIND_ICONS[suggestion.kind] : SearchIcon;
+  const isCallout = suggestion.surface === "callout";
   const hasDetails = Boolean(suggestion.flag?.trim() || suggestion.details?.trim() || suggestion.transcriptExcerpt?.trim());
 
   return (
     <li
-      className="relative overflow-hidden rounded-xl border border-primary/12 bg-background/70 shadow-[inset_0_1px_0_hsl(var(--background)/0.7)] transition-opacity duration-500"
+      className={[
+        "relative overflow-hidden rounded-xl border shadow-[inset_0_1px_0_hsl(var(--background)/0.7)] transition-opacity duration-500",
+        isCallout
+          ? "border-border/55 bg-background/58"
+          : "border-primary/12 bg-background/70",
+      ].join(" ")}
       style={{ opacity }}
     >
       <div className="flex items-start gap-2 min-h-7 py-1.5 px-2 relative z-10">
-        <KindIcon className="size-3 shrink-0 text-muted-foreground mt-0.5" />
+        <KindIcon className={["size-3 shrink-0 mt-0.5", isCallout ? "text-muted-foreground" : "text-primary"].join(" ")} />
         <div className="min-w-0 flex-1">
           {suggestion.flag?.trim() && (
             <div className="mb-1 text-[11px] font-medium text-foreground/72 break-words">
@@ -181,23 +187,32 @@ export function SuggestionItem({
             </div>
           )}
         </div>
-        <div className="flex shrink-0 items-start gap-0.5">
-          <button
-            type="button"
-            onClick={onAccept}
-            className="cursor-pointer p-0.5 text-primary transition-colors hover:text-primary/80"
-            aria-label="Accept suggestion"
-            title="Accept suggestion"
-          >
-            <PlusIcon className="size-3" />
-          </button>
+        <div className="flex shrink-0 items-start gap-1">
+          {!isCallout && (
+            <button
+              type="button"
+              onClick={onAccept}
+              className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md bg-primary px-1.5 text-[11px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              aria-label="Dispatch agent"
+              title="Dispatch agent"
+            >
+              <PlayIcon className="size-3" />
+              <span>Dispatch Agent</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onDismiss}
-            className="cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+            className={[
+              "inline-flex h-6 cursor-pointer items-center gap-1 rounded-md text-[11px] transition-colors",
+              isCallout
+                ? "px-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                : "px-1 text-muted-foreground hover:text-foreground",
+            ].join(" ")}
             aria-label="Dismiss suggestion"
           >
             <XIcon className="size-3" />
+            {isCallout && <span>Dismiss</span>}
           </button>
         </div>
       </div>
@@ -261,10 +276,12 @@ export function AgentActivityCard({
   progress,
   agentSteps,
   onRequestTaskScan,
+  surface = "sidebar",
 }: {
   progress: SuggestionProgress;
   agentSteps: string[];
   onRequestTaskScan?: () => void;
+  surface?: "sidebar" | "popup";
 }) {
   const DISMISS_MS = 5000;
   const [opacity, setOpacity] = useState(1);
@@ -275,6 +292,7 @@ export function AgentActivityCard({
   const isFinished = !progress.busy;
   const hasError = !!progress.error;
   const isNothingFound = isFinished && !!progress.lastScanEmpty;
+  const isPopup = surface === "popup";
 
   useEffect(() => {
     if (hasError) {
@@ -304,7 +322,10 @@ export function AgentActivityCard({
   if (hasError) {
     return (
       <li
-        className="relative overflow-hidden rounded-xl border border-destructive/30 bg-destructive/5 transition-opacity duration-500"
+        className={[
+          "relative overflow-hidden rounded-xl border border-destructive/30 transition-opacity duration-500",
+          isPopup ? "bg-background text-foreground shadow-[0_18px_46px_rgba(0,0,0,0.22)]" : "bg-destructive/5",
+        ].join(" ")}
         style={{ opacity }}
       >
         <div className="flex items-center gap-2 min-h-7 py-1.5 px-2">
@@ -326,7 +347,10 @@ export function AgentActivityCard({
   if (isNothingFound) {
     return (
       <li
-        className="relative overflow-hidden rounded-xl border border-border/50 bg-background/60 transition-opacity duration-500"
+        className={[
+          "relative overflow-hidden rounded-xl border border-border/50 transition-opacity duration-500",
+          isPopup ? "bg-background text-foreground shadow-[0_18px_46px_rgba(0,0,0,0.22)]" : "bg-background/60",
+        ].join(" ")}
         style={{ opacity }}
       >
         <div className="flex items-center gap-2 min-h-7 py-1.5 px-2">
@@ -345,7 +369,10 @@ export function AgentActivityCard({
   if (isFinished) {
     return (
       <li
-        className="relative overflow-hidden rounded-xl border border-primary/20 bg-primary/5 transition-opacity duration-500"
+        className={[
+          "relative overflow-hidden rounded-xl border border-primary/20 transition-opacity duration-500",
+          isPopup ? "bg-background text-foreground shadow-[0_18px_46px_rgba(0,0,0,0.22)]" : "bg-primary/5",
+        ].join(" ")}
         style={{ opacity }}
       >
         <div className="flex items-center gap-2 min-h-7 py-1.5 px-2">
@@ -377,7 +404,14 @@ export function AgentActivityCard({
   const isWaiting = progress.busy && (progress.step === "Preparing scan…" || !progress.step);
 
   return (
-    <li className="relative overflow-hidden rounded-2xl border border-primary/20 bg-primary/[0.045] px-3 py-2.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.7)]">
+    <li
+      className={[
+        "relative overflow-hidden rounded-2xl border border-primary/20 px-3 py-2.5",
+        isPopup
+          ? "bg-background text-foreground shadow-[0_18px_46px_rgba(0,0,0,0.24)]"
+          : "bg-primary/[0.045] shadow-[inset_0_1px_0_hsl(var(--background)/0.7)]",
+      ].join(" ")}
+    >
       <div className="flex items-start gap-2.5">
         <div className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10">
           <LoaderCircleIcon className="size-3 animate-spin text-primary/70" />
