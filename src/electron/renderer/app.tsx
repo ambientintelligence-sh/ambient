@@ -1491,7 +1491,6 @@ export function App() {
           <>
             <div className="shrink-0 min-h-0" style={{ width: leftPanelWidth }}>
               <LeftSidebar
-                rollingKeyPoints={session.rollingKeyPoints}
                 sessions={visibleSessions}
                 activeSessionId={selectedSessionId}
                 onNewSession={handleNewSession}
