@@ -94,7 +94,7 @@ type AgentDetailPanelProps = {
   agent: Agent;
   agents: Agent[];
   onSelectAgent: (id: string) => void;
-  onClose: () => void;
+  onClose?: () => void;
   onFollowUp?: (agent: Agent, question: string) => Promise<FollowUpResult> | FollowUpResult;
   onAnswerQuestion?: (
     agent: Agent,
@@ -819,14 +819,16 @@ export function AgentDetailPanel({
                 <ArchiveIcon className="size-3.5" />
               </button>
             )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="ml-1 cursor-pointer rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              aria-label="Close panel"
-            >
-              <XIcon className="size-3.5" />
-            </button>
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="ml-1 cursor-pointer rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                aria-label="Close panel"
+              >
+                <XIcon className="size-3.5" />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -887,18 +889,22 @@ export function AgentDetailPanel({
 
       {/* Follow-up input */}
       {onFollowUp && (
-        <div className="shrink-0 border-t border-border p-2">
+        <div className="shrink-0 px-3 pb-3 pt-2">
           <AgentTodoQueue items={latestTodoItems} />
-          <PromptInput onSubmit={handleFollowUpSubmit}>
+          <PromptInput
+            onSubmit={handleFollowUpSubmit}
+            className="rounded-2xl border border-border bg-background shadow-sm [&_[data-slot=input-group]]:rounded-2xl [&_[data-slot=input-group]]:border-0 [&_[data-slot=input-group]]:bg-transparent [&_[data-slot=input-group]]:px-1 [&_[data-slot=input-group]]:py-1"
+          >
             <PromptInputTextarea
-              placeholder={isRunning ? "Type ahead — stop the agent to send" : "Ask a follow-up..."}
-              className="min-h-8 max-h-24 text-xs"
+              placeholder={isRunning ? "Type ahead — stop the agent to send" : "Ask for follow-up changes"}
+              className="min-h-12 max-h-40 px-3 pt-2 pb-1 text-sm"
             />
-            <PromptInputFooter>
+            <PromptInputFooter className="px-2 pb-1">
               <div />
               <PromptInputSubmit
                 status={isRunning && onCancel ? "streaming" : undefined}
                 onStop={handleCancel}
+                className="size-7 rounded-full"
               />
             </PromptInputFooter>
           </PromptInput>

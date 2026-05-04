@@ -38,6 +38,16 @@ function syncPopupVisibilityForMainFocus() {
   }
 }
 
+function restoreMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindow.isVisible()) mainWindow.show();
+  mainWindow.focus();
+}
+
 function loadRenderer(win: BrowserWindow, hash?: string) {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     const url = hash ? `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#${hash}` : MAIN_WINDOW_VITE_DEV_SERVER_URL;
@@ -139,6 +149,7 @@ export function openPopupWindow(sessionId: string | null) {
     popupWindow = null;
     popupSessionId = null;
     broadcastPopupState();
+    restoreMainWindow();
   });
   popupWindow.on("blur", syncPopupVisibilityForMainFocus);
 
@@ -148,6 +159,8 @@ export function openPopupWindow(sessionId: string | null) {
 export function closePopupWindow() {
   if (popupWindow && !popupWindow.isDestroyed()) {
     popupWindow.close();
+  } else {
+    restoreMainWindow();
   }
 }
 
@@ -241,7 +254,9 @@ app.whenReady().then(async () => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+      return;
     }
+    restoreMainWindow();
   });
 });
 

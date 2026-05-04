@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useLocalStorage } from "usehooks-ts";
 import type { TaskItem, TaskSuggestion, SuggestionKind, Agent } from "@core/types";
 import {
@@ -15,20 +15,9 @@ import {
   AlertTriangleIcon,
   ListChecksIcon,
   ArchiveIcon,
-  PanelRightOpenIcon,
 } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { WorkoutRunIcon } from "@hugeicons/core-free-icons";
-import {
-  PromptInput,
-  PromptInputTextarea,
-  PromptInputFooter,
-  PromptInputSubmit,
-  PromptInputHeader,
-} from "@/components/ai-elements/prompt-input";
-import { AgentList } from "./agent-list";
-import { AgentDebriefPanel } from "./agent-debrief-panel";
-import { useAgentsSummary } from "../hooks/use-agents-summary";
 import { SectionLabel } from "@/components/ui/section-label";
 import { useUIStore } from "../stores/ui-store";
 
@@ -41,7 +30,7 @@ const SUGGESTION_KIND_ICONS: Record<SuggestionKind, typeof SearchIcon> = {
   flag: AlertTriangleIcon,
   followup: ListChecksIcon,
 };
-type RightRailMode = "work" | "agents";
+type RightRailMode = "summary" | "tasks" | "transcript";
 const EMPTY_SESSION_TAB_KEY = "__empty__";
 
 type SuggestionProgress = {
@@ -73,8 +62,6 @@ type RightSidebarProps = {
   forceWorkTabKey?: number;
   onSelectAgent?: (id: string | null) => void;
   onLaunchAgent?: (task: TaskItem) => void;
-  onNewAgent?: () => void;
-  onAddTask?: (text: string, details?: string) => void;
   onToggleTask?: (id: string) => void;
   onDeleteTask?: (id: string) => void;
   onUpdateTask?: (id: string, text: string) => void;
@@ -86,14 +73,13 @@ type RightSidebarProps = {
   onDeleteArchivedSuggestion?: (id: string) => void;
   sessionId?: string;
   sessionActive?: boolean;
-  transcriptRefs?: string[];
-  onRemoveTranscriptRef?: (index: number) => void;
-  onSubmitTaskInput?: (text: string, refs: string[]) => void;
   onRequestTaskScan?: () => void;
-  onPopOut?: () => void;
+  isViewingPast?: boolean;
   hideScanCounter?: boolean;
   hideScanActivity?: boolean;
   hideSuggestions?: boolean;
+  summaryContent?: ReactNode;
+  transcriptContent?: ReactNode;
 };
 
 function isLineClamped(el: HTMLElement): boolean {
@@ -607,8 +593,6 @@ export function RightSidebar({
   forceWorkTabKey = 0,
   onSelectAgent,
   onLaunchAgent,
-  onNewAgent,
-  onAddTask,
   onToggleTask,
   onDeleteTask,
   onUpdateTask,
@@ -620,39 +604,24 @@ export function RightSidebar({
   onDeleteArchivedSuggestion,
   sessionId,
   sessionActive = false,
-  transcriptRefs = [],
-  onRemoveTranscriptRef,
-  onSubmitTaskInput,
   onRequestTaskScan,
-  onPopOut,
+  isViewingPast = false,
   hideScanCounter = false,
   hideScanActivity = false,
   hideSuggestions = false,
+  summaryContent,
+  transcriptContent,
 }: RightSidebarProps) {
-  const [modeBySession, setModeBySession] = useLocalStorage<Record<string, RightRailMode>>("ambient-right-rail-mode", {});
+  const [modeBySession, setModeBySession] = useLocalStorage<Record<string, RightRailMode>>("ambient-right-rail-mode-v2", {});
   const [completedOpen, setCompletedOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const lastAutoOpenedAgentIdRef = useRef<string | null>(null);
   const processingTaskIdSet = new Set(processingTaskIds);
   const sessionTabKey = sessionId ?? EMPTY_SESSION_TAB_KEY;
-  const mode = modeBySession[sessionTabKey] ?? "work";
+  const mode = modeBySession[sessionTabKey] ?? "tasks";
   const setMode = (nextMode: RightRailMode) => {
     setModeBySession((prev) => ({ ...prev, [sessionTabKey]: nextMode }));
   };
-
-  const { state: debriefState, generate: generateDebrief, canGenerate: canGenerateDebrief, preload: preloadDebrief } =
-    useAgentsSummary(agents ?? [], sessionActive);
-
-  const preloadDebriefRef = useRef(preloadDebrief);
-  preloadDebriefRef.current = preloadDebrief;
-  useEffect(() => {
-    if (!sessionId) return;
-    void window.electronAPI.getAgentsSummary(sessionId).then((res) => {
-      if (res.ok && res.summary) {
-        preloadDebriefRef.current(res.summary);
-      }
-    });
-  }, [sessionId]);
 
   const agentByTaskId = new Map<string, Agent>();
   for (const agent of agents ?? []) {
@@ -678,39 +647,23 @@ export function RightSidebar({
     activeTasks.push(task);
   }
 
-  const isViewingPast = !onSubmitTaskInput;
   const completedHaveAgents = completedTasks.some((t) => agentByTaskId.has(t.id));
 
-  // Consolidated tab-switching effect with priority: agent selection > work tab triggers > past-view defaults
   useEffect(() => {
-    if (selectedAgentId && selectedAgentId !== lastAutoOpenedAgentIdRef.current) {
-      lastAutoOpenedAgentIdRef.current = selectedAgentId;
-      setMode("agents");
-      return;
-    }
     if (!selectedAgentId) lastAutoOpenedAgentIdRef.current = null;
-    if (transcriptRefs.length > 0 || forceWorkTabKey > 0) setMode("work");
+    if (forceWorkTabKey > 0) setMode("tasks");
     if (isViewingPast && completedHaveAgents) setCompletedOpen(true);
-  }, [selectedAgentId, transcriptRefs.length, forceWorkTabKey, isViewingPast, completedHaveAgents, setMode]);
+  }, [selectedAgentId, forceWorkTabKey, isViewingPast, completedHaveAgents, setMode]);
 
-  // Force tab during onboarding tour
   const onboardingPhase = useUIStore((s) => s.onboardingPhase);
   const tourStep = useUIStore((s) => s.tourStep);
 
   useEffect(() => {
     if (onboardingPhase !== "tour") return;
-    if (tourStep === 2) setMode("work");
-    if (tourStep === 3) setMode("agents");
+    if (tourStep === 2) setMode("tasks");
+    if (tourStep === 3) setMode("summary");
   }, [onboardingPhase, tourStep, setMode]);
 
-  const handleSubmit = ({ text }: { text: string }) => {
-    const refs = transcriptRefs;
-    if (!text.trim() && refs.length === 0) return;
-    onSubmitTaskInput?.(text.trim(), refs);
-  };
-
-  const hasRefs = transcriptRefs.length > 0;
-  const totalAgentsCount = (agents ?? []).length;
   const activeSuggestionCards = suggestionScanCards
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 3);
@@ -718,34 +671,26 @@ export function RightSidebar({
   return (
     <div className="w-full h-full shrink-0 border-l border-sidebar-border/35 flex flex-col min-h-0 bg-sidebar/90">
       <div className="px-2 py-2 shrink-0">
-        <div className="flex items-center gap-1">
-          <div className="flex-1 grid grid-cols-2 gap-1 rounded-md bg-foreground/[0.045] p-1 dark:bg-muted/50">
-            <RailModeButton
-              active={mode === "agents"}
-              onClick={() => setMode("agents")}
-              label={`Agents (${totalAgentsCount})`}
-            />
-            <RailModeButton
-              active={mode === "work"}
-              onClick={() => setMode("work")}
-              label={`Tasks (${openTasksCount})`}
-            />
-          </div>
-          {onPopOut && (
-            <button
-              type="button"
-              onClick={onPopOut}
-              title="Pop out into its own window"
-              aria-label="Pop out agents panel"
-              className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.045] hover:text-foreground dark:hover:bg-muted/50"
-            >
-              <PanelRightOpenIcon className="size-3.5" />
-            </button>
-          )}
+        <div className="grid grid-cols-3 gap-1 rounded-md bg-foreground/[0.045] p-1 dark:bg-muted/50">
+          <RailModeButton
+            active={mode === "summary"}
+            onClick={() => setMode("summary")}
+            label="Summary"
+          />
+          <RailModeButton
+            active={mode === "tasks"}
+            onClick={() => setMode("tasks")}
+            label={`Tasks (${openTasksCount})`}
+          />
+          <RailModeButton
+            active={mode === "transcript"}
+            onClick={() => setMode("transcript")}
+            label="Transcript"
+          />
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3">
-        {mode === "work" ? (
+      <div className={`flex-1 min-h-0 ${mode === "tasks" ? "overflow-y-auto px-3 pb-3" : "flex flex-col"}`}>
+        {mode === "tasks" ? (
           <>
             {/* Active tasks */}
             <div className="mb-3">
@@ -943,84 +888,27 @@ export function RightSidebar({
               )}
             </div>
           </>
+        ) : mode === "summary" ? (
+          <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {summaryContent ?? (
+                <p className="px-3 py-3 text-xs text-muted-foreground italic">
+                  Summary will appear here.
+                </p>
+              )}
+            </div>
+          </div>
         ) : (
-          <div className="pt-2">
-            <AgentList
-              agents={agents ?? []}
-              selectedAgentId={selectedAgentId ?? null}
-              onSelectAgent={onSelectAgent ?? (() => {})}
-              onNewAgent={onNewAgent}
-            />
-            {(!agents || agents.length === 0) && (
-              <p className="mt-2 text-xs text-muted-foreground italic">
-                Agent activity will appear here once you run a task.
+          <div className="flex-1 min-h-0 flex flex-col">
+            {transcriptContent ?? (
+              <p className="px-3 py-3 text-xs text-muted-foreground italic">
+                Transcript will appear here.
               </p>
-            )}
-            {agents && onSelectAgent && agents.length > 0 && (
-              <>
-                <div className="my-4 h-px bg-gradient-to-r from-transparent via-border/45 to-transparent" />
-                <AgentDebriefPanel
-                  state={debriefState}
-                  onGenerate={generateDebrief}
-                  canGenerate={canGenerateDebrief && sessionActive}
-                  onAddTask={onAddTask}
-                />
-              </>
             )}
           </div>
         )}
       </div>
 
-      {onSubmitTaskInput && mode === "work" && (
-        <div className="px-2 pt-2 pb-2 shrink-0">
-          <PromptInput onSubmit={handleSubmit}>
-            <PromptInputHeader className="px-2 pt-1.5 pb-1 gap-1 min-h-[28px]">
-              {hasRefs ? (
-                transcriptRefs.map((ref, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    className="flex max-w-full cursor-pointer items-center gap-1 rounded-sm border border-border/60 bg-muted/50 pl-1.5 pr-1 py-0.5 text-2xs text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground"
-                    onClick={() => onRemoveTranscriptRef?.(i)}
-                    title={ref}
-                  >
-                    <span className="truncate max-w-[160px]">
-                      {ref.length > 50 ? `${ref.slice(0, 50)}…` : ref}
-                    </span>
-                    <XIcon className="size-2.5 shrink-0 opacity-50" />
-                  </button>
-                ))
-              ) : (
-                <span className="text-2xs text-muted-foreground/35 select-none italic">
-                  Select transcript text · <kbd className="font-mono not-italic">⌘L</kbd> to add context
-                </span>
-              )}
-            </PromptInputHeader>
-            <PromptInputTextarea
-              placeholder={hasRefs ? "What should these become?" : "Add a task..."}
-              className="min-h-0 text-xs"
-            />
-            <PromptInputFooter className="px-1 py-1">
-              <span className="text-2xs text-muted-foreground/35 font-mono select-none pl-1">
-                {hasRefs ? `${transcriptRefs.length} snippet${transcriptRefs.length > 1 ? "s" : ""}` : ""}
-              </span>
-              <PromptInputSubmit size="icon-sm" />
-            </PromptInputFooter>
-          </PromptInput>
-        </div>
-      )}
-      {onSubmitTaskInput && mode === "agents" && hasRefs && (
-        <div className="mx-2 mb-2 rounded-xl bg-background/65 px-3 py-2 text-2xs text-muted-foreground shadow-[inset_0_1px_0_hsl(var(--background)/0.7)]">
-          {transcriptRefs.length} selected snippet{transcriptRefs.length !== 1 ? "s" : ""} ready for task input.
-          <button
-            type="button"
-            onClick={() => setMode("work")}
-            className="ml-1 cursor-pointer text-foreground transition-colors hover:text-primary"
-          >
-            Open Tasks
-          </button>
-        </div>
-      )}
     </div>
   );
 }

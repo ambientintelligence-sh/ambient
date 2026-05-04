@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useLocalStorage } from "usehooks-ts";
-import type { ProjectMeta, SessionMeta } from "@core/types";
+import type { Agent, ProjectMeta, SessionMeta } from "@core/types";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,13 +11,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { ChevronRight, Folder, MoreHorizontal, PlusIcon } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  MoreHorizontal,
+  PlusIcon,
+} from "lucide-react";
 import { SectionLabel } from "@/components/ui/section-label";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Tick02Icon } from "@hugeicons/core-free-icons";
+import { Tick02Icon, WorkoutRunIcon } from "@hugeicons/core-free-icons";
 
 type LeftSidebarProps = {
-  rollingKeyPoints: string[];
   sessions: SessionMeta[];
   activeSessionId?: string | null;
   onNewSession?: () => void;
@@ -31,6 +35,9 @@ type LeftSidebarProps = {
   onEditProject: (project: ProjectMeta) => void;
   onDeleteProject: (id: string) => void;
   onMoveSessionToProject?: (sessionId: string, projectId: string | null) => void;
+  agentsBySessionId?: Record<string, Agent[]>;
+  selectedAgentId?: string | null;
+  onSelectAgent?: (sessionId: string, agentId: string) => void;
 };
 
 function formatTime(ms: number): string {
@@ -51,48 +58,12 @@ function formatDate(ms: number): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function normalizeListText(text: string): string {
-  return text
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/[.!?,;:]+$/g, "")
-    .toLowerCase();
-}
-
 type ProjectFormMode =
   | { kind: "none" }
   | { kind: "create" }
   | { kind: "edit"; project: ProjectMeta };
 
-type LeftRailMode = "briefing" | "sessions";
-
-function RailModeButton({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        "h-7 rounded-sm text-xs transition-colors cursor-pointer",
-        active
-          ? "bg-background text-foreground"
-          : "border-transparent text-muted-foreground hover:text-foreground hover:bg-background/70",
-      ].join(" ")}
-    >
-      {label}
-    </button>
-  );
-}
-
 export function LeftSidebar({
-  rollingKeyPoints,
   sessions,
   activeSessionId,
   onNewSession,
@@ -105,13 +76,16 @@ export function LeftSidebar({
   onEditProject,
   onDeleteProject,
   onMoveSessionToProject,
+  agentsBySessionId = {},
+  selectedAgentId,
+  onSelectAgent,
 }: LeftSidebarProps) {
   const [formMode, setFormMode] = useState<ProjectFormMode>({ kind: "none" });
-  const [mode, setMode] = useLocalStorage<LeftRailMode>("ambient-left-rail-mode", "sessions");
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [formName, setFormName] = useState("");
   const [formInstructions, setFormInstructions] = useState("");
   const [formContext, setFormContext] = useState("");
+  const [expandedSessionIds, setExpandedSessionIds] = useState<Set<string>>(new Set());
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -126,20 +100,17 @@ export function LeftSidebar({
     }
   }, [activeProjectId]);
 
+  useEffect(() => {
+    if (!activeSessionId) return;
+    setExpandedSessionIds((prev) => {
+      if (prev.has(activeSessionId)) return prev;
+      const next = new Set(prev);
+      next.add(activeSessionId);
+      return next;
+    });
+  }, [activeSessionId]);
+
   const activeProject = activeProjectId ? projects.find((p) => p.id === activeProjectId) : null;
-  const liveSummaryPoints = (() => {
-    const seen = new Set<string>();
-    const unique: string[] = [];
-    for (const raw of rollingKeyPoints) {
-      const text = raw.trim().replace(/\s+/g, " ");
-      if (!text) continue;
-      const key = normalizeListText(text);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      unique.push(text);
-    }
-    return [...unique].reverse();
-  })();
 
   function openCreateForm() {
     setFormName("");
@@ -172,9 +143,27 @@ export function LeftSidebar({
     setFormMode({ kind: "none" });
   }
 
+  function toggleSessionExpanded(sessionId: string) {
+    setExpandedSessionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) next.delete(sessionId);
+      else next.add(sessionId);
+      return next;
+    });
+  }
+
+  const recentChats: Array<{ agent: Agent; sessionTitle: string }> = [];
+  for (const session of sessions) {
+    const agents = agentsBySessionId[session.id] ?? [];
+    for (const agent of agents) {
+      recentChats.push({ agent, sessionTitle: session.title ?? "Untitled Session" });
+    }
+  }
+  recentChats.sort((a, b) => (b.agent.completedAt ?? b.agent.createdAt) - (a.agent.completedAt ?? a.agent.createdAt));
+  const recentChatsToShow = recentChats.slice(0, 8);
+
   return (
     <div className="w-full h-full shrink-0 border-r border-border flex flex-col min-h-0 bg-sidebar">
-      {/* Project selector */}
       <div className="px-3 pt-2.5 pb-2 shrink-0">
         <div className="flex items-center gap-1">
           <DropdownMenu open={projectMenuOpen} onOpenChange={setProjectMenuOpen}>
@@ -230,7 +219,6 @@ export function LeftSidebar({
           )}
         </div>
 
-        {/* Inline project form */}
         {formMode.kind !== "none" && (
           <div className="mt-2">
             <div className="space-y-1">
@@ -314,133 +302,171 @@ export function LeftSidebar({
         </Button>
       </div>
 
-      <div className="px-2 py-2 shrink-0">
-        <div className="grid grid-cols-2 gap-1 rounded-md bg-foreground/[0.045] p-1 dark:bg-muted/50">
-          <RailModeButton
-            label={`Sessions (${sessions.length})`}
-            active={mode === "sessions"}
-            onClick={() => setMode("sessions")}
-          />
-          <RailModeButton
-            label="Briefing"
-            active={mode === "briefing"}
-            onClick={() => setMode("briefing")}
-          />
+      <div className="px-3 pt-2 pb-2.5 flex-1 min-h-0 flex flex-col">
+        <SectionLabel className="mb-2 shrink-0">Sessions</SectionLabel>
+        <div className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1">
+          {sessions.length > 0 ? (
+            <ul className="space-y-0.5">
+              {sessions.map((session) => {
+                const sessionAgents = agentsBySessionId[session.id] ?? [];
+                const expanded = expandedSessionIds.has(session.id);
+                const isActiveSession = activeSessionId === session.id;
+                return (
+                  <li key={session.id} className="group">
+                    <div
+                      className={`rounded-sm text-xs transition-colors flex items-start gap-1 ${
+                        isActiveSession ? "bg-sidebar-accent" : "hover:bg-sidebar-accent"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleSessionExpanded(session.id)}
+                        className="shrink-0 cursor-pointer p-1 mt-0.5 text-muted-foreground hover:text-foreground"
+                        aria-label={expanded ? "Collapse session" : "Expand session"}
+                      >
+                        {expanded ? (
+                          <ChevronDown className="size-3" />
+                        ) : (
+                          <ChevronRight className="size-3" />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onSelectSession?.(session.id)}
+                        className="flex-1 min-w-0 text-left py-1.5 cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-foreground font-medium truncate">
+                            {session.title ?? "Untitled Session"}
+                          </span>
+                        </div>
+                        <div className="text-muted-foreground text-2xs font-mono">
+                          {formatDate(session.startedAt)} · {formatTime(session.startedAt)}
+                          {session.agentCount > 0 && ` · ${session.agentCount} agent${session.agentCount !== 1 ? "s" : ""}`}
+                        </div>
+                      </button>
+                      {(onDeleteSession || onMoveSessionToProject) && (
+                        <div className="pt-1 pr-1 shrink-0">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+                                aria-label="Session actions"
+                              >
+                                <MoreHorizontal className="size-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-52">
+                              {onMoveSessionToProject && projects.length > 0 && (
+                                <>
+                                  <DropdownMenuLabel>Move to folder</DropdownMenuLabel>
+                                  {projects.map((project) => (
+                                    <DropdownMenuItem
+                                      key={project.id}
+                                      onSelect={() => onMoveSessionToProject(
+                                        session.id,
+                                        session.projectId === project.id ? null : project.id,
+                                      )}
+                                    >
+                                      <span className="flex flex-1 items-center">
+                                        <span className="flex-1 truncate">{project.name}</span>
+                                        {session.projectId === project.id && (
+                                          <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="size-4 text-muted-foreground" />
+                                        )}
+                                      </span>
+                                    </DropdownMenuItem>
+                                  ))}
+                                </>
+                              )}
+                              {onDeleteSession && (
+                                <>
+                                  {onMoveSessionToProject && projects.length > 0 && <DropdownMenuSeparator className="mx-2" />}
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onSelect={() => onDeleteSession(session.id)}
+                                  >
+                                    Delete session
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      )}
+                    </div>
+                    {expanded && sessionAgents.length > 0 && (
+                      <ul className="ml-5 mt-0.5 space-y-px border-l border-border/60 pl-2">
+                        {sessionAgents.map((agent) => {
+                          const isSelected = isActiveSession && selectedAgentId === agent.id;
+                          return (
+                            <li key={agent.id}>
+                              <button
+                                type="button"
+                                onClick={() => onSelectAgent?.(session.id, agent.id)}
+                                className={`flex w-full items-center gap-1.5 rounded-sm px-1.5 py-1 text-left text-2xs cursor-pointer transition-colors ${
+                                  isSelected
+                                    ? "bg-sidebar-accent text-foreground"
+                                    : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                                }`}
+                              >
+                                <HugeiconsIcon
+                                  icon={WorkoutRunIcon}
+                                  className={`size-3 shrink-0 ${
+                                    agent.status === "running"
+                                      ? "text-primary animate-pulse"
+                                      : agent.status === "completed"
+                                        ? "text-green-500"
+                                        : "text-muted-foreground/60"
+                                  }`}
+                                />
+                                <span className="truncate">{agent.task}</span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="text-xs text-muted-foreground italic">
+              No previous sessions
+            </p>
+          )}
+
+          {recentChatsToShow.length > 0 && (
+            <div className="mt-4">
+              <SectionLabel className="mb-2 shrink-0">Chats</SectionLabel>
+              <ul className="space-y-px">
+                {recentChatsToShow.map(({ agent, sessionTitle }) => {
+                  const isSelected = selectedAgentId === agent.id && activeSessionId === agent.sessionId;
+                  return (
+                    <li key={agent.id}>
+                      <button
+                        type="button"
+                        onClick={() => agent.sessionId && onSelectAgent?.(agent.sessionId, agent.id)}
+                        className={`flex w-full items-center gap-1.5 rounded-sm px-2 py-1 text-left text-2xs cursor-pointer transition-colors ${
+                          isSelected
+                            ? "bg-sidebar-accent text-foreground"
+                            : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                        }`}
+                        title={`${sessionTitle} · ${agent.task}`}
+                      >
+                        <span className="truncate">{agent.task}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="px-3 py-2.5 flex-1 min-h-0 flex flex-col">
-        {mode === "briefing" ? (
-          <div className="flex-1 min-h-0 flex flex-col">
-            <section className="min-h-0 flex-1 flex flex-col">
-              <SectionLabel className="mb-2">Live Summary</SectionLabel>
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                {liveSummaryPoints.length > 0 ? (
-                  <ul className="space-y-1.5">
-                    {liveSummaryPoints.map((point, i) => (
-                      <li key={`${point}-${i}`} className="text-xs text-foreground leading-relaxed">
-                        <span className="text-muted-foreground mr-1">•</span>
-                        {point}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-muted-foreground italic">
-                    Summary will appear during recording...
-                  </p>
-                )}
-              </div>
-            </section>
-          </div>
-        ) : (
-          <>
-            <SectionLabel className="mb-2 shrink-0">Sessions</SectionLabel>
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              {sessions.length > 0 ? (
-                <ul className="space-y-1">
-                  {sessions.map((session) => (
-                    <li key={session.id} className="group">
-                      <div
-                        className={`rounded-sm text-xs transition-colors flex items-start gap-1 ${activeSessionId === session.id ? "bg-sidebar-accent" : "hover:bg-sidebar-accent"}`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => onSelectSession?.(session.id)}
-                          className="flex-1 min-w-0 text-left px-2 py-1.5 cursor-pointer"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-foreground font-medium truncate">
-                              {session.title ?? "Untitled Session"}
-                            </span>
-                          </div>
-                          <div className="text-muted-foreground text-2xs font-mono">
-                            {formatDate(session.startedAt)} · {formatTime(session.startedAt)}
-                            {session.agentCount > 0 && ` · ${session.agentCount} agent${session.agentCount !== 1 ? "s" : ""}`}
-                          </div>
-                        </button>
-                        {(onDeleteSession || onMoveSessionToProject) && (
-                          <div className="pt-1 pr-1 shrink-0">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 w-6 p-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
-                                  aria-label="Session actions"
-                                >
-                                  <MoreHorizontal className="size-3.5" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-52">
-                                {onMoveSessionToProject && projects.length > 0 && (
-                                  <>
-                                    <DropdownMenuLabel>Move to folder</DropdownMenuLabel>
-                                    {projects.map((project) => (
-                                      <DropdownMenuItem
-                                        key={project.id}
-                                        onSelect={() => onMoveSessionToProject(
-                                          session.id,
-                                          session.projectId === project.id ? null : project.id,
-                                        )}
-                                      >
-                                        <span className="flex flex-1 items-center">
-                                          <span className="flex-1 truncate">{project.name}</span>
-                                          {session.projectId === project.id && (
-                                            <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="size-4 text-muted-foreground" />
-                                          )}
-                                        </span>
-                                      </DropdownMenuItem>
-                                    ))}
-                                  </>
-                                )}
-                                {onDeleteSession && (
-                                  <>
-                                    {onMoveSessionToProject && projects.length > 0 && <DropdownMenuSeparator className="mx-2" />}
-                                    <DropdownMenuItem
-                                      variant="destructive"
-                                      onSelect={() => onDeleteSession(session.id)}
-                                    >
-                                      Delete session
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-xs text-muted-foreground italic">
-                  No previous sessions
-                </p>
-              )}
-            </div>
-          </>
-        )}
-      </div>
     </div>
   );
 }

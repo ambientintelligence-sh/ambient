@@ -22,12 +22,14 @@ import { useThemeMode } from "./hooks/use-theme-mode";
 import { useAppBootstrap } from "./hooks/use-app-bootstrap";
 import { buildSessionPath, parseSessionRoute, pushSessionPath, replaceSessionPath } from "./lib/session-route";
 import { ToolbarHeader } from "./components/toolbar-header";
+import { TopBar } from "./components/top-bar";
 import { TranscriptArea } from "./components/transcript-area";
 import { LeftSidebar } from "./components/left-sidebar";
 import { RightSidebar } from "./components/right-sidebar";
 import { AgentDetailPanel } from "./components/agent-detail-panel";
 import { NewAgentPanel } from "./components/new-agent-panel";
-import { MiddlePanelTabs } from "./components/middle-panel-tabs";
+import { SessionHome } from "./components/session-home";
+import { SessionCenter } from "./components/session-center";
 import { ErrorBoundary } from "./components/error-boundary";
 import { Footer } from "./components/footer";
 import { SettingsPage } from "./components/settings-page";
@@ -105,6 +107,7 @@ export function App() {
   } | null>(null);
   const [leftPanelWidth, setLeftPanelWidth] = useLocalStorage<number>("ambient-left-panel-width", 280);
   const [rightPanelWidth, setRightPanelWidth] = useLocalStorage<number>("ambient-right-panel-width", 300);
+  const [rightPanelOpen, setRightPanelOpen] = useLocalStorage<boolean>("ambient-right-panel-open", true);
   const pendingNewSessionRouteRef = useRef(false);
   const pendingCaptureStartRef = useRef<{ mic: boolean; deviceAudio: boolean } | null>(null);
   const [popupSessionId, setPopupSessionId] = useState<string | null>(null);
@@ -193,11 +196,7 @@ export function App() {
     agents,
     selectedAgentId,
     selectedAgent,
-    openAgentIds,
-    agentTabTitles,
-    agentSelectionNonce,
     selectAgent: _selectAgent,
-    closeAgent,
     seedAgents,
   } = useAgents();
 
@@ -1149,6 +1148,14 @@ export function App() {
     ui().setNewAgentMode(true);
   };
 
+  const handleSelectAgentInSession = async (sid: string, agentId: string) => {
+    if (selectedSessionId !== sid && session.sessionId !== sid) {
+      await handleSelectSession(sid);
+    }
+    ui().setNewAgentMode(false);
+    selectAgent(agentId);
+  };
+
   const handleLaunchCustomAgent = async (task: string) => {
     ui().setNewAgentMode(false);
     const targetSessionId = selectedSessionId ?? session.sessionId ?? null;
@@ -1218,6 +1225,7 @@ export function App() {
     await discardEmptyDraftSessionIfNeeded(sid);
     micCapture.stop();
     ui().setSettingsOpen(false);
+    ui().setNewAgentMode(false);
     ui().setRouteNotice("");
     pushSessionPath(sid);
     sl().bumpSessionRestartKey();
@@ -1225,6 +1233,7 @@ export function App() {
     sl().setResumeSessionId(sid);
     ts().resetForSession();
     seedAgents(sid, []);
+    selectAgent(null);
     sl().setSessionActive(true);
   };
 
@@ -1478,20 +1487,43 @@ export function App() {
     onGenerateSummary: sessionActive ? handleGenerateSummary : undefined,
   });
 
-  const closeAgentRef = useRef(closeAgent);
-  closeAgentRef.current = closeAgent;
-  useEffect(() => {
-    if (!selectedAgent) return;
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeAgentRef.current(selectedAgent.id);
-    };
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [selectedAgent]);
-
   const visibleSessions = integrationActiveProjectId
     ? sessions.filter((s) => s.projectId === integrationActiveProjectId)
     : sessions;
+
+  const currentSessionId = selectedSessionId ?? session.sessionId ?? null;
+  const agentsBySessionId: Record<string, typeof agents> = {};
+  if (currentSessionId) {
+    agentsBySessionId[currentSessionId] = agents;
+  }
+  const currentSessionMeta = currentSessionId
+    ? sessions.find((s) => s.id === currentSessionId)
+    : null;
+  const currentSessionTitle = currentSessionMeta?.title ?? "Untitled Session";
+
+  const handleToggleSettings = () => {
+    if (settingsOpen && onboardingPhase === "settings") {
+      ui().setOnboardingPhase("done");
+      ui().setSettingsOpen(false);
+      return;
+    }
+    ui().toggleSettings();
+  };
+
+  const handlePopOut = () => {
+    if (popupSessionId !== null) {
+      void window.electronAPI.closeAgentsPopup();
+    } else {
+      const sid = selectedSessionId ?? session.sessionId ?? null;
+      void window.electronAPI.openAgentsPopup(sid);
+    }
+  };
+
+  const sessionCenterMode: "home" | "new-agent" | "agent" = newAgentMode
+    ? "new-agent"
+    : selectedAgent
+      ? "agent"
+      : "home";
 
   // --- Render ---
   if (!splashDone) {
@@ -1504,43 +1536,47 @@ export function App() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      <ToolbarHeader
-        languages={languages}
-        sourceLang={sourceLang}
-        targetLang={targetLang}
-        translateToSelection={translateToSelection}
-        onSourceLangChange={(lang) => { void handleSourceLangChange(lang); }}
-        onTargetLangChange={(lang) => { applyTargetLang(lang); ui().setLangError(""); }}
-        onTranslateToSelectionChange={setTranslateToSelection}
-        sessionActive={sessionActive}
-        armedMicInput={armedMicInput}
-        armedDeviceAudio={armedDeviceAudio}
-        onToggleMicInput={() => { void handleToggleMicInputSelection(); }}
-        onToggleDeviceAudio={() => { void handleToggleDeviceAudioSelection(); }}
-        onRecordToggle={() => { void handleRecordToggle(); }}
-        uiState={session.uiState}
-        langError={langError}
-        onToggleTranslation={handleToggleTranslation}
-        onSetTranslationMode={handleSetTranslationMode}
-        settingsOpen={settingsOpen}
-        onToggleSettings={() => {
-          if (settingsOpen && onboardingPhase === "settings") {
-            ui().setOnboardingPhase("done");
-            ui().setSettingsOpen(false);
-            return;
-          }
-          ui().toggleSettings();
-        }}
-        popupOpen={popupSessionId !== null}
-        onPopOut={() => {
-          if (popupSessionId !== null) {
-            void window.electronAPI.closeAgentsPopup();
-          } else {
-            const sid = selectedSessionId ?? session.sessionId ?? null;
-            void window.electronAPI.openAgentsPopup(sid);
-          }
-        }}
-      />
+      {settingsOpen ? (
+        <ToolbarHeader
+          languages={languages}
+          sourceLang={sourceLang}
+          targetLang={targetLang}
+          translateToSelection={translateToSelection}
+          onSourceLangChange={(lang) => { void handleSourceLangChange(lang); }}
+          onTargetLangChange={(lang) => { applyTargetLang(lang); ui().setLangError(""); }}
+          onTranslateToSelectionChange={setTranslateToSelection}
+          sessionActive={sessionActive}
+          armedMicInput={armedMicInput}
+          armedDeviceAudio={armedDeviceAudio}
+          onToggleMicInput={() => { void handleToggleMicInputSelection(); }}
+          onToggleDeviceAudio={() => { void handleToggleDeviceAudioSelection(); }}
+          onRecordToggle={() => { void handleRecordToggle(); }}
+          uiState={session.uiState}
+          langError={langError}
+          onToggleTranslation={handleToggleTranslation}
+          onSetTranslationMode={handleSetTranslationMode}
+          settingsOpen={settingsOpen}
+          onToggleSettings={handleToggleSettings}
+          popupOpen={popupSessionId !== null}
+          onPopOut={handlePopOut}
+        />
+      ) : (
+        <TopBar
+          title={currentSessionId ? currentSessionTitle : "Ambient"}
+          settingsOpen={settingsOpen}
+          onToggleSettings={handleToggleSettings}
+          popupOpen={popupSessionId !== null}
+          onPopOut={handlePopOut}
+          rightPanelOpen={rightPanelOpen}
+          onToggleRightPanel={() => setRightPanelOpen(!rightPanelOpen)}
+        />
+      )}
+
+      {!settingsOpen && langError && (
+        <div className="px-4 py-1.5 text-destructive text-xs border-b border-destructive/20 bg-destructive/5">
+          {langError}
+        </div>
+      )}
 
       <div ref={panelLayoutRef} className="flex flex-1 min-h-0">
         {settingsOpen ? (
@@ -1573,7 +1609,6 @@ export function App() {
           <>
             <div className="shrink-0 min-h-0" style={{ width: leftPanelWidth }}>
               <LeftSidebar
-                rollingKeyPoints={session.rollingKeyPoints}
                 sessions={visibleSessions}
                 activeSessionId={selectedSessionId}
                 onNewSession={handleNewSession}
@@ -1586,6 +1621,9 @@ export function App() {
                 onEditProject={(project) => void ig().editProject(project)}
                 onDeleteProject={(id) => void ig().deleteProject(id)}
                 onMoveSessionToProject={(sid, pid) => void handleMoveSessionToProject(sid, pid)}
+                agentsBySessionId={agentsBySessionId}
+                selectedAgentId={selectedAgentId}
+                onSelectAgent={(sid, aid) => { void handleSelectAgentInSession(sid, aid); }}
               />
             </div>
             <div
@@ -1598,73 +1636,62 @@ export function App() {
               <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/80 transition-colors group-hover:bg-foreground/30" />
             </div>
             <ErrorBoundary tag="main-middle-panel">
-            <MiddlePanelTabs
-              sessionId={selectedSessionId ?? session.sessionId ?? null}
-              summaryState={finalSummaryState}
-              newAgentMode={newAgentMode}
-              openAgentIds={openAgentIds}
-              agentTabTitles={agentTabTitles}
-              selectedAgentId={selectedAgentId}
-              agentSelectionNonce={agentSelectionNonce}
-              onSelectAgent={selectAgent}
-              agents={agents}
-              onCloseAgent={closeAgent}
-              onCloseNewAgent={() => ui().setNewAgentMode(false)}
-              onGenerateSummary={handleGenerateSummary}
-              transcriptContent={
-                <ErrorBoundary tag="main-transcript">
-                  <TranscriptArea
-                    ref={transcriptRef}
-                    blocks={session.blocks}
-                    systemPartial={session.systemPartial}
-                    micPartial={session.micPartial}
-                    canTranslate={session.uiState?.canTranslate ?? false}
-                    translationEnabled={session.uiState?.translationEnabled ?? false}
-                    onAddTranscriptRef={(text: string) => ts().addTranscriptRef(text)}
+              <SessionCenter
+                mode={sessionCenterMode}
+                homeContent={
+                  <SessionHome
+                    sessionTitle={currentSessionTitle}
+                    agents={agents}
+                    selectedAgentId={selectedAgentId}
+                    onSelectAgent={selectAgent}
+                    onLaunchAgent={(task) => { void handleLaunchCustomAgent(task); }}
+                    onRecordToggle={() => { void handleRecordToggle(); }}
+                    onToggleMicInput={() => { void handleToggleMicInputSelection(); }}
+                    onToggleDeviceAudio={() => { void handleToggleDeviceAudioSelection(); }}
+                    armedMicInput={armedMicInput}
+                    armedDeviceAudio={armedDeviceAudio}
+                    uiState={session.uiState}
+                    languages={languages}
+                    sourceLang={sourceLang}
+                    targetLang={targetLang}
+                    translateToSelection={translateToSelection}
+                    onSourceLangChange={(lang) => { void handleSourceLangChange(lang); }}
+                    onTargetLangChange={(lang) => { applyTargetLang(lang); ui().setLangError(""); }}
+                    onTranslateToSelectionChange={setTranslateToSelection}
+                    onSetTranslationMode={handleSetTranslationMode}
                   />
-                </ErrorBoundary>
-              }
-              summaryContent={
-                <ErrorBoundary tag="main-summary">
-                  <SessionSummaryPanel
-                    state={finalSummaryState}
-                    existingTaskTexts={existingTaskTexts}
-                    onClose={() => ui().setFinalSummaryState({ kind: "idle" })}
-                    onAcceptItems={handleAcceptSummaryItems}
-                    onTodosAccepted={handleTodosAccepted}
-                    onRegenerate={handleRegenerateSummary}
-                    asTabbedPanel
-                  />
-                </ErrorBoundary>
-              }
-              agentContent={
-                <ErrorBoundary tag="main-agent">
-                  {newAgentMode ? (
+                }
+                newAgentContent={
+                  <ErrorBoundary tag="main-new-agent">
                     <NewAgentPanel
                       onLaunch={handleLaunchCustomAgent}
                       onClose={() => ui().setNewAgentMode(false)}
                     />
-                  ) : selectedAgent ? (
-                    <AgentDetailPanel
-                      agent={selectedAgent}
-                      agents={agents}
-                      onSelectAgent={selectAgent}
-                      onClose={() => closeAgent(selectedAgent.id)}
-                      onFollowUp={handleFollowUp}
-                      onAnswerQuestion={handleAnswerAgentQuestion}
-                      onSkipQuestion={handleSkipAgentQuestion}
-                      onAnswerToolApproval={handleAnswerAgentToolApproval}
-                      onAnswerPlanApproval={handleAnswerPlanApproval}
-                      onCancel={handleCancelAgent}
-                      onRelaunch={handleRelaunchAgent}
-                      onArchive={handleArchiveAgent}
-                    />
-                  ) : null}
-                </ErrorBoundary>
-              }
-            />
+                  </ErrorBoundary>
+                }
+                agentContent={
+                  selectedAgent ? (
+                    <ErrorBoundary tag="main-agent">
+                      <AgentDetailPanel
+                        agent={selectedAgent}
+                        agents={agents}
+                        onSelectAgent={selectAgent}
+                        onFollowUp={handleFollowUp}
+                        onAnswerQuestion={handleAnswerAgentQuestion}
+                        onSkipQuestion={handleSkipAgentQuestion}
+                        onAnswerToolApproval={handleAnswerAgentToolApproval}
+                        onAnswerPlanApproval={handleAnswerPlanApproval}
+                        onCancel={handleCancelAgent}
+                        onRelaunch={handleRelaunchAgent}
+                        onArchive={handleArchiveAgent}
+                      />
+                    </ErrorBoundary>
+                  ) : null
+                }
+              />
             </ErrorBoundary>
-            <>
+            {rightPanelOpen && (
+              <>
                   <div
                     role="separator"
                     aria-label="Resize right panel"
@@ -1687,8 +1714,6 @@ export function App() {
                       forceWorkTabKey={forceWorkTabKey}
                       onSelectAgent={selectAgent}
                       onLaunchAgent={handleLaunchAgent}
-                      onNewAgent={handleNewAgent}
-                      onAddTask={handleAddTaskFromDebrief}
                       onToggleTask={handleToggleTask}
                       onDeleteTask={handleDeleteTask}
                       onUpdateTask={handleUpdateTask}
@@ -1700,16 +1725,39 @@ export function App() {
                       onDeleteArchivedSuggestion={handleDeleteArchivedSuggestion}
                       sessionId={selectedSessionId ?? session.sessionId ?? undefined}
                       sessionActive={sessionActive}
-                      transcriptRefs={transcriptRefs}
-                      onRemoveTranscriptRef={(index: number) => ts().removeTranscriptRef(index)}
-                      onSubmitTaskInput={handleSubmitTaskInput}
                       onRequestTaskScan={() => {
                         void window.electronAPI.requestTaskScan();
                       }}
+                      summaryContent={
+                        <ErrorBoundary tag="main-summary">
+                          <SessionSummaryPanel
+                            state={finalSummaryState}
+                            existingTaskTexts={existingTaskTexts}
+                            onClose={() => ui().setFinalSummaryState({ kind: "idle" })}
+                            onAcceptItems={handleAcceptSummaryItems}
+                            onTodosAccepted={handleTodosAccepted}
+                            onRegenerate={handleRegenerateSummary}
+                            asTabbedPanel
+                          />
+                        </ErrorBoundary>
+                      }
+                      transcriptContent={
+                        <ErrorBoundary tag="main-transcript">
+                          <TranscriptArea
+                            ref={transcriptRef}
+                            blocks={session.blocks}
+                            systemPartial={session.systemPartial}
+                            micPartial={session.micPartial}
+                            canTranslate={session.uiState?.canTranslate ?? false}
+                            translationEnabled={session.uiState?.translationEnabled ?? false}
+                          />
+                        </ErrorBoundary>
+                      }
                     />
                     </ErrorBoundary>
                   </div>
-            </>
+              </>
+            )}
           </>
         )}
       </div>
