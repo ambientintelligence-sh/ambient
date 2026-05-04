@@ -7,8 +7,6 @@ import {
 } from "react";
 import type { TranscriptBlock } from "@core/types";
 import { ChevronDownIcon, ChevronUpIcon, MicIcon, PencilIcon, Volume2Icon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { SectionLabel } from "@/components/ui/section-label";
 
 type TranscriptAreaProps = {
@@ -160,14 +158,6 @@ export const TranscriptArea = forwardRef<HTMLDivElement, TranscriptAreaProps>(
     const [selectionText, setSelectionText] = useState("");
     const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
     const [addedFeedback, setAddedFeedback] = useState(false);
-    const [noteInput, setNoteInput] = useState("");
-
-    const submitNote = async () => {
-      const text = noteInput.trim();
-      if (!text) return;
-      setNoteInput("");
-      await window.electronAPI.addContextNote(text);
-    };
 
     useEffect(() => {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -388,32 +378,6 @@ export const TranscriptArea = forwardRef<HTMLDivElement, TranscriptAreaProps>(
             </div>
           )}
           <div ref={bottomRef} />
-        </div>
-        <div className="shrink-0 border-t border-border/50 px-3 py-2 flex items-center gap-2">
-          <PencilIcon className="size-3 shrink-0 text-muted-foreground/50" />
-          <Input
-            value={noteInput}
-            onChange={(e) => setNoteInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                submitNote();
-              }
-            }}
-            placeholder="Add context note... (Enter to submit)"
-            className="h-7 flex-1 text-xs border-none bg-transparent shadow-none focus-visible:ring-0 pl-1.5 pr-0"
-          />
-          {noteInput.trim() && (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-6 px-2 text-2xs"
-              onClick={submitNote}
-            >
-              Add
-            </Button>
-          )}
         </div>
       </div>
     );
