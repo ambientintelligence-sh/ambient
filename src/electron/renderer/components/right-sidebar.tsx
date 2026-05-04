@@ -41,6 +41,33 @@ const SUGGESTION_KIND_ICONS: Record<SuggestionKind, typeof SearchIcon> = {
   flag: AlertTriangleIcon,
   followup: ListChecksIcon,
 };
+export const SUGGESTION_SURFACE_STYLES = {
+  callout: {
+    card:
+      "border-[color-mix(in_oklab,oklch(0.62_0.11_205)_38%,var(--border))] bg-[color-mix(in_oklab,oklch(0.84_0.07_205)_16%,var(--background))]",
+    popupCard:
+      "border-[color-mix(in_oklab,oklch(0.62_0.11_205)_40%,var(--border))] bg-[color-mix(in_oklab,oklch(0.84_0.07_205)_18%,var(--background))]",
+    icon:
+      "bg-[color-mix(in_oklab,oklch(0.84_0.07_205)_34%,transparent)] text-[oklch(0.48_0.1_205)] dark:text-[oklch(0.78_0.08_205)]",
+    text: "text-[oklch(0.36_0.07_205)] dark:text-[oklch(0.82_0.05_205)]",
+    progressTrack: "bg-[oklch(0.62_0.11_205/0.12)]",
+    progressBar: "bg-[oklch(0.62_0.11_205/0.48)]",
+  },
+  agent: {
+    card:
+      "border-[color-mix(in_oklab,oklch(0.72_0.14_72)_40%,var(--border))] bg-[color-mix(in_oklab,oklch(0.86_0.11_72)_15%,var(--background))]",
+    popupCard:
+      "border-[color-mix(in_oklab,oklch(0.72_0.14_72)_44%,var(--border))] bg-[color-mix(in_oklab,oklch(0.86_0.11_72)_17%,var(--background))]",
+    icon:
+      "bg-[color-mix(in_oklab,oklch(0.86_0.11_72)_36%,transparent)] text-[oklch(0.5_0.11_72)] dark:text-[oklch(0.82_0.09_72)]",
+    text: "text-[oklch(0.42_0.08_72)] dark:text-[oklch(0.86_0.06_72)]",
+    action:
+      "bg-[oklch(0.58_0.13_72)] text-[oklch(0.99_0.01_85)] hover:bg-[oklch(0.52_0.13_72)] dark:bg-[oklch(0.76_0.11_72)] dark:text-[oklch(0.2_0.02_72)] dark:hover:bg-[oklch(0.82_0.1_72)]",
+    progressTrack: "bg-[oklch(0.72_0.14_72/0.13)]",
+    progressBar: "bg-[oklch(0.72_0.14_72/0.5)]",
+  },
+} as const;
+
 type RightRailMode = "work" | "agents";
 const EMPTY_SESSION_TAB_KEY = "__empty__";
 
@@ -139,23 +166,24 @@ export function SuggestionItem({
 
   const KindIcon = suggestion.kind ? SUGGESTION_KIND_ICONS[suggestion.kind] : SearchIcon;
   const isCallout = suggestion.surface === "callout";
+  const surfaceStyle = isCallout ? SUGGESTION_SURFACE_STYLES.callout : SUGGESTION_SURFACE_STYLES.agent;
   const hasDetails = Boolean(suggestion.flag?.trim() || suggestion.details?.trim() || suggestion.transcriptExcerpt?.trim());
 
   return (
     <li
       className={[
         "relative overflow-hidden rounded-xl border shadow-[inset_0_1px_0_hsl(var(--background)/0.7)] transition-opacity duration-500",
-        isCallout
-          ? "border-border/55 bg-background/58"
-          : "border-primary/12 bg-background/70",
+        surfaceStyle.card,
       ].join(" ")}
       style={{ opacity }}
     >
       <div className="flex items-start gap-2 min-h-7 py-1.5 px-2 relative z-10">
-        <KindIcon className={["size-3 shrink-0 mt-0.5", isCallout ? "text-muted-foreground" : "text-primary"].join(" ")} />
+        <div className={["mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full", surfaceStyle.icon].join(" ")}>
+          <KindIcon className="size-3" />
+        </div>
         <div className="min-w-0 flex-1">
           {suggestion.flag?.trim() && (
-            <div className="mb-1 text-[11px] font-medium text-foreground/72 break-words">
+            <div className={["mb-1 text-[11px] font-medium break-words", surfaceStyle.text].join(" ")}>
               {suggestion.flag.trim()}
             </div>
           )}
@@ -192,7 +220,7 @@ export function SuggestionItem({
             <button
               type="button"
               onClick={onAccept}
-              className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md bg-primary px-1.5 text-[11px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              className={["inline-flex h-6 cursor-pointer items-center gap-1 rounded-md px-1.5 text-[11px] font-medium transition-colors", SUGGESTION_SURFACE_STYLES.agent.action].join(" ")}
               aria-label="Dispatch agent"
               title="Dispatch agent"
             >
@@ -216,8 +244,8 @@ export function SuggestionItem({
           </button>
         </div>
       </div>
-      <div className="absolute inset-x-2 bottom-1 h-[2px] overflow-hidden rounded-full bg-primary/8">
-        <div className="h-full rounded-full bg-primary/28 transition-none" style={{ width: `${progress}%` }} />
+      <div className={["absolute inset-x-2 bottom-1 h-[2px] overflow-hidden rounded-full", surfaceStyle.progressTrack].join(" ")}>
+        <div className={["h-full rounded-full transition-none", surfaceStyle.progressBar].join(" ")} style={{ width: `${progress}%` }} />
       </div>
     </li>
   );

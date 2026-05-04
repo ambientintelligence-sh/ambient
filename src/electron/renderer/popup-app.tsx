@@ -32,7 +32,7 @@ import { DEFAULT_APP_CONFIG, normalizeAppConfig } from "@core/types";
 import { useAgents } from "./hooks/use-agents";
 import { useMicCapture } from "./hooks/use-mic-capture";
 import { useThemeMode } from "./hooks/use-theme-mode";
-import { AgentActivityCard } from "./components/right-sidebar";
+import { AgentActivityCard, SUGGESTION_SURFACE_STYLES } from "./components/right-sidebar";
 import { AgentDetailPanel } from "./components/agent-detail-panel";
 import { NewAgentPanel } from "./components/new-agent-panel";
 import { ErrorBoundary } from "./components/error-boundary";
@@ -121,26 +121,27 @@ function MiniSuggestionCard({
   surface?: "panel" | "collapsed";
 }) {
   const isCallout = suggestion.surface === "callout";
+  const surfaceStyle = isCallout ? SUGGESTION_SURFACE_STYLES.callout : SUGGESTION_SURFACE_STYLES.agent;
   const hasContext = Boolean(suggestion.flag?.trim() || suggestion.details?.trim() || suggestion.transcriptExcerpt?.trim());
 
   return (
     <li
       className={[
-        "list-none animate-in slide-in-from-top-2 fade-in duration-300 rounded-[18px] p-3 backdrop-blur-2xl",
+        "list-none animate-in slide-in-from-top-2 fade-in duration-300 rounded-[18px] border p-3 backdrop-blur-2xl",
         surface === "collapsed"
-          ? "border border-border/25 bg-background/96 dark:bg-background/90"
-          : "bg-background/92 shadow-[0_18px_46px_rgba(0,0,0,0.18)] dark:bg-background/84",
-        isCallout ? "border-border/35" : "",
+          ? "shadow-[0_14px_34px_rgba(0,0,0,0.16)] dark:bg-background/90"
+          : "shadow-[0_18px_46px_rgba(0,0,0,0.18)] dark:bg-background/84",
+        surfaceStyle.popupCard,
       ].join(" ")}
       style={style}
     >
       <div className="flex items-start gap-2">
-        <div className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <div className={["mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full", surfaceStyle.icon].join(" ")}>
           <ClockIcon className="size-3" />
         </div>
         <div className="min-w-0 flex-1">
           {suggestion.flag?.trim() && (
-            <div className="mb-1 text-[11px] font-medium leading-snug text-foreground/70">
+            <div className={["mb-1 text-[11px] font-medium leading-snug", surfaceStyle.text].join(" ")}>
               {suggestion.flag.trim()}
             </div>
           )}
@@ -167,7 +168,7 @@ function MiniSuggestionCard({
           <button
             type="button"
             onClick={onDispatch}
-            className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md bg-primary px-2 text-[11px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className={["inline-flex h-6 cursor-pointer items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors", SUGGESTION_SURFACE_STYLES.agent.action].join(" ")}
           >
             <PlayIcon className="size-3" />
             Dispatch Agent
