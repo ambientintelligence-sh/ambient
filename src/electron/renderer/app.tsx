@@ -439,6 +439,7 @@ export function App() {
     const demoSuggestions: import("@core/types").TaskSuggestion[] = [
       {
         id: "demo-suggestion-1",
+        surface: "agent_suggestion",
         flag: "The team mentioned Datadog pricing, but nobody captured the actual comparison.",
         text: "Compare Datadog vs Grafana Cloud pricing for your current infrastructure size.",
         kind: "research",
@@ -449,6 +450,7 @@ export function App() {
       },
       {
         id: "demo-suggestion-2",
+        surface: "agent_suggestion",
         flag: "Friday's outage postmortem was assigned verbally but not captured as a task.",
         text: "Draft the webhook processor postmortem from Friday's outage.",
         kind: "action",
@@ -458,8 +460,9 @@ export function App() {
       },
       {
         id: "demo-suggestion-3",
+        surface: "callout",
         flag: "The team agreed on 20% tech debt allocation but never named the items.",
-        text: "List the specific tech debt items that should fill the 20% allocation.",
+        text: "Small gap: the 20% tech debt allocation needs named items before it is actionable.",
         kind: "flag",
         sessionId: selectedSessionId,
         createdAt: now,
@@ -1070,6 +1073,10 @@ export function App() {
   };
 
   const handleAcceptSuggestion = async (suggestion: import("@core/types").TaskSuggestion) => {
+    if (suggestion.surface === "callout") {
+      handleDismissSuggestion(suggestion.id);
+      return;
+    }
     const targetSessionId = suggestion.sessionId ?? selectedSessionId ?? session.sessionId ?? null;
     if (!targetSessionId) {
       ui().setRouteNotice("Missing session id for suggestion.");
@@ -1210,6 +1217,7 @@ export function App() {
         : true);
 
     if (!looksLikeBlankDraft) return;
+    await window.electronAPI.shutdownSession();
     await window.electronAPI.deleteSession(currentSessionId);
     await refreshSessions();
   };
@@ -1243,8 +1251,15 @@ export function App() {
   }, [selectedSessionId, session.sessionId]);
 
   const handleDeleteSession = async (id: string) => {
-    await window.electronAPI.deleteSession(id);
     const isDeletedSelected = selectedSessionId === id || session.sessionId === id;
+    if (isDeletedSelected) {
+      await window.electronAPI.shutdownSession();
+    }
+    const result = await window.electronAPI.deleteSession(id);
+    if (!result.ok) {
+      ui().setRouteNotice(`Failed to delete session: ${result.error ?? "Unknown error"}`);
+      return;
+    }
     if (isDeletedSelected) {
       micCapture.stop();
       replaceSessionPath(null);
