@@ -1,5 +1,11 @@
 // All shared types for Ambient.
-import { getAnalysisModelPreset, MODEL_CONFIG } from "./models";
+import {
+  getAnalysisModelPreset,
+  isReasoningModel,
+  isValidReasoningEffort,
+  MODEL_CONFIG,
+  type ReasoningEffort,
+} from "./models";
 
 export type LanguageCode =
   | "en"
@@ -194,6 +200,8 @@ export type SessionConfig = {
   analysisModelId: string;
   analysisProviderOnly?: string;
   analysisReasoning: boolean;
+  /** User override for reasoning effort. Falls back to MODEL_CONFIG preset when undefined. */
+  analysisReasoningEffort?: ReasoningEffort;
   taskModelId: string;
   taskProviders: string[];
   utilityModelId: string;
@@ -239,6 +247,8 @@ export type AppConfig = {
   analysisModelId: string;
   analysisProviderOnly?: string;
   analysisReasoning: boolean;
+  /** User override for reasoning effort. Falls back to MODEL_CONFIG preset when undefined. */
+  analysisReasoningEffort?: ReasoningEffort;
   taskModelId: string;
   taskProviders: string[];
   utilityModelId: string;
@@ -466,7 +476,18 @@ export function normalizeAppConfig(
   const analysisModelPreset = getAnalysisModelPreset(analysisModelId);
   const analysisProviderOnly =
     analysisModelPreset?.providerOnly ?? (merged.analysisProviderOnly?.trim() || undefined);
-  const analysisReasoning = analysisModelPreset?.reasoning ?? !!merged.analysisReasoning;
+  // Reasoning capability is intrinsic to the model. Toggling is only meaningful
+  // for models that support reasoning; for others we force it off.
+  const supportsReasoning = isReasoningModel(analysisModelId);
+  const rawReasoning = (input as { analysisReasoning?: unknown } | null | undefined)?.analysisReasoning;
+  const analysisReasoning = !supportsReasoning
+    ? false
+    : typeof rawReasoning === "boolean"
+      ? rawReasoning
+      : true;
+  const rawEffort = (input as { analysisReasoningEffort?: unknown } | null | undefined)?.analysisReasoningEffort;
+  const analysisReasoningEffort: ReasoningEffort | undefined =
+    analysisReasoning && isValidReasoningEffort(rawEffort) ? rawEffort : undefined;
   const legacyMemoryModelId = (() => {
     const raw = (input as { memoryModelId?: unknown } | null | undefined)?.memoryModelId;
     return typeof raw === "string" ? raw.trim() : "";
@@ -524,6 +545,7 @@ export function normalizeAppConfig(
     codingAgent: resolveCodingAgent(merged),
     analysisProviderOnly,
     analysisReasoning,
+    analysisReasoningEffort,
     taskProviders:
       Array.isArray(merged.taskProviders) && merged.taskProviders.length > 0
         ? merged.taskProviders

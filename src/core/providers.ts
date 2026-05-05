@@ -3,17 +3,26 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { Api, Model, ThinkingLevel } from "@mariozechner/pi-ai";
 import type { SessionConfig } from "./types";
-import { MODEL_CONFIG, getReasoningEffortForModel } from "./models";
+import { MODEL_CONFIG, getReasoningEffortForModel, type ReasoningEffort } from "./models";
 
 type ReasoningOption =
   | { effort: "xhigh" | "high" | "medium" | "low" | "minimal" | "none"; exclude: boolean }
   | { max_tokens: number; exclude: boolean };
 
-function reasoningForModel(modelId: string, fallbackMaxTokens: number): ReasoningOption {
-  const effort = getReasoningEffortForModel(modelId);
+function reasoningForModel(
+  modelId: string,
+  fallbackMaxTokens: number,
+  override?: ReasoningEffort,
+): ReasoningOption {
+  const effort = override ?? getReasoningEffortForModel(modelId);
   return effort
     ? { effort, exclude: false }
     : { max_tokens: fallbackMaxTokens, exclude: false };
+}
+
+function resolveAnalysisEffort(config: SessionConfig): ReasoningEffort | undefined {
+  if (!config.analysisReasoning) return "none";
+  return config.analysisReasoningEffort ?? getReasoningEffortForModel(config.analysisModelId);
 }
 
 export function createTranscriptionModel(config: SessionConfig): LanguageModel {
@@ -56,7 +65,7 @@ export function createAnalysisModel(config: SessionConfig): LanguageModel {
       };
       return openrouter(config.analysisModelId, {
         reasoning: config.analysisReasoning
-          ? reasoningForModel(config.analysisModelId, 4096)
+          ? reasoningForModel(config.analysisModelId, 4096, config.analysisReasoningEffort)
           : undefined,
         provider,
       });
@@ -197,9 +206,9 @@ export function createAgentPiModel(
   config: SessionConfig,
   deps: CreateAgentPiModelDeps = {},
 ): AgentPiModel {
-  const configuredEffort = getReasoningEffortForModel(config.analysisModelId);
+  const effectiveEffort = resolveAnalysisEffort(config);
   const thinkingLevel = reasoningEffortToThinkingLevel(
-    configuredEffort ?? (config.analysisReasoning ? "medium" : undefined),
+    effectiveEffort ?? (config.analysisReasoning ? "medium" : undefined),
   );
 
   if (config.analysisProvider === "openai-codex") {

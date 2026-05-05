@@ -26,6 +26,7 @@ import { TopBar } from "./components/top-bar";
 import { TranscriptArea } from "./components/transcript-area";
 import { LeftSidebar } from "./components/left-sidebar";
 import { RightSidebar } from "./components/right-sidebar";
+import { CaptureBar } from "./components/capture-bar";
 import { AgentDetailPanel } from "./components/agent-detail-panel";
 import { SessionHome } from "./components/session-home";
 import { SessionCenter } from "./components/session-center";
@@ -1331,6 +1332,8 @@ export function App() {
     const modelChanged =
       prev.analysisModelId !== normalized.analysisModelId ||
       prev.analysisProvider !== normalized.analysisProvider ||
+      prev.analysisReasoning !== normalized.analysisReasoning ||
+      prev.analysisReasoningEffort !== normalized.analysisReasoningEffort ||
       prev.taskModelId !== normalized.taskModelId ||
       prev.taskSuggestionAggressiveness !== normalized.taskSuggestionAggressiveness ||
       prev.utilityModelId !== normalized.utilityModelId ||
@@ -1755,20 +1758,8 @@ export function App() {
                     selectedAgentId={selectedAgentId}
                     onSelectAgent={selectAgent}
                     onLaunchAgent={(task) => { void handleLaunchCustomAgent(task); }}
-                    onRecordToggle={() => { void handleRecordToggle(); }}
-                    onToggleMicInput={() => { void handleToggleMicInputSelection(); }}
-                    onToggleDeviceAudio={() => { void handleToggleDeviceAudioSelection(); }}
-                    armedMicInput={armedMicInput}
-                    armedDeviceAudio={armedDeviceAudio}
-                    uiState={session.uiState}
-                    languages={languages}
-                    sourceLang={sourceLang}
-                    targetLang={targetLang}
-                    translateToSelection={translateToSelection}
-                    onSourceLangChange={(lang) => { void handleSourceLangChange(lang); }}
-                    onTargetLangChange={(lang) => { applyTargetLang(lang); ui().setLangError(""); }}
-                    onTranslateToSelectionChange={setTranslateToSelection}
-                    onSetTranslationMode={handleSetTranslationMode}
+                    appConfig={appConfig}
+                    onAppConfigChange={handleAppConfigChange}
                   />
                 }
                 agentContent={
@@ -1806,6 +1797,24 @@ export function App() {
                   <div className="shrink-0 min-h-0" style={{ width: rightPanelWidth }}>
                     <ErrorBoundary tag="main-right-sidebar">
                     <RightSidebar
+                      captureBar={
+                        <CaptureBar
+                          uiState={session.uiState}
+                          languages={languages}
+                          sourceLang={sourceLang}
+                          targetLang={targetLang}
+                          translateToSelection={translateToSelection}
+                          armedMicInput={armedMicInput}
+                          armedDeviceAudio={armedDeviceAudio}
+                          onSourceLangChange={(lang) => { void handleSourceLangChange(lang); }}
+                          onTargetLangChange={(lang) => { applyTargetLang(lang); ui().setLangError(""); }}
+                          onTranslateToSelectionChange={setTranslateToSelection}
+                          onSetTranslationMode={handleSetTranslationMode}
+                          onRecordToggle={() => { void handleRecordToggle(); }}
+                          onToggleMicInput={() => { void handleToggleMicInputSelection(); }}
+                          onToggleDeviceAudio={() => { void handleToggleDeviceAudioSelection(); }}
+                        />
+                      }
                       tasks={tasks}
                       suggestions={suggestions}
                       suggestionProgress={suggestionProgress}

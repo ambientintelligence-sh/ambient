@@ -4,6 +4,23 @@
 
 export type ReasoningEffort = "xhigh" | "high" | "medium" | "low" | "minimal" | "none";
 
+export const REASONING_EFFORTS: readonly ReasoningEffort[] = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+] as const;
+
+export const REASONING_EFFORT_LABELS: Record<ReasoningEffort, string> = {
+  none: "None",
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra High",
+};
+
 export type AnalysisModelPreset = {
   label: string;
   modelId: string;
@@ -216,4 +233,23 @@ export function getReasoningEffortForModel(modelId: string): ReasoningEffort | u
     if (match) return match.reasoningEffort;
   }
   return undefined;
+}
+
+export function isReasoningModel(modelId: string): boolean {
+  for (const { models } of Object.values(MODEL_CONFIG)) {
+    const match = models.find((p) => p.modelId === modelId);
+    if (match) return !!match.reasoning;
+  }
+  return false;
+}
+
+export function isValidReasoningEffort(value: unknown): value is ReasoningEffort {
+  return (
+    value === "xhigh" ||
+    value === "high" ||
+    value === "medium" ||
+    value === "low" ||
+    value === "minimal" ||
+    value === "none"
+  );
 }

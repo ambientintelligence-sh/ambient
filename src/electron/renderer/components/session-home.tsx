@@ -1,46 +1,18 @@
 import { useState, type KeyboardEvent } from "react";
-import { ArrowRightLeftIcon } from "lucide-react";
-import type { Agent, Direction, Language, LanguageCode, UIState } from "@core/types";
-import { SUPPORTED_LANGUAGES } from "@core/types";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import type { Agent, AppConfig } from "@core/types";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { WorkoutRunIcon } from "@hugeicons/core-free-icons";
-import { CaptureRecordButton, CaptureToggleButton } from "./capture-controls";
 import { ComposerSendButton } from "./composer-send-button";
+import { ModelPicker } from "./model-picker";
 
 type SessionHomeProps = {
   agents: Agent[];
   selectedAgentId: string | null;
   onSelectAgent: (agentId: string) => void;
   onLaunchAgent: (task: string) => void;
-  onRecordToggle: () => void;
-  onToggleMicInput: () => void;
-  onToggleDeviceAudio: () => void;
-  armedMicInput: boolean;
-  armedDeviceAudio: boolean;
-  uiState: UIState | null;
-  languages: Language[];
-  sourceLang: LanguageCode;
-  targetLang: LanguageCode;
-  translateToSelection: LanguageCode | "off";
-  onSourceLangChange: (lang: LanguageCode) => void;
-  onTargetLangChange: (lang: LanguageCode) => void;
-  onTranslateToSelectionChange: (value: LanguageCode | "off") => void;
-  onSetTranslationMode?: (direction: Direction | "off", targetLang?: LanguageCode) => void;
+  appConfig: AppConfig;
+  onAppConfigChange: (next: AppConfig) => void;
 };
-
-function getLanguageNative(lang: LanguageCode): string {
-  return SUPPORTED_LANGUAGES.find((l) => l.code === lang)?.native ?? lang.toUpperCase();
-}
 
 function relativeTime(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -56,20 +28,8 @@ export function SessionHome({
   selectedAgentId,
   onSelectAgent,
   onLaunchAgent,
-  onRecordToggle,
-  onToggleMicInput,
-  onToggleDeviceAudio,
-  armedMicInput,
-  armedDeviceAudio,
-  uiState,
-  languages,
-  sourceLang,
-  targetLang,
-  translateToSelection,
-  onSourceLangChange,
-  onTargetLangChange,
-  onTranslateToSelectionChange,
-  onSetTranslationMode,
+  appConfig,
+  onAppConfigChange,
 }: SessionHomeProps) {
   const [taskDraft, setTaskDraft] = useState("");
 
@@ -87,16 +47,6 @@ export function SessionHome({
     }
   };
 
-  const isDeviceAudioActive =
-    uiState?.status === "recording" || uiState?.status === "connecting";
-  const isMicActive = uiState?.micEnabled ?? false;
-  const isCapturing = isDeviceAudioActive || isMicActive;
-  const canTranslate = uiState?.canTranslate ?? false;
-  const currentDirection: Direction = uiState?.direction ?? "auto";
-
-  const languageOptions = languages.length > 0 ? languages : SUPPORTED_LANGUAGES;
-  const availableTargetLanguages = SUPPORTED_LANGUAGES.filter((l) => l.code !== sourceLang);
-
   const canSubmit = taskDraft.trim().length > 0;
 
   return (
@@ -113,118 +63,9 @@ export function SessionHome({
           />
 
           <div className="flex items-center gap-1 px-2 pb-2">
-            <Select
-              value={sourceLang}
-              onValueChange={(v) => {
-                onSourceLangChange(v as LanguageCode);
-                if (translateToSelection !== "off" && v === targetLang) {
-                  const alt = v === "en" ? "ko" : "en";
-                  onTargetLangChange(alt as LanguageCode);
-                }
-              }}
-              disabled={isDeviceAudioActive}
-            >
-              <SelectTrigger
-                size="sm"
-                className="h-7 border-0 bg-transparent px-2 text-2xs text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                aria-label="Source language"
-                title={`Transcribe ${getLanguageNative(sourceLang)}`}
-              >
-                <SelectValue>{sourceLang.toUpperCase()}</SelectValue>
-              </SelectTrigger>
-              <SelectContent position="popper" align="start" sideOffset={4}>
-                <SelectGroup>
-                  <SelectLabel>Transcribe from</SelectLabel>
-                  {languageOptions.map((lang) => (
-                    <SelectItem key={lang.code} value={lang.code}>
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span className="w-6 shrink-0 font-mono text-2xs text-muted-foreground/70">
-                          {lang.code.toUpperCase()}
-                        </span>
-                        <span className="truncate">{lang.name}</span>
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-
-            <ArrowRightLeftIcon className="size-3 shrink-0 text-muted-foreground/50" />
-
-            <Select
-              value={translateToSelection}
-              onValueChange={(v) => {
-                if (v === "off") {
-                  onTranslateToSelectionChange("off");
-                  onSetTranslationMode?.("off");
-                  return;
-                }
-                const nextTargetLang = v as LanguageCode;
-                onTranslateToSelectionChange(nextTargetLang);
-                onTargetLangChange(nextTargetLang);
-                onSetTranslationMode?.(currentDirection, nextTargetLang);
-              }}
-              disabled={!canTranslate}
-            >
-              <SelectTrigger
-                size="sm"
-                className="h-7 border-0 bg-transparent px-2 text-2xs text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                aria-label="Translation target"
-                title={
-                  translateToSelection === "off"
-                    ? "Translation off"
-                    : `Translate to ${getLanguageNative(translateToSelection)}`
-                }
-              >
-                <SelectValue>
-                  {translateToSelection === "off" ? "Off" : translateToSelection.toUpperCase()}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent position="popper" align="start" sideOffset={4}>
-                <SelectItem value="off">Translation off</SelectItem>
-                <SelectSeparator className="mx-2" />
-                <SelectGroup>
-                  <SelectLabel>Translate to</SelectLabel>
-                  {availableTargetLanguages.map((lang) => (
-                    <SelectItem key={lang.code} value={lang.code}>
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span className="w-6 shrink-0 font-mono text-2xs text-muted-foreground/70">
-                          {lang.code.toUpperCase()}
-                        </span>
-                        <span className="truncate">{lang.name}</span>
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-
+            <ModelPicker config={appConfig} onConfigChange={onAppConfigChange} />
             <div className="flex-1" />
-
-            <CaptureToggleButton
-              active={armedMicInput}
-              kind="mic"
-              onClick={onToggleMicInput}
-            />
-
-            <CaptureToggleButton
-              active={armedDeviceAudio}
-              kind="device-audio"
-              onClick={onToggleDeviceAudio}
-            />
-
-            <CaptureRecordButton
-              active={isCapturing}
-              status={uiState?.status}
-              onClick={onRecordToggle}
-              startTitle="Start recording"
-            />
-
-            <ComposerSendButton
-              onClick={submitTask}
-              disabled={!canSubmit}
-              className="ml-1"
-            />
+            <ComposerSendButton onClick={submitTask} disabled={!canSubmit} />
           </div>
         </div>
 

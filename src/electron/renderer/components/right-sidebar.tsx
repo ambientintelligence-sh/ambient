@@ -76,6 +76,7 @@ type RightSidebarProps = {
   hideSuggestions?: boolean;
   summaryContent?: ReactNode;
   transcriptContent?: ReactNode;
+  captureBar?: ReactNode;
 };
 
 export function SuggestionItem({
@@ -422,6 +423,7 @@ export function RightSidebar({
   hideSuggestions = false,
   summaryContent,
   transcriptContent,
+  captureBar,
 }: RightSidebarProps) {
   const [modeBySession, setModeBySession] = useLocalStorage<Record<string, RightRailMode>>("ambient-right-rail-mode-v2", {});
   const [archivedOpen, setArchivedOpen] = useState(false);
@@ -450,6 +452,7 @@ export function RightSidebar({
 
   return (
     <div className="w-full h-full shrink-0 border-l border-sidebar-border/35 flex flex-col min-h-0 bg-sidebar/90">
+      {captureBar}
       <div className="px-2 py-2 shrink-0">
         <div className="grid grid-cols-3 gap-1 rounded-md bg-foreground/[0.045] p-1 dark:bg-muted/50">
           <RailModeButton
