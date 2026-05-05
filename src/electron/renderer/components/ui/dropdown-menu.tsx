@@ -2,8 +2,9 @@ import * as React from "react"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { ChevronRightIcon } from "lucide-react"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Tick02Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
+import { Tick02Icon } from "@hugeicons/core-free-icons"
 
 function DropdownMenu({
   ...props
@@ -223,7 +224,7 @@ function DropdownMenuSubTrigger({
       {...props}
     >
       {children}
-      <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="ml-auto" />
+      <ChevronRightIcon className="ml-auto size-3.5 text-muted-foreground" strokeWidth={1.75} />
     </DropdownMenuPrimitive.SubTrigger>
   )
 }
@@ -235,7 +236,7 @@ function DropdownMenuSubContent({
   return (
     <DropdownMenuPrimitive.SubContent
       data-slot="dropdown-menu-sub-content"
-      className={cn("data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 ring-foreground/10 bg-popover text-popover-foreground min-w-[96px] rounded-none shadow-lg ring-1 duration-100 z-50 origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden", className )}
+      className={cn("data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 ring-foreground/10 bg-popover text-popover-foreground min-w-32 rounded-md shadow-md ring-1 duration-100 z-50 max-h-(--radix-dropdown-menu-content-available-height) origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto data-[state=closed]:overflow-hidden", className )}
       {...props}
     />
   )

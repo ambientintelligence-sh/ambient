@@ -1,16 +1,5 @@
 import { useState, type KeyboardEvent } from "react";
-import { useLocalStorage } from "usehooks-ts";
-import {
-  ArrowRightLeftIcon,
-  ArrowUpIcon,
-  CircleIcon,
-  Folder,
-  MicIcon,
-  MicOffIcon,
-  SquareIcon,
-  Volume2Icon,
-  VolumeXIcon,
-} from "lucide-react";
+import { ArrowRightLeftIcon } from "lucide-react";
 import type { Agent, Direction, Language, LanguageCode, UIState } from "@core/types";
 import { SUPPORTED_LANGUAGES } from "@core/types";
 import {
@@ -25,11 +14,10 @@ import {
 } from "@/components/ui/select";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { WorkoutRunIcon } from "@hugeicons/core-free-icons";
-
-type SessionHomeTab = "chats" | "sources";
+import { CaptureRecordButton, CaptureToggleButton } from "./capture-controls";
+import { ComposerSendButton } from "./composer-send-button";
 
 type SessionHomeProps = {
-  sessionTitle: string;
   agents: Agent[];
   selectedAgentId: string | null;
   onSelectAgent: (agentId: string) => void;
@@ -64,7 +52,6 @@ function relativeTime(timestamp: number): string {
 }
 
 export function SessionHome({
-  sessionTitle,
   agents,
   selectedAgentId,
   onSelectAgent,
@@ -84,7 +71,6 @@ export function SessionHome({
   onTranslateToSelectionChange,
   onSetTranslationMode,
 }: SessionHomeProps) {
-  const [tab, setTab] = useLocalStorage<SessionHomeTab>("ambient-session-home-tab", "chats");
   const [taskDraft, setTaskDraft] = useState("");
 
   const submitTask = () => {
@@ -116,18 +102,13 @@ export function SessionHome({
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
       <div className="mx-auto w-full max-w-2xl px-6 pt-12 pb-8 flex flex-col gap-6">
-        <div className="flex items-center gap-2 text-base font-medium text-foreground">
-          <Folder className="size-4 text-muted-foreground" />
-          <span className="truncate">{sessionTitle}</span>
-        </div>
-
         <div className="rounded-2xl border border-border bg-background shadow-sm">
           <textarea
             rows={2}
             value={taskDraft}
             onChange={(e) => setTaskDraft(e.target.value)}
             onKeyDown={handleInputKeyDown}
-            placeholder={`New chat in ${sessionTitle}`}
+            placeholder="Ask an agent to work on something"
             className="block w-full resize-none border-0 bg-transparent px-4 pt-3 pb-1 text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-0"
           />
 
@@ -220,149 +201,73 @@ export function SessionHome({
 
             <div className="flex-1" />
 
-            <button
-              type="button"
+            <CaptureToggleButton
+              active={armedMicInput}
+              kind="mic"
               onClick={onToggleMicInput}
-              className={`shrink-0 cursor-pointer rounded-md p-1.5 transition-colors hover:bg-muted/60 ${
-                armedMicInput ? "text-foreground" : "text-muted-foreground"
-              }`}
-              title={armedMicInput ? "Mic input armed" : "Mic input disabled"}
-              aria-label={armedMicInput ? "Disable mic input" : "Enable mic input"}
-              aria-pressed={armedMicInput}
-            >
-              {armedMicInput ? <MicIcon className="size-3.5" /> : <MicOffIcon className="size-3.5" />}
-            </button>
+            />
 
-            <button
-              type="button"
+            <CaptureToggleButton
+              active={armedDeviceAudio}
+              kind="device-audio"
               onClick={onToggleDeviceAudio}
-              className={`shrink-0 cursor-pointer rounded-md p-1.5 transition-colors hover:bg-muted/60 ${
-                armedDeviceAudio ? "text-foreground" : "text-muted-foreground"
-              }`}
-              title={armedDeviceAudio ? "Device audio armed" : "Device audio disabled"}
-              aria-label={armedDeviceAudio ? "Disable device audio" : "Enable device audio"}
-              aria-pressed={armedDeviceAudio}
-            >
-              {armedDeviceAudio ? <Volume2Icon className="size-3.5" /> : <VolumeXIcon className="size-3.5" />}
-            </button>
+            />
 
-            <button
-              type="button"
+            <CaptureRecordButton
+              active={isCapturing}
+              status={uiState?.status}
               onClick={onRecordToggle}
-              className={`shrink-0 cursor-pointer rounded-md p-1.5 transition-colors hover:bg-muted/60 ${
-                isCapturing ? "text-destructive" : "text-muted-foreground"
-              }`}
-              aria-label={isCapturing ? "Stop recording" : "Start recording"}
-              title={isCapturing ? "Stop recording" : "Start recording"}
-            >
-              {isCapturing ? (
-                <SquareIcon className="size-3.5 fill-current" />
-              ) : (
-                <CircleIcon className="size-3.5 fill-red-500 text-red-500" />
-              )}
-            </button>
+              startTitle="Start recording"
+            />
 
-            <button
-              type="button"
+            <ComposerSendButton
               onClick={submitTask}
               disabled={!canSubmit}
-              className={`ml-1 shrink-0 cursor-pointer rounded-full p-1.5 transition-colors ${
-                canSubmit
-                  ? "bg-foreground text-background hover:bg-foreground/90"
-                  : "bg-muted text-muted-foreground cursor-not-allowed"
-              }`}
-              aria-label="Send"
-              title="Send"
-            >
-              <ArrowUpIcon className="size-3.5" />
-            </button>
+              className="ml-1"
+            />
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          <TabPill active={tab === "chats"} onClick={() => setTab("chats")}>
-            Chats
-          </TabPill>
-          <TabPill active={tab === "sources"} onClick={() => setTab("sources")}>
-            Sources
-          </TabPill>
-        </div>
-
-        {tab === "chats" ? (
-          agents.length > 0 ? (
-            <ul className="flex flex-col gap-1">
-              {agents.map((agent) => (
-                <li key={agent.id}>
-                  <button
-                    type="button"
-                    onClick={() => onSelectAgent(agent.id)}
-                    className={`w-full cursor-pointer text-left rounded-md border px-3 py-2 transition-colors ${
-                      selectedAgentId === agent.id
-                        ? "border-primary/30 bg-primary/5"
-                        : "border-transparent hover:border-border/60 hover:bg-muted/40"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <HugeiconsIcon
-                        icon={WorkoutRunIcon}
-                        className={`size-3.5 shrink-0 ${
-                          agent.status === "running"
-                            ? "text-primary animate-pulse"
-                            : agent.status === "completed"
-                              ? "text-green-500"
-                              : "text-muted-foreground"
-                        }`}
-                      />
-                      <p className="text-xs text-foreground truncate flex-1">{agent.task}</p>
-                      <span className="text-2xs text-muted-foreground shrink-0 font-mono">
-                        {relativeTime(agent.completedAt ?? agent.createdAt)}
-                      </span>
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-10 text-center">
-              <p className="text-sm font-medium text-foreground">No chats yet</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Chats in {sessionTitle} will live here
-              </p>
-            </div>
-          )
+        {agents.length > 0 ? (
+          <ul className="flex flex-col gap-1">
+            {agents.map((agent) => (
+              <li key={agent.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelectAgent(agent.id)}
+                  className={`w-full cursor-pointer text-left rounded-md border px-3 py-2 transition-colors ${
+                    selectedAgentId === agent.id
+                      ? "border-primary/30 bg-primary/5"
+                      : "border-transparent hover:border-border/60 hover:bg-muted/40"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <HugeiconsIcon
+                      icon={WorkoutRunIcon}
+                      className={`size-3.5 shrink-0 ${
+                        agent.status === "running"
+                          ? "text-primary animate-pulse"
+                          : agent.status === "completed"
+                            ? "text-green-500"
+                            : "text-muted-foreground"
+                      }`}
+                    />
+                    <p className="text-xs text-foreground truncate flex-1">{agent.task}</p>
+                    <span className="text-2xs text-muted-foreground shrink-0 font-mono">
+                      {relativeTime(agent.completedAt ?? agent.createdAt)}
+                    </span>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
         ) : (
           <div className="flex flex-col items-center justify-center py-10 text-center">
-            <p className="text-sm font-medium text-foreground">No sources yet</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Sources in {sessionTitle} will live here
-            </p>
+            <p className="text-sm font-medium text-foreground">No chats yet</p>
+            <p className="mt-1 text-xs text-muted-foreground">New agent chats will live here</p>
           </div>
         )}
       </div>
     </div>
-  );
-}
-
-function TabPill({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`cursor-pointer rounded-full px-3 py-1 text-xs transition-colors ${
-        active
-          ? "bg-muted text-foreground"
-          : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-      }`}
-    >
-      {children}
-    </button>
   );
 }

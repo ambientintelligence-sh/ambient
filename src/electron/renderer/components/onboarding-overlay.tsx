@@ -22,7 +22,7 @@ const TOUR_STEPS = [
   },
   {
     panel: 2 as const,
-    title: "Tasks",
+    title: "Suggested Tasks",
     body: "Suggestions surface as you talk — accept one to put an agent on it.",
   },
   {

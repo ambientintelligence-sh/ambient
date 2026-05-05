@@ -8,6 +8,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -15,6 +18,7 @@ import {
   ChevronDown,
   ChevronRight,
   Folder,
+  MessageCircleIcon,
   MoreHorizontal,
   PlusIcon,
 } from "lucide-react";
@@ -38,7 +42,13 @@ type LeftSidebarProps = {
   agentsBySessionId?: Record<string, Agent[]>;
   selectedAgentId?: string | null;
   onSelectAgent?: (sessionId: string, agentId: string) => void;
+  collapsed?: boolean;
 };
+
+type ProjectFormMode =
+  | { kind: "none" }
+  | { kind: "create" }
+  | { kind: "edit"; project: ProjectMeta };
 
 function formatTime(ms: number): string {
   return new Date(ms).toLocaleTimeString("en-US", {
@@ -58,11 +68,6 @@ function formatDate(ms: number): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-type ProjectFormMode =
-  | { kind: "none" }
-  | { kind: "create" }
-  | { kind: "edit"; project: ProjectMeta };
-
 export function LeftSidebar({
   sessions,
   activeSessionId,
@@ -79,6 +84,7 @@ export function LeftSidebar({
   agentsBySessionId = {},
   selectedAgentId,
   onSelectAgent,
+  collapsed = false,
 }: LeftSidebarProps) {
   const [formMode, setFormMode] = useState<ProjectFormMode>({ kind: "none" });
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
@@ -89,16 +95,12 @@ export function LeftSidebar({
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (formMode.kind !== "none") {
-      nameInputRef.current?.focus();
-    }
+    if (formMode.kind !== "none") nameInputRef.current?.focus();
   }, [formMode.kind]);
 
   useEffect(() => {
-    if (formMode.kind !== "none") {
-      setFormMode({ kind: "none" });
-    }
-  }, [activeProjectId]);
+    if (formMode.kind !== "none") setFormMode({ kind: "none" });
+  }, [activeProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!activeSessionId) return;
@@ -132,9 +134,9 @@ export function LeftSidebar({
 
   function submitForm() {
     const name = formName.trim();
+    if (!name) return;
     const instructions = formInstructions.trim();
     const context = formContext.trim();
-    if (!name) return;
     if (formMode.kind === "create") {
       onCreateProject(name, instructions, context);
     } else if (formMode.kind === "edit") {
@@ -152,60 +154,150 @@ export function LeftSidebar({
     });
   }
 
-  const recentChats: Array<{ agent: Agent; sessionTitle: string }> = [];
-  for (const session of sessions) {
-    const agents = agentsBySessionId[session.id] ?? [];
-    for (const agent of agents) {
-      recentChats.push({ agent, sessionTitle: session.title ?? "Untitled Session" });
-    }
+  const projectMenu = (
+    <DropdownMenu open={projectMenuOpen} onOpenChange={setProjectMenuOpen}>
+      <DropdownMenuTrigger asChild>
+        {collapsed ? (
+          <button
+            type="button"
+            className="flex size-8 cursor-pointer items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+            aria-label={activeProject ? activeProject.name : "All Sessions"}
+            title={activeProject ? activeProject.name : "All Sessions"}
+          >
+            <Folder className="size-4" />
+          </button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="flex-1 justify-between h-7 px-2 text-xs font-medium text-left truncate"
+          >
+            <span className="flex min-w-0 items-center gap-1.5">
+              <Folder className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate">{activeProject ? activeProject.name : "All Sessions"}</span>
+            </span>
+            <ChevronRight className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${projectMenuOpen ? "rotate-90" : ""}`} />
+          </Button>
+        )}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-52">
+        <DropdownMenuItem onSelect={() => onSelectProject(null)}>
+          <span className="flex flex-1 items-center">
+            <span className="flex-1">All Sessions</span>
+            {!activeProject && <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="size-4 text-muted-foreground" />}
+          </span>
+        </DropdownMenuItem>
+        {projects.map((p) => (
+          <DropdownMenuItem key={p.id} onSelect={() => onSelectProject(p.id)}>
+            <span className="flex flex-1 items-center">
+              <span className="flex-1 truncate">{p.name}</span>
+              {activeProjectId === p.id && (
+                <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="size-4 text-muted-foreground" />
+              )}
+            </span>
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator className="mx-2" />
+        <DropdownMenuItem onSelect={openCreateForm}>
+          <span className="flex items-center gap-1.5">
+            <PlusIcon className="size-3.5 shrink-0" />
+            <span>New Folder...</span>
+          </span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  if (collapsed) {
+    return (
+      <div className="w-full h-full shrink-0 border-r border-border flex flex-col items-center gap-2 bg-sidebar px-1.5 py-2">
+        {projectMenu}
+        <button
+          type="button"
+          onClick={onNewSession}
+          className="flex size-8 cursor-pointer items-center justify-center rounded-sm bg-primary text-primary-foreground transition-colors hover:bg-primary/90"
+          aria-label="New session"
+          title="New session"
+        >
+          <PlusIcon className="size-4" />
+        </button>
+        <Separator className="!w-6" />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="flex size-8 cursor-pointer items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+              aria-label="Sessions"
+              title="Sessions"
+            >
+              <MessageCircleIcon className="size-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="max-h-[420px] w-72 overflow-y-auto">
+            <DropdownMenuLabel>Sessions</DropdownMenuLabel>
+            {sessions.length > 0 ? (
+              sessions.map((session) => {
+                const sessionAgents = agentsBySessionId[session.id] ?? [];
+                const isActiveSession = activeSessionId === session.id;
+                const sessionLabel = (
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{session.title ?? "Untitled Session"}</span>
+                    <span className="block truncate font-mono text-2xs text-muted-foreground">
+                      {formatDate(session.startedAt)} · {formatTime(session.startedAt)}
+                      {session.agentCount > 0 && ` · ${session.agentCount} agent${session.agentCount !== 1 ? "s" : ""}`}
+                    </span>
+                  </span>
+                );
+
+                if (sessionAgents.length > 0) {
+                  return (
+                    <DropdownMenuSub key={session.id}>
+                      <DropdownMenuSubTrigger
+                        className={isActiveSession ? "bg-sidebar-accent" : undefined}
+                        onClick={() => onSelectSession?.(session.id)}
+                      >
+                        {sessionLabel}
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-64">
+                        {sessionAgents.map((agent) => (
+                          <DropdownMenuItem
+                            key={agent.id}
+                            onSelect={() => onSelectAgent?.(session.id, agent.id)}
+                            className={selectedAgentId === agent.id && isActiveSession ? "bg-sidebar-accent" : undefined}
+                          >
+                            <HugeiconsIcon icon={WorkoutRunIcon} className="size-3.5 shrink-0 text-muted-foreground" />
+                            <span className="min-w-0 flex-1 truncate text-2xs">{agent.task}</span>
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  );
+                }
+
+                return (
+                  <DropdownMenuItem
+                    key={session.id}
+                    onSelect={() => onSelectSession?.(session.id)}
+                    className={isActiveSession && !selectedAgentId ? "bg-sidebar-accent" : undefined}
+                  >
+                    {sessionLabel}
+                  </DropdownMenuItem>
+                );
+              })
+            ) : (
+              <DropdownMenuItem disabled>No previous sessions</DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    );
   }
-  recentChats.sort((a, b) => (b.agent.completedAt ?? b.agent.createdAt) - (a.agent.completedAt ?? a.agent.createdAt));
-  const recentChatsToShow = recentChats.slice(0, 8);
 
   return (
     <div className="w-full h-full shrink-0 border-r border-border flex flex-col min-h-0 bg-sidebar">
       <div className="px-3 pt-2.5 pb-2 shrink-0">
         <div className="flex items-center gap-1">
-          <DropdownMenu open={projectMenuOpen} onOpenChange={setProjectMenuOpen}>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="flex-1 justify-between h-7 px-2 text-xs font-medium text-left truncate"
-              >
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <Folder className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="truncate">{activeProject ? activeProject.name : "All Sessions"}</span>
-                </span>
-                <ChevronRight className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${projectMenuOpen ? "rotate-90" : ""}`} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-52">
-              <DropdownMenuItem onSelect={() => onSelectProject(null)}>
-                <span className="flex flex-1 items-center">
-                  <span className="flex-1">All Sessions</span>
-                  {!activeProject && <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="size-4 text-muted-foreground" />}
-                </span>
-              </DropdownMenuItem>
-              {projects.map((p) => (
-                <DropdownMenuItem key={p.id} onSelect={() => onSelectProject(p.id)}>
-                  <span className="flex flex-1 items-center">
-                    <span className="flex-1 truncate">{p.name}</span>
-                    {activeProjectId === p.id && (
-                      <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="size-4 text-muted-foreground" />
-                    )}
-                  </span>
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator className="mx-2" />
-              <DropdownMenuItem onSelect={openCreateForm}>
-                <span className="flex items-center gap-1.5">
-                  <PlusIcon className="size-3.5 shrink-0" />
-                  <span>New Folder…</span>
-                </span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {projectMenu}
           {activeProject && (
             <Button
               variant="ghost"
@@ -222,9 +314,7 @@ export function LeftSidebar({
         {formMode.kind !== "none" && (
           <div className="mt-2">
             <div className="space-y-1">
-              <label className="block text-[11px] font-medium text-muted-foreground">
-                Folder name
-              </label>
+              <label className="block text-[11px] font-medium text-muted-foreground">Folder name</label>
               <Input
                 ref={nameInputRef}
                 value={formName}
@@ -238,9 +328,7 @@ export function LeftSidebar({
               />
             </div>
             <div className="mt-1.5 space-y-1">
-              <label className="block text-[11px] font-medium text-muted-foreground">
-                Agent instructions
-              </label>
+              <label className="block text-[11px] font-medium text-muted-foreground">Agent instructions</label>
               <textarea
                 value={formInstructions}
                 onChange={(e) => setFormInstructions(e.target.value)}
@@ -253,9 +341,7 @@ export function LeftSidebar({
               />
             </div>
             <div className="mt-1.5 space-y-1">
-              <label className="block text-[11px] font-medium text-muted-foreground">
-                Transcription context
-              </label>
+              <label className="block text-[11px] font-medium text-muted-foreground">Transcription context</label>
               <textarea
                 value={formContext}
                 onChange={(e) => setFormContext(e.target.value)}
@@ -292,11 +378,7 @@ export function LeftSidebar({
       <Separator className="mx-auto !w-[calc(100%-1rem)]" />
 
       <div className="px-3 pt-3 pb-2 shrink-0">
-        <Button
-          size="sm"
-          className="w-full justify-center hover:bg-primary/90"
-          onClick={onNewSession}
-        >
+        <Button size="sm" className="w-full justify-center hover:bg-primary/90" onClick={onNewSession}>
           <PlusIcon className="size-3.5" data-icon="inline-start" />
           New Session
         </Button>
@@ -304,11 +386,12 @@ export function LeftSidebar({
 
       <div className="px-3 pt-2 pb-2.5 flex-1 min-h-0 flex flex-col">
         <SectionLabel className="mb-2 shrink-0">Sessions</SectionLabel>
-        <div className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1">
+        <div className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1 pb-3 scroll-pb-3">
           {sessions.length > 0 ? (
             <ul className="space-y-0.5">
               {sessions.map((session) => {
                 const sessionAgents = agentsBySessionId[session.id] ?? [];
+                const hasAgents = sessionAgents.length > 0;
                 const expanded = expandedSessionIds.has(session.id);
                 const isActiveSession = activeSessionId === session.id;
                 return (
@@ -318,27 +401,25 @@ export function LeftSidebar({
                         isActiveSession ? "bg-sidebar-accent" : "hover:bg-sidebar-accent"
                       }`}
                     >
-                      <button
-                        type="button"
-                        onClick={() => toggleSessionExpanded(session.id)}
-                        className="shrink-0 cursor-pointer p-1 mt-0.5 text-muted-foreground hover:text-foreground"
-                        aria-label={expanded ? "Collapse session" : "Expand session"}
-                      >
-                        {expanded ? (
-                          <ChevronDown className="size-3" />
-                        ) : (
-                          <ChevronRight className="size-3" />
-                        )}
-                      </button>
+                      {hasAgents ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleSessionExpanded(session.id)}
+                          className="shrink-0 cursor-pointer p-1 mt-0.5 text-muted-foreground hover:text-foreground"
+                          aria-label={expanded ? "Collapse session" : "Expand session"}
+                        >
+                          {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+                        </button>
+                      ) : (
+                        <span className="mt-0.5 block size-5 shrink-0" aria-hidden="true" />
+                      )}
                       <button
                         type="button"
                         onClick={() => onSelectSession?.(session.id)}
                         className="flex-1 min-w-0 text-left py-1.5 cursor-pointer"
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-foreground font-medium truncate">
-                            {session.title ?? "Untitled Session"}
-                          </span>
+                          <span className="text-foreground font-medium truncate">{session.title ?? "Untitled Session"}</span>
                         </div>
                         <div className="text-muted-foreground text-2xs font-mono">
                           {formatDate(session.startedAt)} · {formatTime(session.startedAt)}
@@ -383,10 +464,7 @@ export function LeftSidebar({
                               {onDeleteSession && (
                                 <>
                                   {onMoveSessionToProject && projects.length > 0 && <DropdownMenuSeparator className="mx-2" />}
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onSelect={() => onDeleteSession(session.id)}
-                                  >
+                                  <DropdownMenuItem variant="destructive" onSelect={() => onDeleteSession(session.id)}>
                                     Delete session
                                   </DropdownMenuItem>
                                 </>
@@ -433,40 +511,10 @@ export function LeftSidebar({
               })}
             </ul>
           ) : (
-            <p className="text-xs text-muted-foreground italic">
-              No previous sessions
-            </p>
-          )}
-
-          {recentChatsToShow.length > 0 && (
-            <div className="mt-4">
-              <SectionLabel className="mb-2 shrink-0">Chats</SectionLabel>
-              <ul className="space-y-px">
-                {recentChatsToShow.map(({ agent, sessionTitle }) => {
-                  const isSelected = selectedAgentId === agent.id && activeSessionId === agent.sessionId;
-                  return (
-                    <li key={agent.id}>
-                      <button
-                        type="button"
-                        onClick={() => agent.sessionId && onSelectAgent?.(agent.sessionId, agent.id)}
-                        className={`flex w-full items-center gap-1.5 rounded-sm px-2 py-1 text-left text-2xs cursor-pointer transition-colors ${
-                          isSelected
-                            ? "bg-sidebar-accent text-foreground"
-                            : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-                        }`}
-                        title={`${sessionTitle} · ${agent.task}`}
-                      >
-                        <span className="truncate">{agent.task}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+            <p className="text-xs text-muted-foreground italic">No previous sessions</p>
           )}
         </div>
       </div>
-
     </div>
   );
 }

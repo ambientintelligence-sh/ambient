@@ -1,9 +1,12 @@
 import { Separator } from "@/components/ui/separator";
+import { Settings2Icon } from "lucide-react";
 
 type FooterProps = {
   sessionActive: boolean;
   statusText: string;
   onQuit: () => void;
+  settingsOpen?: boolean;
+  onToggleSettings: () => void;
 };
 
 function Kbd({ children }: { children: React.ReactNode }) {
@@ -14,19 +17,23 @@ function Kbd({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function Footer({ sessionActive, statusText, onQuit }: FooterProps) {
+export function Footer({ sessionActive, statusText, onQuit, settingsOpen, onToggleSettings }: FooterProps) {
   return (
-    <div className="border-t border-border px-4 py-1.5 flex items-center gap-2 text-xs text-muted-foreground h-8 shrink-0">
+    <div className="border-t border-border px-3 py-1.5 flex items-center gap-2 text-xs text-muted-foreground h-8 shrink-0">
+      <button
+        type="button"
+        onClick={onToggleSettings}
+        className={`flex h-7 items-center gap-2 rounded-sm px-2 text-sm font-medium transition-colors hover:bg-muted hover:text-foreground ${
+          settingsOpen ? "bg-muted text-foreground" : ""
+        }`}
+        aria-label={settingsOpen ? "Close settings" : "Open settings"}
+        title={settingsOpen ? "Close settings" : "Open settings"}
+      >
+        <Settings2Icon className="size-4" strokeWidth={2} />
+        <span>Settings</span>
+      </button>
       {sessionActive ? (
         <>
-          <Kbd>Space</Kbd>
-          <span>record</span>
-          <Separator orientation="vertical" className="h-3 mx-0.5" />
-          <Kbd>{"\u2191\u2193"}</Kbd>
-          <span>scroll</span>
-          <Separator orientation="vertical" className="h-3 mx-0.5" />
-          <Kbd>End</Kbd>
-          <span>summary</span>
           {statusText && (
             <>
               <Separator orientation="vertical" className="h-3 mx-0.5" />
@@ -35,7 +42,16 @@ export function Footer({ sessionActive, statusText, onQuit }: FooterProps) {
               </span>
             </>
           )}
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <Kbd>Space</Kbd>
+            <span>record</span>
+            <Separator orientation="vertical" className="h-3 mx-0.5" />
+            <Kbd>{"\u2191\u2193"}</Kbd>
+            <span>scroll</span>
+            <Separator orientation="vertical" className="h-3 mx-0.5" />
+            <Kbd>End</Kbd>
+            <span>summary</span>
+            <Separator orientation="vertical" className="h-3 mx-0.5" />
             <button
               type="button"
               onClick={onQuit}
@@ -48,9 +64,10 @@ export function Footer({ sessionActive, statusText, onQuit }: FooterProps) {
         </>
       ) : (
         <>
-          <Kbd>Space</Kbd>
-          <span>start</span>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <Kbd>Space</Kbd>
+            <span>start</span>
+            <Separator orientation="vertical" className="h-3 mx-0.5" />
             <button
               type="button"
               onClick={onQuit}

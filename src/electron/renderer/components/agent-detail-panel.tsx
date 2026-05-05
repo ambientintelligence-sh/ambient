@@ -23,7 +23,6 @@ import {
   PromptInput,
   PromptInputTextarea,
   PromptInputFooter,
-  PromptInputSubmit,
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
 import {
@@ -73,6 +72,7 @@ import { AskQuestionPendingCard, AskQuestionResolvedCard } from "./ask-question-
 import { AgentPlanCard } from "./agent-plan-card";
 import { ToolApprovalCard } from "./tool-approval-card";
 import { ProviderTaskViewer } from "./provider-task-viewer";
+import { ComposerSendButton } from "./composer-send-button";
 
 const PROVIDER_TASK_TOOLS = new Set(["codex", "claude"]);
 
@@ -901,10 +901,10 @@ export function AgentDetailPanel({
             />
             <PromptInputFooter className="px-2 pb-1">
               <div />
-              <PromptInputSubmit
-                status={isRunning && onCancel ? "streaming" : undefined}
+              <ComposerSendButton
+                type="submit"
+                streaming={isRunning && !!onCancel}
                 onStop={handleCancel}
-                className="size-7 rounded-full"
               />
             </PromptInputFooter>
           </PromptInput>

@@ -5,10 +5,8 @@ import {
   ChevronDownIcon,
   XIcon,
   LoaderCircleIcon,
-  PlayIcon,
   PlusIcon,
   Trash2Icon,
-  ZapIcon,
   SearchIcon,
   PencilIcon,
   LightbulbIcon,
@@ -16,8 +14,6 @@ import {
   ListChecksIcon,
   ArchiveIcon,
 } from "lucide-react";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { WorkoutRunIcon } from "@hugeicons/core-free-icons";
 import { SectionLabel } from "@/components/ui/section-label";
 import { useUIStore } from "../stores/ui-store";
 
@@ -81,10 +77,6 @@ type RightSidebarProps = {
   summaryContent?: ReactNode;
   transcriptContent?: ReactNode;
 };
-
-function isLineClamped(el: HTMLElement): boolean {
-  return el.scrollHeight - el.clientHeight > 1 || el.scrollWidth - el.clientWidth > 1;
-}
 
 export function SuggestionItem({
   suggestion,
@@ -386,177 +378,6 @@ export function AgentActivityCard({
   );
 }
 
-function EditableTaskItem({
-  task,
-  isProcessing,
-  agent,
-  onToggle,
-  onDelete,
-  onUpdate,
-  onLaunchAgent,
-  onSelectAgent,
-}: {
-  task: TaskItem;
-  isProcessing: boolean;
-  agent?: Agent;
-  onToggle?: () => void;
-  onDelete?: () => void;
-  onUpdate?: (text: string) => void;
-  onLaunchAgent?: () => void;
-  onSelectAgent?: (id: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(task.text);
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [detailsClamped, setDetailsClamped] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const detailsRef = useRef<HTMLParagraphElement>(null);
-  const taskDetails = task.details?.trim() ?? "";
-  const hasDetails = taskDetails.length > 0;
-  const needsExpandButton = detailsOpen || detailsClamped;
-
-  useEffect(() => {
-    if (editing) inputRef.current?.select();
-  }, [editing]);
-
-  useEffect(() => {
-    const el = detailsRef.current;
-    if (!el || detailsOpen) {
-      setDetailsClamped(false);
-      return;
-    }
-
-    const measure = () => setDetailsClamped(isLineClamped(el));
-    measure();
-
-    const ro = new ResizeObserver(() => measure());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [taskDetails, detailsOpen]);
-
-  function handleDoubleClick() {
-    if (isProcessing || !onUpdate) return;
-    setDraft(task.text);
-    setEditing(true);
-  }
-
-  function commit() {
-    const trimmed = draft.trim();
-    if (trimmed && trimmed !== task.text) onUpdate?.(trimmed);
-    setEditing(false);
-  }
-
-  function handleKey(e: React.KeyboardEvent) {
-    if (e.key === "Enter") commit();
-    if (e.key === "Escape") setEditing(false);
-  }
-
-  return (
-    <li className="flex items-start gap-2 min-h-7 group px-1 -mx-1 rounded-sm hover:bg-muted/60 transition-colors py-1.5 cursor-pointer">
-      {isProcessing ? (
-        <LoaderCircleIcon className="size-3 shrink-0 text-muted-foreground animate-spin mt-px" />
-      ) : (
-        <input
-          type="checkbox"
-          checked={false}
-          onChange={onToggle}
-          className="size-3 shrink-0 rounded-sm border-border accent-primary cursor-pointer mt-px"
-        />
-      )}
-      {editing ? (
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={handleKey}
-          className="flex-1 text-xs bg-transparent border-b border-primary outline-none"
-        />
-      ) : (
-        <div className="flex-1 min-w-0">
-          <span
-            onDoubleClick={handleDoubleClick}
-            className={`text-xs block break-words leading-normal ${isProcessing ? "text-muted-foreground italic" : "text-foreground"} ${onUpdate && !isProcessing ? "cursor-text" : ""}`}
-          >
-            {task.text}
-          </span>
-          {hasDetails && (
-            <div className="mt-0.5">
-              <p
-                ref={detailsRef}
-                className={`text-2xs text-muted-foreground ${detailsOpen ? "whitespace-pre-wrap" : "line-clamp-2"}`}
-              >
-                {taskDetails}
-              </p>
-              {needsExpandButton && (
-                <button
-                  type="button"
-                  onClick={() => setDetailsOpen((prev) => !prev)}
-                  className="mt-0.5 cursor-pointer text-2xs text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  {detailsOpen ? "Hide details" : "Show details"}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-      {agent && onSelectAgent ? (
-        <div className="flex items-center gap-0.5 shrink-0 mt-px">
-          <button
-            type="button"
-            onClick={() => onSelectAgent(agent.id)}
-            className={`cursor-pointer p-0.5 transition-colors ${
-              agent.status === "completed"
-                ? "text-green-500 hover:text-green-400"
-                : "text-destructive hover:text-destructive/80"
-            }`}
-            aria-label="View agent results"
-          >
-            <HugeiconsIcon icon={WorkoutRunIcon} className="size-3" />
-          </button>
-          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              type="button"
-              onClick={onDelete}
-              className="cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-destructive"
-              aria-label="Archive task"
-            >
-              <Trash2Icon className="size-3" />
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-center gap-0.5 shrink-0 mt-px">
-          {task.source === "ai" && !isProcessing && !editing && (
-            <ZapIcon className="size-3 text-muted-foreground/40 group-hover:invisible" />
-          )}
-          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            {!isProcessing && onLaunchAgent && (
-              <button
-                type="button"
-                onClick={onLaunchAgent}
-                className="cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-primary"
-                aria-label="Run with agent"
-              >
-                <PlayIcon className="size-3" />
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onDelete}
-              className="cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-destructive"
-              aria-label="Delete task"
-            >
-              <Trash2Icon className="size-3" />
-            </button>
-          </div>
-        </div>
-      )}
-    </li>
-  );
-}
-
 function RailModeButton({
   active,
   onClick,
@@ -583,20 +404,11 @@ function RailModeButton({
 }
 
 export function RightSidebar({
-  tasks,
   suggestions,
   suggestionProgress,
   suggestionScanCards = [],
   scanWordBudget,
-  agents,
-  selectedAgentId,
   forceWorkTabKey = 0,
-  onSelectAgent,
-  onLaunchAgent,
-  onToggleTask,
-  onDeleteTask,
-  onUpdateTask,
-  processingTaskIds = [],
   onAcceptSuggestion,
   onDismissSuggestion,
   archivedSuggestions = [],
@@ -605,7 +417,6 @@ export function RightSidebar({
   sessionId,
   sessionActive = false,
   onRequestTaskScan,
-  isViewingPast = false,
   hideScanCounter = false,
   hideScanActivity = false,
   hideSuggestions = false,
@@ -613,47 +424,16 @@ export function RightSidebar({
   transcriptContent,
 }: RightSidebarProps) {
   const [modeBySession, setModeBySession] = useLocalStorage<Record<string, RightRailMode>>("ambient-right-rail-mode-v2", {});
-  const [completedOpen, setCompletedOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useState(false);
-  const lastAutoOpenedAgentIdRef = useRef<string | null>(null);
-  const processingTaskIdSet = new Set(processingTaskIds);
   const sessionTabKey = sessionId ?? EMPTY_SESSION_TAB_KEY;
   const mode = modeBySession[sessionTabKey] ?? "tasks";
   const setMode = (nextMode: RightRailMode) => {
     setModeBySession((prev) => ({ ...prev, [sessionTabKey]: nextMode }));
   };
 
-  const agentByTaskId = new Map<string, Agent>();
-  for (const agent of agents ?? []) {
-    if (agent.taskId && !agentByTaskId.has(agent.taskId)) {
-      agentByTaskId.set(agent.taskId, agent);
-    }
-  }
-
-  const activeTasks: TaskItem[] = [];
-  const completedTasks: TaskItem[] = [];
-  let openTasksCount = 0;
-  let pendingInAgentsCount = 0;
-  for (const task of tasks) {
-    if (task.completed) {
-      completedTasks.push(task);
-      continue;
-    }
-    openTasksCount += 1;
-    if (agentByTaskId.get(task.id)?.status === "running") {
-      pendingInAgentsCount += 1;
-      continue;
-    }
-    activeTasks.push(task);
-  }
-
-  const completedHaveAgents = completedTasks.some((t) => agentByTaskId.has(t.id));
-
   useEffect(() => {
-    if (!selectedAgentId) lastAutoOpenedAgentIdRef.current = null;
     if (forceWorkTabKey > 0) setMode("tasks");
-    if (isViewingPast && completedHaveAgents) setCompletedOpen(true);
-  }, [selectedAgentId, forceWorkTabKey, isViewingPast, completedHaveAgents, setMode]);
+  }, [forceWorkTabKey, setMode]);
 
   const onboardingPhase = useUIStore((s) => s.onboardingPhase);
   const tourStep = useUIStore((s) => s.tourStep);
@@ -664,7 +444,7 @@ export function RightSidebar({
     if (tourStep === 3) setMode("summary");
   }, [onboardingPhase, tourStep, setMode]);
 
-  const activeSuggestionCards = suggestionScanCards
+  const activeSuggestionCards = [...suggestionScanCards]
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 3);
 
@@ -680,7 +460,7 @@ export function RightSidebar({
           <RailModeButton
             active={mode === "tasks"}
             onClick={() => setMode("tasks")}
-            label={`Tasks (${openTasksCount})`}
+            label="Tasks"
           />
           <RailModeButton
             active={mode === "transcript"}
@@ -692,120 +472,10 @@ export function RightSidebar({
       <div className={`flex-1 min-h-0 ${mode === "tasks" ? "overflow-y-auto px-3 pb-3" : "flex flex-col"}`}>
         {mode === "tasks" ? (
           <>
-            {/* Active tasks */}
-            <div className="mb-3">
-              <div className="sticky top-0 z-20 -mx-1 mb-2 flex items-center justify-between gap-3 rounded-xl bg-sidebar/88 px-1 py-1 backdrop-blur supports-[backdrop-filter]:bg-sidebar/72">
-                <SectionLabel as="span">
-                  {pendingInAgentsCount > 0 ? `Tasks · ${pendingInAgentsCount} in agents` : "Tasks"}
-                </SectionLabel>
-                <div className="flex items-center justify-end">
-                  {(() => {
-                    const completedByAgent = activeTasks.filter(
-                      (t) => agentByTaskId.get(t.id)?.status === "completed"
-                    );
-                    if (completedByAgent.length === 0) return null;
-                    return (
-                      <button
-                        type="button"
-                        onClick={() => completedByAgent.forEach((t) => onToggleTask?.(t.id))}
-                        className="cursor-pointer text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-                      >
-                        Complete all ({completedByAgent.length})
-                      </button>
-                    );
-                  })()}
-                </div>
-              </div>
-              {activeTasks.length > 0 ? (
-                <ul className="space-y-px">
-                  {activeTasks.map((task) => (
-                    <EditableTaskItem
-                      key={task.id}
-                      task={task}
-                      isProcessing={processingTaskIdSet.has(task.id)}
-                      agent={agentByTaskId.get(task.id)}
-                      onToggle={() => onToggleTask?.(task.id)}
-                      onDelete={() => onDeleteTask?.(task.id)}
-                      onUpdate={onUpdateTask ? (text) => onUpdateTask(task.id, text) : undefined}
-                      onLaunchAgent={onLaunchAgent ? () => onLaunchAgent(task) : undefined}
-                      onSelectAgent={onSelectAgent ?? undefined}
-                    />
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-xs text-muted-foreground italic">
-                  Added tasks will appear here
-                </p>
-              )}
-              {completedTasks.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setCompletedOpen((prev) => !prev)}
-                  className="mt-3 flex cursor-pointer items-center gap-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  <ChevronDownIcon
-                    className={`size-3 transition-transform ${completedOpen ? "" : "-rotate-90"}`}
-                  />
-                  Completed ({completedTasks.length})
-                </button>
-              )}
-              {completedTasks.length > 0 && completedOpen && (
-                <ul className="mt-1.5 space-y-px">
-                  {completedTasks.map((task) => {
-                    const taskAgent = agentByTaskId.get(task.id);
-                    return (
-                      <li key={task.id} className="flex items-center gap-2 h-7 group px-1 -mx-1 rounded-sm hover:bg-muted/60 transition-colors cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked
-                          onChange={() => onToggleTask?.(task.id)}
-                          className="size-3 shrink-0 rounded-sm border-border accent-primary cursor-pointer"
-                        />
-                        {taskAgent && onSelectAgent ? (
-                          <button
-                            type="button"
-                            onClick={() => onSelectAgent(taskAgent.id)}
-                            className="flex-1 cursor-pointer truncate text-left text-xs text-muted-foreground/60 line-through transition-colors hover:text-muted-foreground"
-                          >
-                            {task.text}
-                          </button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground/60 truncate flex-1 line-through">
-                            {task.text}
-                          </span>
-                        )}
-                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                          {taskAgent && onSelectAgent && (
-                            <button
-                              type="button"
-                              onClick={() => onSelectAgent(taskAgent.id)}
-                              className="cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-primary"
-                              aria-label="View agent results"
-                            >
-                              <HugeiconsIcon icon={WorkoutRunIcon} className="size-3" />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => onDeleteTask?.(task.id)}
-                            className="cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-destructive"
-                            aria-label="Delete task"
-                          >
-                            <Trash2Icon className="size-3" />
-                          </button>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-
-            {/* Suggestions */}
             <div>
               {!hideSuggestions && (
                 <div className="sticky top-0 z-20 -mx-1 mb-2 rounded-xl bg-sidebar/88 px-1 py-1 backdrop-blur supports-[backdrop-filter]:bg-sidebar/72">
-                  <SectionLabel as="span">Suggested</SectionLabel>
+                  <SectionLabel as="span">Suggested tasks</SectionLabel>
                 </div>
               )}
               {sessionActive && suggestionProgress && !hideScanCounter && (
@@ -868,7 +538,7 @@ export function RightSidebar({
                             type="button"
                             onClick={() => onAcceptArchivedTask?.(task)}
                             className="shrink-0 cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-primary opacity-0 group-hover:opacity-100"
-                            aria-label="Add archived suggestion to tasks"
+                            aria-label="Accept archived suggestion"
                           >
                             <PlusIcon className="size-3" />
                           </button>

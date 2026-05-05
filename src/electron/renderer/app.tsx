@@ -27,7 +27,6 @@ import { TranscriptArea } from "./components/transcript-area";
 import { LeftSidebar } from "./components/left-sidebar";
 import { RightSidebar } from "./components/right-sidebar";
 import { AgentDetailPanel } from "./components/agent-detail-panel";
-import { NewAgentPanel } from "./components/new-agent-panel";
 import { SessionHome } from "./components/session-home";
 import { SessionCenter } from "./components/session-center";
 import { ErrorBoundary } from "./components/error-boundary";
@@ -52,6 +51,10 @@ import { useTaskStore } from "./stores/task-store";
 import { useSessionListStore } from "./stores/session-list-store";
 
 type ResizeHandle = "left" | "right";
+type ViewNavEntry = {
+  sessionId: string | null;
+  agentId: string | null;
+};
 
 const MIN_TRANSCRIPT_WIDTH = 360;
 const LEFT_PANEL_MIN_WIDTH = 220;
@@ -61,6 +64,10 @@ const RIGHT_PANEL_MAX_WIDTH = 560;
 
 function clampWidth(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
+function sameViewEntry(a: ViewNavEntry | null, b: ViewNavEntry | null): boolean {
+  return a?.sessionId === b?.sessionId && a?.agentId === b?.agentId;
 }
 
 function joinTaskDetails(...sections: Array<string | undefined>): string | undefined {
@@ -106,11 +113,17 @@ export function App() {
     startRight: number;
   } | null>(null);
   const [leftPanelWidth, setLeftPanelWidth] = useLocalStorage<number>("ambient-left-panel-width", 280);
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useLocalStorage<boolean>("ambient-left-panel-collapsed", false);
   const [rightPanelWidth, setRightPanelWidth] = useLocalStorage<number>("ambient-right-panel-width", 300);
   const [rightPanelOpen, setRightPanelOpen] = useLocalStorage<boolean>("ambient-right-panel-open", true);
   const pendingNewSessionRouteRef = useRef(false);
   const pendingCaptureStartRef = useRef<{ mic: boolean; deviceAudio: boolean } | null>(null);
   const [popupSessionId, setPopupSessionId] = useState<string | null>(null);
+  const [viewBackStack, setViewBackStack] = useState<ViewNavEntry[]>([]);
+  const [viewForwardStack, setViewForwardStack] = useState<ViewNavEntry[]>([]);
+  const [sessionAgentsCache, setSessionAgentsCache] = useState<Record<string, Agent[]>>({});
+  const currentViewRef = useRef<ViewNavEntry | null>(null);
+  const historyTargetRef = useRef<ViewNavEntry | null>(null);
 
   useEffect(() => {
     const hasStoredSelection = localStorage.getItem("ambient-translate-to-selection") !== null;
@@ -129,7 +142,6 @@ export function App() {
   const settingsOpen = useUIStore((s) => s.settingsOpen);
   const langError = useUIStore((s) => s.langError);
   const routeNotice = useUIStore((s) => s.routeNotice);
-  const newAgentMode = useUIStore((s) => s.newAgentMode);
   const onboardingPhase = useUIStore((s) => s.onboardingPhase);
   const onboardingCompleted = useUIStore((s) => s.onboardingCompleted);
   const tourStep = useUIStore((s) => s.tourStep);
@@ -1103,6 +1115,10 @@ export function App() {
     }
     ui().setRouteNotice("");
     await ts().acceptArchivedTask({ task, targetSessionId, appConfig });
+    const accepted = useTaskStore.getState().tasks.find((t) => t.id === task.id);
+    if (accepted) {
+      await launchTaskAgent(accepted);
+    }
   };
 
   // --- Agent handlers ---
@@ -1141,11 +1157,6 @@ export function App() {
       return;
     }
     await launchTaskAgent(task);
-  };
-
-  const handleNewAgent = () => {
-    selectAgent(null);
-    ui().setNewAgentMode(true);
   };
 
   const handleSelectAgentInSession = async (sid: string, agentId: string) => {
@@ -1492,14 +1503,105 @@ export function App() {
     : sessions;
 
   const currentSessionId = selectedSessionId ?? session.sessionId ?? null;
-  const agentsBySessionId: Record<string, typeof agents> = {};
-  if (currentSessionId) {
-    agentsBySessionId[currentSessionId] = agents;
-  }
+  const agentsBySessionId: Record<string, Agent[]> = currentSessionId
+    ? { ...sessionAgentsCache, [currentSessionId]: agents }
+    : sessionAgentsCache;
   const currentSessionMeta = currentSessionId
     ? sessions.find((s) => s.id === currentSessionId)
     : null;
   const currentSessionTitle = currentSessionMeta?.title ?? "Untitled Session";
+
+  useEffect(() => {
+    const idsToLoad = visibleSessions
+      .filter((s) => s.agentCount > 0 && !sessionAgentsCache[s.id])
+      .map((s) => s.id);
+    if (idsToLoad.length === 0) return;
+
+    let cancelled = false;
+    void Promise.all(
+      idsToLoad.map(async (sessionId) => {
+        const sessionAgents = await window.electronAPI.getSessionAgents(sessionId);
+        return [sessionId, sessionAgents] as const;
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      setSessionAgentsCache((prev) => {
+        const next = { ...prev };
+        for (const [sessionId, sessionAgents] of entries) {
+          next[sessionId] = sessionAgents;
+        }
+        return next;
+      });
+    }).catch((error) => {
+      console.warn("Failed to load session agents", error);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleSessions, sessionAgentsCache]);
+
+  useEffect(() => {
+    const next: ViewNavEntry = { sessionId: currentSessionId, agentId: selectedAgentId };
+    const target = historyTargetRef.current;
+
+    if (target) {
+      if (sameViewEntry(next, target)) {
+        currentViewRef.current = next;
+        historyTargetRef.current = null;
+      }
+      return;
+    }
+
+    const current = currentViewRef.current;
+    if (sameViewEntry(current, next)) return;
+
+    if (current) {
+      setViewBackStack((prev) => [...prev, current].slice(-50));
+      setViewForwardStack([]);
+    }
+    currentViewRef.current = next;
+  }, [currentSessionId, selectedAgentId]);
+
+  const applyViewEntry = async (entry: ViewNavEntry) => {
+    if (entry.sessionId) {
+      if (entry.agentId) {
+        await handleSelectAgentInSession(entry.sessionId, entry.agentId);
+      } else {
+        await handleSelectSession(entry.sessionId);
+      }
+      return;
+    }
+
+    micCapture.stop();
+    replaceSessionPath(null);
+    sl().setSelectedSessionId(null);
+    sl().setSessionActive(false);
+    sl().setResumeSessionId(null);
+    ts().resetForSession();
+    seedAgents(null, []);
+    session.clearSession();
+  };
+
+  const navigateViewBack = () => {
+    const previous = viewBackStack.at(-1);
+    const current = currentViewRef.current;
+    if (!previous || !current) return;
+    historyTargetRef.current = previous;
+    setViewBackStack((prev) => prev.slice(0, -1));
+    setViewForwardStack((prev) => [current, ...prev].slice(0, 50));
+    void applyViewEntry(previous);
+  };
+
+  const navigateViewForward = () => {
+    const next = viewForwardStack[0];
+    const current = currentViewRef.current;
+    if (!next || !current) return;
+    historyTargetRef.current = next;
+    setViewForwardStack((prev) => prev.slice(1));
+    setViewBackStack((prev) => [...prev, current].slice(-50));
+    void applyViewEntry(next);
+  };
 
   const handleToggleSettings = () => {
     if (settingsOpen && onboardingPhase === "settings") {
@@ -1519,11 +1621,10 @@ export function App() {
     }
   };
 
-  const sessionCenterMode: "home" | "new-agent" | "agent" = newAgentMode
-    ? "new-agent"
-    : selectedAgent
-      ? "agent"
-      : "home";
+  const sessionCenterMode: "home" | "agent" = selectedAgent ? "agent" : "home";
+  const topBarCaptureStatus = isCaptureActive
+    ? (session.uiState?.status === "connecting" ? "connecting" : "recording")
+    : (session.uiState?.status ?? "idle");
 
   // --- Render ---
   if (!splashDone) {
@@ -1563,12 +1664,19 @@ export function App() {
       ) : (
         <TopBar
           title={currentSessionId ? currentSessionTitle : "Ambient"}
-          settingsOpen={settingsOpen}
-          onToggleSettings={handleToggleSettings}
+          leftPanelCollapsed={leftPanelCollapsed}
+          onToggleLeftPanel={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
+          agentOpen={!!selectedAgent}
+          canNavigateBack={viewBackStack.length > 0}
+          canNavigateForward={viewForwardStack.length > 0}
+          onNavigateBack={navigateViewBack}
+          onNavigateForward={navigateViewForward}
           popupOpen={popupSessionId !== null}
           onPopOut={handlePopOut}
           rightPanelOpen={rightPanelOpen}
           onToggleRightPanel={() => setRightPanelOpen(!rightPanelOpen)}
+          captureActive={isCaptureActive}
+          captureStatus={topBarCaptureStatus}
         />
       )}
 
@@ -1607,7 +1715,7 @@ export function App() {
           />
         ) : (
           <>
-            <div className="shrink-0 min-h-0" style={{ width: leftPanelWidth }}>
+            <div className="shrink-0 min-h-0" style={{ width: leftPanelCollapsed ? 48 : leftPanelWidth }}>
               <LeftSidebar
                 sessions={visibleSessions}
                 activeSessionId={selectedSessionId}
@@ -1624,23 +1732,25 @@ export function App() {
                 agentsBySessionId={agentsBySessionId}
                 selectedAgentId={selectedAgentId}
                 onSelectAgent={(sid, aid) => { void handleSelectAgentInSession(sid, aid); }}
+                collapsed={leftPanelCollapsed}
               />
             </div>
-            <div
-              role="separator"
-              aria-label="Resize left panel"
-              aria-orientation="vertical"
-              className="group relative w-1.5 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-border/50"
-              onMouseDown={handleResizeMouseDown("left")}
-            >
-              <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/80 transition-colors group-hover:bg-foreground/30" />
-            </div>
+            {!leftPanelCollapsed && (
+              <div
+                role="separator"
+                aria-label="Resize left panel"
+                aria-orientation="vertical"
+                className="group relative w-1.5 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-border/50"
+                onMouseDown={handleResizeMouseDown("left")}
+              >
+                <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/80 transition-colors group-hover:bg-foreground/30" />
+              </div>
+            )}
             <ErrorBoundary tag="main-middle-panel">
               <SessionCenter
                 mode={sessionCenterMode}
                 homeContent={
                   <SessionHome
-                    sessionTitle={currentSessionTitle}
                     agents={agents}
                     selectedAgentId={selectedAgentId}
                     onSelectAgent={selectAgent}
@@ -1660,14 +1770,6 @@ export function App() {
                     onTranslateToSelectionChange={setTranslateToSelection}
                     onSetTranslationMode={handleSetTranslationMode}
                   />
-                }
-                newAgentContent={
-                  <ErrorBoundary tag="main-new-agent">
-                    <NewAgentPanel
-                      onLaunch={handleLaunchCustomAgent}
-                      onClose={() => ui().setNewAgentMode(false)}
-                    />
-                  </ErrorBoundary>
                 }
                 agentContent={
                   selectedAgent ? (
@@ -1862,6 +1964,8 @@ export function App() {
         sessionActive={sessionActive}
         statusText={session.statusText}
         onQuit={sessionActive ? handleStop : () => window.close()}
+        settingsOpen={settingsOpen}
+        onToggleSettings={handleToggleSettings}
       />
     </div>
   );

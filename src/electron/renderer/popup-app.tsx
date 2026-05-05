@@ -1,12 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocalStorage } from "usehooks-ts";
 import {
-  CircleIcon,
-  SquareIcon,
-  MicIcon,
-  MicOffIcon,
-  Volume2Icon,
-  VolumeXIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   ChevronLeftIcon,
@@ -36,6 +30,7 @@ import { AgentActivityCard } from "./components/right-sidebar";
 import { AgentDetailPanel } from "./components/agent-detail-panel";
 import { NewAgentPanel } from "./components/new-agent-panel";
 import { ErrorBoundary } from "./components/error-boundary";
+import { CaptureRecordButton, CaptureStatusPill, CaptureToggleButton } from "./components/capture-controls";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -857,84 +852,35 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
         style={dragStyle}
       >
       <div ref={toolbarRowRef} className="flex items-center gap-1 px-2 py-1.5">
-        <button
-          type="button"
+        <CaptureRecordButton
+          active={isCaptureActive}
+          status={uiState?.status}
           onClick={() => { void handleRecordToggle(); }}
-          disabled={uiState?.status === "connecting"}
-          title={isCaptureActive ? "Stop recording" : currentSessionId ? "Start recording" : "Start session and record"}
+          startTitle={currentSessionId ? "Start recording" : "Start session and record"}
           style={noDragStyle}
-          className={[
-            "flex h-7 w-[86px] items-center justify-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60",
-            isCaptureActive
-              ? "bg-red-500/15 text-red-600 hover:bg-red-500/25 dark:text-red-300"
-              : "bg-foreground/[0.06] text-foreground hover:bg-foreground/[0.12] dark:bg-white/10 dark:hover:bg-white/15",
-          ].join(" ")}
-        >
-          {isCaptureActive ? (
-            <>
-              <SquareIcon className="size-3 fill-current" />
-              <span>Stop</span>
-            </>
-          ) : (
-            <>
-              <CircleIcon className="size-3 fill-red-500 text-red-500" />
-              <span>Record</span>
-            </>
-          )}
-        </button>
+        />
 
-        <button
-          type="button"
+        <CaptureToggleButton
+          active={armedMicInput}
+          kind="mic"
           onClick={() => { void handleToggleMicArmed(); }}
-          title={armedMicInput ? "Mic armed (click to disable)" : "Mic disabled"}
-          aria-label="Toggle mic input"
           style={noDragStyle}
-          className={[
-            "flex items-center justify-center size-7 rounded-full transition-colors cursor-pointer",
-            armedMicInput
-              ? "text-foreground bg-foreground/[0.06] hover:bg-foreground/[0.12] dark:bg-white/10 dark:hover:bg-white/15"
-              : "text-muted-foreground/60 hover:text-muted-foreground hover:bg-foreground/[0.06] dark:hover:bg-white/10",
-          ].join(" ")}
-        >
-          {armedMicInput ? <MicIcon className="size-3.5" /> : <MicOffIcon className="size-3.5" />}
-        </button>
+        />
 
-        <button
-          type="button"
+        <CaptureToggleButton
+          active={armedDeviceAudio}
+          kind="device-audio"
           onClick={() => { void handleToggleAudioArmed(); }}
-          title={armedDeviceAudio ? "Device audio armed (click to disable)" : "Device audio disabled"}
-          aria-label="Toggle device audio"
           style={noDragStyle}
-          className={[
-            "flex items-center justify-center size-7 rounded-full transition-colors cursor-pointer",
-            armedDeviceAudio
-              ? "text-foreground bg-foreground/[0.06] hover:bg-foreground/[0.12] dark:bg-white/10 dark:hover:bg-white/15"
-              : "text-muted-foreground/60 hover:text-muted-foreground hover:bg-foreground/[0.06] dark:hover:bg-white/10",
-          ].join(" ")}
-        >
-          {armedDeviceAudio ? <Volume2Icon className="size-3.5" /> : <VolumeXIcon className="size-3.5" />}
-        </button>
+        />
 
         <div className="flex h-7 min-w-0 flex-1 items-center gap-1.5 ml-1.5">
-          {isCaptureActive ? (
-            <span className="relative flex size-2 shrink-0">
-              <span className="absolute inset-0 rounded-full bg-red-500/35 animate-ping" />
-              <span className="relative inline-flex size-2 rounded-full bg-red-500" />
-            </span>
-          ) : currentSessionId ? (
-            <span className="inline-block size-2 rounded-full bg-muted-foreground/40 shrink-0" />
-          ) : (
-            <span className="inline-block size-2 rounded-full bg-transparent shrink-0" />
-          )}
-          {uiState?.status === "connecting" ? (
-            <span className="text-2xs text-muted-foreground truncate">Connecting…</span>
-          ) : isCaptureActive ? (
-            <span className="text-2xs text-red-600/80 dark:text-red-300/80 truncate">Recording</span>
-          ) : currentSessionId && sessionTitle ? (
-            <span className="text-2xs text-muted-foreground truncate">{sessionTitle}</span>
-          ) : (
-            <span className="text-2xs text-muted-foreground/70 truncate">Ambient</span>
-          )}
+          <CaptureStatusPill
+            active={isCaptureActive}
+            status={uiState?.status}
+            label={currentSessionId && sessionTitle ? sessionTitle : "Ambient"}
+            className="text-2xs"
+          />
         </div>
 
         <button
