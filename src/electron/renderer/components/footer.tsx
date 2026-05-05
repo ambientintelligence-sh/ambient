@@ -46,12 +46,6 @@ export function Footer({ sessionActive, statusText, onQuit, settingsOpen, onTogg
             <Kbd>Space</Kbd>
             <span>record</span>
             <Separator orientation="vertical" className="h-3 mx-0.5" />
-            <Kbd>{"\u2191\u2193"}</Kbd>
-            <span>scroll</span>
-            <Separator orientation="vertical" className="h-3 mx-0.5" />
-            <Kbd>End</Kbd>
-            <span>summary</span>
-            <Separator orientation="vertical" className="h-3 mx-0.5" />
             <button
               type="button"
               onClick={onQuit}

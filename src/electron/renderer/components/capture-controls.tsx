@@ -8,12 +8,20 @@ import {
 } from "lucide-react";
 import type { CSSProperties } from "react";
 import type { UIState } from "@core/types";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type CaptureRecordButtonProps = {
   active: boolean;
   status?: UIState["status"];
   onClick: () => void;
   startTitle?: string;
+  startLabel?: string;
+  stopLabel?: string;
   className?: string;
   style?: CSSProperties;
 };
@@ -24,6 +32,9 @@ type CaptureToggleButtonProps = {
   onClick: () => void;
   className?: string;
   style?: CSSProperties;
+  tooltip?: string;
+  tooltipSide?: "top" | "right" | "bottom" | "left";
+  tooltipMode?: "custom" | "native";
 };
 
 type CaptureStatusPillProps = {
@@ -38,6 +49,8 @@ export function CaptureRecordButton({
   status,
   onClick,
   startTitle = "Start recording",
+  startLabel = "Record",
+  stopLabel = "Stop",
   className = "",
   style,
 }: CaptureRecordButtonProps) {
@@ -60,12 +73,12 @@ export function CaptureRecordButton({
       {active ? (
         <>
           <SquareIcon className="size-3 fill-current" />
-          <span>Stop</span>
+          <span>{stopLabel}</span>
         </>
       ) : (
         <>
           <CircleIcon className="size-3 fill-red-500 text-red-500" />
-          <span>Record</span>
+          <span>{startLabel}</span>
         </>
       )}
     </button>
@@ -78,18 +91,29 @@ export function CaptureToggleButton({
   onClick,
   className = "",
   style,
+  tooltip,
+  tooltipSide = "bottom",
+  tooltipMode = "custom",
 }: CaptureToggleButtonProps) {
   const isMic = kind === "mic";
   const label = isMic ? "mic input" : "device audio";
   const Icon = isMic
     ? (active ? MicIcon : MicOffIcon)
     : (active ? Volume2Icon : VolumeXIcon);
+  const tooltipText = tooltip ?? (
+    isMic
+      ? "Captures audio from your microphone."
+      : "Captures audio from your device."
+  );
+  const title = active
+    ? `${label[0].toUpperCase()}${label.slice(1)} on`
+    : `${label[0].toUpperCase()}${label.slice(1)} off`;
 
-  return (
+  const button = (
     <button
       type="button"
       onClick={onClick}
-      title={active ? `${label[0].toUpperCase()}${label.slice(1)} armed (click to disable)` : `${label[0].toUpperCase()}${label.slice(1)} disabled`}
+      title={tooltipMode === "native" ? tooltipText : undefined}
       aria-label={`Toggle ${label}`}
       aria-pressed={active}
       style={style}
@@ -103,6 +127,22 @@ export function CaptureToggleButton({
     >
       <Icon className="size-3.5" />
     </button>
+  );
+
+  if (tooltipMode === "native") return button;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent side={tooltipSide} sideOffset={6}>
+          <div className="max-w-[220px]">
+            <div className="font-medium">{title}</div>
+            <div className="mt-0.5 opacity-80">{tooltipText}</div>
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

@@ -3,6 +3,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Select,
   SelectContent,
   SelectGroup,
@@ -122,6 +128,8 @@ export function ToolbarHeader({
       : "idle";
 
   const translateValue = translateToSelection;
+  const micHelp = "Captures audio from your microphone.";
+  const deviceAudioHelp = "Captures audio from your device.";
 
   const languageOptions = languages.length > 0 ? languages : SUPPORTED_LANGUAGES;
   const availableTargetLanguages = SUPPORTED_LANGUAGES.filter((l) => l.code !== sourceLang);
@@ -236,38 +244,62 @@ export function ToolbarHeader({
 
         {/* Recording controls */}
         <div className="flex shrink-0 items-center gap-1.5 titlebar-no-drag">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onToggleMicInput}
-            className={armedMicInput
-              ? "gap-1.5 px-2 bg-muted text-foreground"
-              : "gap-1.5 px-2 text-muted-foreground"}
-            aria-pressed={armedMicInput}
-            aria-label={armedMicInput ? "Disable mic input" : "Enable mic input"}
-          >
-            <span className={`flex size-3.5 items-center justify-center rounded-[4px] border ${armedMicInput ? "border-primary/60 bg-primary/8" : "border-muted-foreground/40 bg-transparent"}`}>
-              <span className={`size-1.5 rounded-[2px] ${armedMicInput ? "bg-primary" : "bg-transparent"}`} />
-            </span>
-            {armedMicInput ? <MicIcon className="size-3.5" /> : <MicOffIcon className="size-3.5" />}
-            <span className="text-xs">Mic Input</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onToggleDeviceAudio}
-            className={armedDeviceAudio
-              ? "gap-1.5 px-2 bg-muted text-foreground"
-              : "gap-1.5 px-2 text-muted-foreground"}
-            aria-pressed={armedDeviceAudio}
-            aria-label={armedDeviceAudio ? "Disable device audio" : "Enable device audio"}
-          >
-            <span className={`flex size-3.5 items-center justify-center rounded-[4px] border ${armedDeviceAudio ? "border-primary/60 bg-primary/8" : "border-muted-foreground/40 bg-transparent"}`}>
-              <span className={`size-1.5 rounded-[2px] ${armedDeviceAudio ? "bg-primary" : "bg-transparent"}`} />
-            </span>
-            {armedDeviceAudio ? <Volume2Icon className="size-3.5" /> : <VolumeXIcon className="size-3.5" />}
-            <span className="text-xs">Device Audio</span>
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onToggleMicInput}
+                  className={armedMicInput
+                    ? "gap-1.5 px-2 bg-muted text-foreground"
+                    : "gap-1.5 px-2 text-muted-foreground"}
+                  aria-pressed={armedMicInput}
+                  aria-label={armedMicInput ? "Disable mic input" : "Enable mic input"}
+                >
+                  <span className={`flex size-3.5 items-center justify-center rounded-[4px] border ${armedMicInput ? "border-primary/60 bg-primary/8" : "border-muted-foreground/40 bg-transparent"}`}>
+                    <span className={`size-1.5 rounded-[2px] ${armedMicInput ? "bg-primary" : "bg-transparent"}`} />
+                  </span>
+                  {armedMicInput ? <MicIcon className="size-3.5" /> : <MicOffIcon className="size-3.5" />}
+                  <span className="text-xs">Mic Input</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={6}>
+                <div className="max-w-[220px]">
+                  <div className="font-medium">{armedMicInput ? "Mic input on" : "Mic input off"}</div>
+                  <div className="mt-0.5 opacity-80">{micHelp}</div>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onToggleDeviceAudio}
+                  className={armedDeviceAudio
+                    ? "gap-1.5 px-2 bg-muted text-foreground"
+                    : "gap-1.5 px-2 text-muted-foreground"}
+                  aria-pressed={armedDeviceAudio}
+                  aria-label={armedDeviceAudio ? "Disable device audio" : "Enable device audio"}
+                >
+                  <span className={`flex size-3.5 items-center justify-center rounded-[4px] border ${armedDeviceAudio ? "border-primary/60 bg-primary/8" : "border-muted-foreground/40 bg-transparent"}`}>
+                    <span className={`size-1.5 rounded-[2px] ${armedDeviceAudio ? "bg-primary" : "bg-transparent"}`} />
+                  </span>
+                  {armedDeviceAudio ? <Volume2Icon className="size-3.5" /> : <VolumeXIcon className="size-3.5" />}
+                  <span className="text-xs">Device Audio</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={6}>
+                <div className="max-w-[220px]">
+                  <div className="font-medium">{armedDeviceAudio ? "Device audio on" : "Device audio off"}</div>
+                  <div className="mt-0.5 opacity-80">{deviceAudioHelp}</div>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Button
             size="sm"
             variant="outline"

@@ -5,8 +5,8 @@ import {
   useRef,
   useState,
 } from "react";
-import type { TranscriptBlock } from "@core/types";
-import { ChevronDownIcon, ChevronUpIcon, MicIcon, PencilIcon, Volume2Icon } from "lucide-react";
+import type { TranscriptBlock, UIState } from "@core/types";
+import { ChevronDownIcon, ChevronUpIcon, CircleIcon, MicIcon, PencilIcon, SquareIcon, Volume2Icon } from "lucide-react";
 import { SectionLabel } from "@/components/ui/section-label";
 
 type TranscriptAreaProps = {
@@ -15,6 +15,9 @@ type TranscriptAreaProps = {
   micPartial?: string;
   canTranslate?: boolean;
   translationEnabled?: boolean;
+  isCaptureActive?: boolean;
+  captureStatus?: UIState["status"];
+  onRecordToggle?: () => void;
   onAddTranscriptRef?: (text: string) => void;
 };
 
@@ -145,7 +148,17 @@ function Paragraph({ blocks, isLast, canTranslate, translationEnabled }: { block
 }
 
 export const TranscriptArea = forwardRef<HTMLDivElement, TranscriptAreaProps>(
-  function TranscriptArea({ blocks, systemPartial, micPartial, canTranslate, translationEnabled, onAddTranscriptRef }, ref) {
+  function TranscriptArea({
+    blocks,
+    systemPartial,
+    micPartial,
+    canTranslate,
+    translationEnabled,
+    isCaptureActive = false,
+    captureStatus,
+    onRecordToggle,
+    onAddTranscriptRef,
+  }, ref) {
     const bottomRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const selectionMenuTimerRef = useRef<number | null>(null);
@@ -294,9 +307,42 @@ export const TranscriptArea = forwardRef<HTMLDivElement, TranscriptAreaProps>(
       clearSelectionMenuTimerRef.current();
     }, []);
 
+    const recordLabel = isCaptureActive ? "Stop" : blocks.length > 0 ? "Continue" : "Record";
+    const recordTitle = isCaptureActive
+      ? "Stop recording"
+      : blocks.length > 0
+        ? "Continue recording"
+        : "Start recording";
+
     return (
       <div className="flex-1 flex flex-col min-h-0">
-        <SectionLabel className="px-4 pt-2.5 pb-1.5 shrink-0">Live Transcript</SectionLabel>
+        <div className="flex shrink-0 items-center gap-2 px-4 pt-2.5 pb-1.5">
+          <SectionLabel className="p-0">Live Transcript</SectionLabel>
+          <div className="flex-1" />
+          {onRecordToggle && (
+            <button
+              type="button"
+              onClick={onRecordToggle}
+              disabled={captureStatus === "connecting"}
+              title={recordTitle}
+              aria-label={recordTitle}
+              className={[
+                "flex h-6 shrink-0 items-center gap-1.5 rounded-md px-2 text-2xs font-medium transition-colors",
+                "disabled:cursor-not-allowed disabled:opacity-60",
+                isCaptureActive
+                  ? "bg-red-500/12 text-red-600 hover:bg-red-500/20 dark:text-red-300"
+                  : "bg-foreground/[0.06] text-muted-foreground hover:bg-foreground/[0.1] hover:text-foreground dark:bg-white/10 dark:hover:bg-white/15",
+              ].join(" ")}
+            >
+              {isCaptureActive ? (
+                <SquareIcon className="size-2.5 fill-current" />
+              ) : (
+                <CircleIcon className="size-2.5 fill-red-500 text-red-500" />
+              )}
+              <span>{recordLabel}</span>
+            </button>
+          )}
+        </div>
         <div
           ref={setContainerRef}
           className="relative flex-1 overflow-y-auto px-4 pb-2"
@@ -335,9 +381,11 @@ export const TranscriptArea = forwardRef<HTMLDivElement, TranscriptAreaProps>(
           )}
 
           {paragraphs.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic mt-2">
-              Speak or add a note to get started...
-            </p>
+            <div className="mt-2 rounded-md border border-dashed border-border/80 px-3 py-3">
+              <p className="text-sm text-muted-foreground">
+                No transcript yet.
+              </p>
+            </div>
           ) : (
             <>
               {hiddenEarlierCount > 0 && !showAllEarlier && (

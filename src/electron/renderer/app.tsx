@@ -1769,6 +1769,7 @@ export function App() {
                     onTargetLangChange={(lang) => { applyTargetLang(lang); ui().setLangError(""); }}
                     onTranslateToSelectionChange={setTranslateToSelection}
                     onSetTranslationMode={handleSetTranslationMode}
+                    promptRotationKey={selectedSessionId ?? session.sessionId ?? "new-session"}
                   />
                 }
                 agentContent={
@@ -1852,6 +1853,9 @@ export function App() {
                             micPartial={session.micPartial}
                             canTranslate={session.uiState?.canTranslate ?? false}
                             translationEnabled={session.uiState?.translationEnabled ?? false}
+                            isCaptureActive={isCaptureActive}
+                            captureStatus={session.uiState?.status}
+                            onRecordToggle={() => { void handleRecordToggle(); }}
                           />
                         </ErrorBoundary>
                       }

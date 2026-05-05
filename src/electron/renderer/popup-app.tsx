@@ -864,6 +864,7 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
           active={armedMicInput}
           kind="mic"
           onClick={() => { void handleToggleMicArmed(); }}
+          tooltipMode="native"
           style={noDragStyle}
         />
 
@@ -871,6 +872,7 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
           active={armedDeviceAudio}
           kind="device-audio"
           onClick={() => { void handleToggleAudioArmed(); }}
+          tooltipMode="native"
           style={noDragStyle}
         />
 
