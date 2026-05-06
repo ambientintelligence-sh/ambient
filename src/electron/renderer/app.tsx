@@ -1769,12 +1769,35 @@ export function App() {
                 mode={sessionCenterMode}
                 homeContent={
                   <SessionHome
-                    agents={agents}
-                    selectedAgentId={selectedAgentId}
-                    onSelectAgent={selectAgent}
                     onLaunchAgent={(task) => { void handleLaunchCustomAgent(task); }}
                     appConfig={appConfig}
                     onAppConfigChange={handleAppConfigChange}
+                    captureBar={
+                      <CaptureBar
+                        uiState={session.uiState}
+                        languages={languages}
+                        sourceLang={sourceLang}
+                        targetLang={targetLang}
+                        translateToSelection={translateToSelection}
+                        armedMicInput={armedMicInput}
+                        armedDeviceAudio={armedDeviceAudio}
+                        onSourceLangChange={(lang) => { void handleSourceLangChange(lang); }}
+                        onTargetLangChange={(lang) => { applyTargetLang(lang); ui().setLangError(""); }}
+                        onTranslateToSelectionChange={setTranslateToSelection}
+                        onSetTranslationMode={handleSetTranslationMode}
+                        onRecordToggle={() => { void handleRecordToggle(); }}
+                        onToggleMicInput={() => { void handleToggleMicInputSelection(); }}
+                        onToggleDeviceAudio={() => { void handleToggleDeviceAudioSelection(); }}
+                      />
+                    }
+                    suggestions={suggestions}
+                    archivedSuggestions={archivedSuggestions}
+                    scanBusy={!!suggestionProgress?.busy}
+                    rollingKeyPoints={session.rollingKeyPoints}
+                    onAcceptSuggestion={handleAcceptSuggestion}
+                    onDismissSuggestion={handleDismissSuggestion}
+                    onAcceptArchivedTask={handleAcceptArchivedTask}
+                    onDeleteArchivedSuggestion={handleDeleteArchivedSuggestion}
                   />
                 }
                 agentContent={
@@ -1812,24 +1835,6 @@ export function App() {
                   <div className="shrink-0 min-h-0" style={{ width: rightPanelWidth }}>
                     <ErrorBoundary tag="main-right-sidebar">
                     <RightSidebar
-                      captureBar={
-                        <CaptureBar
-                          uiState={session.uiState}
-                          languages={languages}
-                          sourceLang={sourceLang}
-                          targetLang={targetLang}
-                          translateToSelection={translateToSelection}
-                          armedMicInput={armedMicInput}
-                          armedDeviceAudio={armedDeviceAudio}
-                          onSourceLangChange={(lang) => { void handleSourceLangChange(lang); }}
-                          onTargetLangChange={(lang) => { applyTargetLang(lang); ui().setLangError(""); }}
-                          onTranslateToSelectionChange={setTranslateToSelection}
-                          onSetTranslationMode={handleSetTranslationMode}
-                          onRecordToggle={() => { void handleRecordToggle(); }}
-                          onToggleMicInput={() => { void handleToggleMicInputSelection(); }}
-                          onToggleDeviceAudio={() => { void handleToggleDeviceAudioSelection(); }}
-                        />
-                      }
                       tasks={tasks}
                       suggestions={suggestions}
                       suggestionProgress={suggestionProgress}

@@ -1,37 +1,87 @@
-import { useState, type KeyboardEvent } from "react";
-import type { Agent, AppConfig } from "@core/types";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { WorkoutRunIcon } from "@hugeicons/core-free-icons";
+import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import type { AppConfig, TaskItem, TaskSuggestion } from "@core/types";
 import { ComposerSendButton } from "./composer-send-button";
 import { ModelPicker } from "./model-picker";
+import { SuggestionGrid, type SuggestionGridEntry } from "./suggestion-grid";
 
 type SessionHomeProps = {
-  agents: Agent[];
-  selectedAgentId: string | null;
-  onSelectAgent: (agentId: string) => void;
   onLaunchAgent: (task: string) => void;
   appConfig: AppConfig;
   onAppConfigChange: (next: AppConfig) => void;
+  captureBar?: ReactNode;
+  suggestions: TaskSuggestion[];
+  archivedSuggestions: TaskItem[];
+  scanBusy?: boolean;
+  rollingKeyPoints: string[];
+  onAcceptSuggestion: (suggestion: TaskSuggestion) => void;
+  onDismissSuggestion: (id: string) => void;
+  onAcceptArchivedTask: (task: TaskItem) => void;
+  onDeleteArchivedSuggestion: (id: string) => void;
 };
 
-function relativeTime(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ago`;
+function SectionHeader({ label, meta }: { label: string; meta?: string }) {
+  return (
+    <div className="flex items-center justify-between px-1">
+      <span className="text-2xs uppercase tracking-[0.18em] text-muted-foreground/70">
+        {label}
+      </span>
+      {meta && (
+        <span className="font-mono text-2xs text-muted-foreground/60">{meta}</span>
+      )}
+    </div>
+  );
 }
 
 export function SessionHome({
-  agents,
-  selectedAgentId,
-  onSelectAgent,
   onLaunchAgent,
   appConfig,
   onAppConfigChange,
+  captureBar,
+  suggestions,
+  archivedSuggestions,
+  scanBusy,
+  rollingKeyPoints,
+  onAcceptSuggestion,
+  onDismissSuggestion,
+  onAcceptArchivedTask,
+  onDeleteArchivedSuggestion,
 }: SessionHomeProps) {
   const [taskDraft, setTaskDraft] = useState("");
+
+  const entries = useMemo<SuggestionGridEntry[]>(() => {
+    const live: SuggestionGridEntry[] = suggestions.map((s) => ({
+      id: s.id,
+      state: "live",
+      text: s.text,
+      flag: s.flag,
+      details: s.details,
+      transcriptExcerpt: s.transcriptExcerpt,
+      kind: s.kind,
+      createdAt: s.createdAt,
+      // Callouts are informational; only agent suggestions get a Run-agent action.
+      onAccept: s.surface === "agent_suggestion" ? () => onAcceptSuggestion(s) : undefined,
+      onDismiss: () => onDismissSuggestion(s.id),
+    }));
+    const archived: SuggestionGridEntry[] = archivedSuggestions.map((task) => ({
+      id: task.id,
+      state: "archived",
+      text: task.text,
+      details: task.details,
+      kind: task.suggestionKind,
+      createdAt: task.createdAt,
+      onAccept: () => onAcceptArchivedTask(task),
+      onDismiss: () => onDeleteArchivedSuggestion(task.id),
+      dismissLabel: "Delete",
+    }));
+    return [...live, ...archived];
+  }, [
+    suggestions,
+    archivedSuggestions,
+    onAcceptSuggestion,
+    onDismissSuggestion,
+    onAcceptArchivedTask,
+    onDeleteArchivedSuggestion,
+  ]);
 
   const submitTask = () => {
     const trimmed = taskDraft.trim();
@@ -48,10 +98,33 @@ export function SessionHome({
   };
 
   const canSubmit = taskDraft.trim().length > 0;
+  const liveCount = suggestions.length;
+  const totalCount = entries.length;
+  const suggestionMeta =
+    liveCount > 0 && totalCount !== liveCount
+      ? `${liveCount} live · ${totalCount} total`
+      : `${totalCount} found`;
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
-      <div className="mx-auto w-full max-w-2xl px-6 pt-12 pb-8 flex flex-col gap-6">
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-7 px-6 pt-10 pb-8">
+        {captureBar && (
+          <div className="rounded-2xl border border-border/70 bg-background/80 shadow-sm">
+            {captureBar}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-2.5">
+          <SectionHeader label="Suggestions" meta={suggestionMeta} />
+          <div className="rounded-2xl border border-border/60 bg-background/60 px-4 py-5 shadow-sm">
+            <SuggestionGrid
+              entries={entries}
+              scanBusy={scanBusy}
+              keyPoints={rollingKeyPoints}
+            />
+          </div>
+        </div>
+
         <div className="rounded-2xl border border-border bg-background shadow-sm">
           <textarea
             rows={2}
@@ -68,46 +141,6 @@ export function SessionHome({
             <ComposerSendButton onClick={submitTask} disabled={!canSubmit} />
           </div>
         </div>
-
-        {agents.length > 0 ? (
-          <ul className="flex flex-col gap-1">
-            {agents.map((agent) => (
-              <li key={agent.id}>
-                <button
-                  type="button"
-                  onClick={() => onSelectAgent(agent.id)}
-                  className={`w-full cursor-pointer text-left rounded-md border px-3 py-2 transition-colors ${
-                    selectedAgentId === agent.id
-                      ? "border-primary/30 bg-primary/5"
-                      : "border-transparent hover:border-border/60 hover:bg-muted/40"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <HugeiconsIcon
-                      icon={WorkoutRunIcon}
-                      className={`size-3.5 shrink-0 ${
-                        agent.status === "running"
-                          ? "text-primary animate-pulse"
-                          : agent.status === "completed"
-                            ? "text-green-500"
-                            : "text-muted-foreground"
-                      }`}
-                    />
-                    <p className="text-xs text-foreground truncate flex-1">{agent.task}</p>
-                    <span className="text-2xs text-muted-foreground shrink-0 font-mono">
-                      {relativeTime(agent.completedAt ?? agent.createdAt)}
-                    </span>
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-10 text-center">
-            <p className="text-sm font-medium text-foreground">No chats yet</p>
-            <p className="mt-1 text-xs text-muted-foreground">New agent chats will live here</p>
-          </div>
-        )}
       </div>
     </div>
   );
