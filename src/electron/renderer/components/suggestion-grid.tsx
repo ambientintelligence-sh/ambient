@@ -19,6 +19,7 @@ export type SuggestionGridEntry = {
   id: string;
   state: "live" | "archived";
   text: string;
+  briefingPoints?: string[];
   flag?: string;
   details?: string;
   transcriptExcerpt?: string;
@@ -33,8 +34,6 @@ export type SuggestionGridEntry = {
 type SuggestionGridProps = {
   entries: SuggestionGridEntry[];
   scanBusy?: boolean;
-  /** Session-wide rolling key points, rendered alongside the suggestion in the hover card. */
-  keyPoints?: string[];
 };
 
 const SUGGESTION_KIND_ICONS: Record<SuggestionKind, LucideIcon> = {
@@ -66,14 +65,12 @@ function relativeTime(timestamp: number): string {
   return `${days}d ago`;
 }
 
-const MAX_BRIEFING_POINTS = 5;
+const MAX_BRIEFING_POINTS = 1;
 
 function SuggestionTooltip({
   entry,
-  keyPoints,
 }: {
   entry: SuggestionGridEntry;
-  keyPoints: string[];
 }) {
   const Icon = entry.kind ? SUGGESTION_KIND_ICONS[entry.kind] : SearchIcon;
   const flag = entry.flag?.trim();
@@ -81,8 +78,9 @@ function SuggestionTooltip({
   const excerpt = entry.transcriptExcerpt?.trim();
   const kindLabel = entry.kind ? KIND_LABELS[entry.kind] : "Suggestion";
   const isLive = entry.state === "live";
-  const visiblePoints = keyPoints.slice(-MAX_BRIEFING_POINTS).reverse();
-  const hiddenCount = Math.max(0, keyPoints.length - visiblePoints.length);
+  const briefingPoints = entry.briefingPoints ?? [];
+  const visiblePoints = briefingPoints.slice(0, MAX_BRIEFING_POINTS);
+  const hiddenCount = Math.max(0, briefingPoints.length - visiblePoints.length);
   const hasBriefing = visiblePoints.length > 0;
 
   return (
@@ -181,7 +179,6 @@ function SuggestionTooltip({
 export function SuggestionGrid({
   entries,
   scanBusy = false,
-  keyPoints = [],
 }: SuggestionGridProps) {
   const sorted = [...entries].sort((a, b) => a.createdAt - b.createdAt);
   const filled = sorted.length;
@@ -190,8 +187,6 @@ export function SuggestionGrid({
   const rows = Math.ceil(filled / GRID_COLS) + 1;
   const total = rows * GRID_COLS;
   const nextSlot = Math.min(filled, total - 1);
-  const hasBriefing = keyPoints.length > 0;
-  const popupWidthClass = hasBriefing ? "w-[460px]" : "w-80";
 
   return (
     <div
@@ -202,6 +197,7 @@ export function SuggestionGrid({
         const entry = sorted[i];
         if (entry) {
           const isLive = entry.state === "live";
+          const popupWidthClass = entry.briefingPoints?.length ? "w-[460px]" : "w-80";
           return (
             <HoverCard key={entry.id} openDelay={80} closeDelay={120}>
               <HoverCardTrigger asChild>
@@ -225,7 +221,7 @@ export function SuggestionGrid({
                 sideOffset={10}
                 className={`${popupWidthClass} rounded-2xl border border-border/60 bg-popover/95 p-3.5 shadow-xl backdrop-blur supports-[backdrop-filter]:bg-popover/85`}
               >
-                <SuggestionTooltip entry={entry} keyPoints={keyPoints} />
+                <SuggestionTooltip entry={entry} />
               </HoverCardContent>
             </HoverCard>
           );

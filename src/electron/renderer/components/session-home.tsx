@@ -73,10 +73,27 @@ export function SessionHome({
       onDismiss: () => onDeleteArchivedSuggestion(task.id),
       dismissLabel: "Delete",
     }));
-    return [...live, ...archived];
+    const combined = [...live, ...archived];
+    if (combined.length === 0 || rollingKeyPoints.length === 0) return combined;
+
+    const ordered = [...combined].sort((a, b) => a.createdAt - b.createdAt);
+    const briefingPoints = rollingKeyPoints.slice(-ordered.length);
+    const firstBriefingIndex = ordered.length - briefingPoints.length;
+    const briefingByEntryId = new Map<string, string>();
+
+    ordered.forEach((entry, index) => {
+      const briefingPoint = briefingPoints[index - firstBriefingIndex];
+      if (briefingPoint) briefingByEntryId.set(entry.id, briefingPoint);
+    });
+
+    return combined.map((entry) => {
+      const briefingPoint = briefingByEntryId.get(entry.id);
+      return briefingPoint ? { ...entry, briefingPoints: [briefingPoint] } : entry;
+    });
   }, [
     suggestions,
     archivedSuggestions,
+    rollingKeyPoints,
     onAcceptSuggestion,
     onDismissSuggestion,
     onAcceptArchivedTask,
@@ -108,19 +125,14 @@ export function SessionHome({
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-7 px-6 pt-10 pb-8">
-        {captureBar && (
-          <div className="rounded-2xl border border-border/70 bg-background/80 shadow-sm">
-            {captureBar}
-          </div>
-        )}
+        <div className="overflow-hidden rounded-2xl border border-border/60 bg-background/70 shadow-sm">
+          {captureBar}
 
-        <div className="flex flex-col gap-2.5">
-          <SectionHeader label="Suggestions" meta={suggestionMeta} />
-          <div className="rounded-2xl border border-border/60 bg-background/60 px-4 py-5 shadow-sm">
+          <div className="flex flex-col gap-2.5 px-4 py-5">
+            <SectionHeader label="Suggestions" meta={suggestionMeta} />
             <SuggestionGrid
               entries={entries}
               scanBusy={scanBusy}
-              keyPoints={rollingKeyPoints}
             />
           </div>
         </div>
