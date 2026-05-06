@@ -70,6 +70,7 @@ function archivedTaskToSuggestion(task: TaskItem): TaskSuggestion | null {
   const parsed = parseAiSuggestionDetails(task.details);
   return {
     id: task.id,
+    surface: "agent_suggestion",
     text: task.text,
     flag: parsed.flag,
     details: parsed.details,
@@ -309,6 +310,10 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
     const state = get();
     const suggestion = state.suggestions.find((s) => s.id === id);
     if (suggestion) {
+      if (suggestion.surface === "callout") {
+        set((s) => ({ suggestions: s.suggestions.filter((item) => item.id !== id) }));
+        return;
+      }
       const suggestionDetails = buildAiSuggestionDetails(suggestion);
       const archivedTask: TaskItem = {
         id: suggestion.id,
@@ -451,6 +456,10 @@ export const useTaskStore = create<TaskState & TaskActions>()((set, get) => ({
   },
 
   acceptSuggestion: async ({ suggestion, targetSessionId, appConfig }) => {
+    if (suggestion.surface === "callout") {
+      set((s) => ({ suggestions: s.suggestions.filter((item) => item.id !== suggestion.id) }));
+      return;
+    }
     const suggestionDetails = buildAiSuggestionDetails(suggestion);
     const existingArchivedTask = get().archivedSuggestions.find((task) => task.id === suggestion.id);
     const optimisticTask: TaskItem = {

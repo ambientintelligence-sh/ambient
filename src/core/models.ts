@@ -104,6 +104,12 @@ export const MODEL_CONFIG: Record<ModelProvider, ProviderConfig> = {
       },
       // OpenAI
       {
+        label: "GPT-5.5",
+        modelId: "openai/gpt-5.5",
+        reasoning: true,
+        reasoningEffort: "medium",
+      },
+      {
         label: "GPT-5.4",
         modelId: "openai/gpt-5.4",
         reasoning: true,
@@ -155,13 +161,19 @@ export const MODEL_CONFIG: Record<ModelProvider, ProviderConfig> = {
       // Model list mirrors what ChatGPT Plus/Pro exposes in the web model
       // picker. ChatGPT's own UI is the source of truth for "what's
       // available on your subscription" — there's no clean API for it.
-      analysisModelId: "gpt-5.4",
+      analysisModelId: "gpt-5.5",
       taskModelId: "gpt-5.4-mini",
       utilityModelId: "gpt-5.4-mini",
-      synthesisModelId: "gpt-5.4",
+      synthesisModelId: "gpt-5.5",
       taskProviders: [],
     },
     models: [
+      {
+        label: "GPT-5.5",
+        modelId: "gpt-5.5",
+        reasoning: true,
+        reasoningEffort: "medium",
+      },
       {
         label: "GPT-5.4",
         modelId: "gpt-5.4",

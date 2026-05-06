@@ -5,6 +5,7 @@ import {
   ChevronDownIcon,
   XIcon,
   LoaderCircleIcon,
+  PlayIcon,
   PlusIcon,
   Trash2Icon,
   SearchIcon,
@@ -26,6 +27,33 @@ const SUGGESTION_KIND_ICONS: Record<SuggestionKind, typeof SearchIcon> = {
   flag: AlertTriangleIcon,
   followup: ListChecksIcon,
 };
+export const SUGGESTION_SURFACE_STYLES = {
+  callout: {
+    card:
+      "border-[color-mix(in_oklab,oklch(0.62_0.11_205)_38%,var(--border))] bg-[color-mix(in_oklab,oklch(0.84_0.07_205)_16%,var(--background))]",
+    popupCard:
+      "border-[color-mix(in_oklab,oklch(0.62_0.11_205)_40%,var(--border))] bg-[color-mix(in_oklab,oklch(0.84_0.07_205)_18%,var(--background))]",
+    icon:
+      "bg-[color-mix(in_oklab,oklch(0.84_0.07_205)_34%,transparent)] text-[oklch(0.48_0.1_205)] dark:text-[oklch(0.78_0.08_205)]",
+    text: "text-[oklch(0.36_0.07_205)] dark:text-[oklch(0.82_0.05_205)]",
+    progressTrack: "bg-[oklch(0.62_0.11_205/0.12)]",
+    progressBar: "bg-[oklch(0.62_0.11_205/0.48)]",
+  },
+  agent: {
+    card:
+      "border-[color-mix(in_oklab,oklch(0.72_0.14_72)_40%,var(--border))] bg-[color-mix(in_oklab,oklch(0.86_0.11_72)_15%,var(--background))]",
+    popupCard:
+      "border-[color-mix(in_oklab,oklch(0.72_0.14_72)_44%,var(--border))] bg-[color-mix(in_oklab,oklch(0.86_0.11_72)_17%,var(--background))]",
+    icon:
+      "bg-[color-mix(in_oklab,oklch(0.86_0.11_72)_36%,transparent)] text-[oklch(0.5_0.11_72)] dark:text-[oklch(0.82_0.09_72)]",
+    text: "text-[oklch(0.42_0.08_72)] dark:text-[oklch(0.86_0.06_72)]",
+    action:
+      "bg-[oklch(0.58_0.13_72)] text-[oklch(0.99_0.01_85)] hover:bg-[oklch(0.52_0.13_72)] dark:bg-[oklch(0.76_0.11_72)] dark:text-[oklch(0.2_0.02_72)] dark:hover:bg-[oklch(0.82_0.1_72)]",
+    progressTrack: "bg-[oklch(0.72_0.14_72/0.13)]",
+    progressBar: "bg-[oklch(0.72_0.14_72/0.5)]",
+  },
+} as const;
+
 type RightRailMode = "summary" | "tasks" | "transcript";
 const EMPTY_SESSION_TAB_KEY = "__empty__";
 
@@ -117,18 +145,25 @@ export function SuggestionItem({
   }, [suggestion.createdAt]);
 
   const KindIcon = suggestion.kind ? SUGGESTION_KIND_ICONS[suggestion.kind] : SearchIcon;
+  const isCallout = suggestion.surface === "callout";
+  const surfaceStyle = isCallout ? SUGGESTION_SURFACE_STYLES.callout : SUGGESTION_SURFACE_STYLES.agent;
   const hasDetails = Boolean(suggestion.flag?.trim() || suggestion.details?.trim() || suggestion.transcriptExcerpt?.trim());
 
   return (
     <li
-      className="relative overflow-hidden rounded-xl border border-primary/12 bg-background/70 shadow-[inset_0_1px_0_hsl(var(--background)/0.7)] transition-opacity duration-500"
+      className={[
+        "relative overflow-hidden rounded-xl border shadow-[inset_0_1px_0_hsl(var(--background)/0.7)] transition-opacity duration-500",
+        surfaceStyle.card,
+      ].join(" ")}
       style={{ opacity }}
     >
       <div className="flex items-start gap-2 min-h-7 py-1.5 px-2 relative z-10">
-        <KindIcon className="size-3 shrink-0 text-muted-foreground mt-0.5" />
+        <div className={["mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full", surfaceStyle.icon].join(" ")}>
+          <KindIcon className="size-3" />
+        </div>
         <div className="min-w-0 flex-1">
           {suggestion.flag?.trim() && (
-            <div className="mb-1 text-[11px] font-medium text-foreground/72 break-words">
+            <div className={["mb-1 text-[11px] font-medium break-words", surfaceStyle.text].join(" ")}>
               {suggestion.flag.trim()}
             </div>
           )}
@@ -160,28 +195,37 @@ export function SuggestionItem({
             </div>
           )}
         </div>
-        <div className="flex shrink-0 items-start gap-0.5">
-          <button
-            type="button"
-            onClick={onAccept}
-            className="cursor-pointer p-0.5 text-primary transition-colors hover:text-primary/80"
-            aria-label="Accept suggestion"
-            title="Accept suggestion"
-          >
-            <PlusIcon className="size-3" />
-          </button>
+        <div className="flex shrink-0 items-start gap-1">
+          {!isCallout && (
+            <button
+              type="button"
+              onClick={onAccept}
+              className={["inline-flex h-6 cursor-pointer items-center gap-1 rounded-md px-1.5 text-[11px] font-medium transition-colors", SUGGESTION_SURFACE_STYLES.agent.action].join(" ")}
+              aria-label="Dispatch agent"
+              title="Dispatch agent"
+            >
+              <PlayIcon className="size-3" />
+              <span>Dispatch Agent</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onDismiss}
-            className="cursor-pointer p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+            className={[
+              "inline-flex h-6 cursor-pointer items-center gap-1 rounded-md text-[11px] transition-colors",
+              isCallout
+                ? "px-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                : "px-1 text-muted-foreground hover:text-foreground",
+            ].join(" ")}
             aria-label="Dismiss suggestion"
           >
             <XIcon className="size-3" />
+            {isCallout && <span>Dismiss</span>}
           </button>
         </div>
       </div>
-      <div className="absolute inset-x-2 bottom-1 h-[2px] overflow-hidden rounded-full bg-primary/8">
-        <div className="h-full rounded-full bg-primary/28 transition-none" style={{ width: `${progress}%` }} />
+      <div className={["absolute inset-x-2 bottom-1 h-[2px] overflow-hidden rounded-full", surfaceStyle.progressTrack].join(" ")}>
+        <div className={["h-full rounded-full transition-none", surfaceStyle.progressBar].join(" ")} style={{ width: `${progress}%` }} />
       </div>
     </li>
   );
@@ -240,10 +284,12 @@ export function AgentActivityCard({
   progress,
   agentSteps,
   onRequestTaskScan,
+  surface = "sidebar",
 }: {
   progress: SuggestionProgress;
   agentSteps: string[];
   onRequestTaskScan?: () => void;
+  surface?: "sidebar" | "popup";
 }) {
   const DISMISS_MS = 5000;
   const [opacity, setOpacity] = useState(1);
@@ -254,6 +300,7 @@ export function AgentActivityCard({
   const isFinished = !progress.busy;
   const hasError = !!progress.error;
   const isNothingFound = isFinished && !!progress.lastScanEmpty;
+  const isPopup = surface === "popup";
 
   useEffect(() => {
     if (hasError) {
@@ -283,7 +330,10 @@ export function AgentActivityCard({
   if (hasError) {
     return (
       <li
-        className="relative overflow-hidden rounded-xl border border-destructive/30 bg-destructive/5 transition-opacity duration-500"
+        className={[
+          "relative overflow-hidden rounded-xl border border-destructive/30 transition-opacity duration-500",
+          isPopup ? "bg-background text-foreground shadow-[0_18px_46px_rgba(0,0,0,0.22)]" : "bg-destructive/5",
+        ].join(" ")}
         style={{ opacity }}
       >
         <div className="flex items-center gap-2 min-h-7 py-1.5 px-2">
@@ -305,7 +355,10 @@ export function AgentActivityCard({
   if (isNothingFound) {
     return (
       <li
-        className="relative overflow-hidden rounded-xl border border-border/50 bg-background/60 transition-opacity duration-500"
+        className={[
+          "relative overflow-hidden rounded-xl border border-border/50 transition-opacity duration-500",
+          isPopup ? "bg-background text-foreground shadow-[0_18px_46px_rgba(0,0,0,0.22)]" : "bg-background/60",
+        ].join(" ")}
         style={{ opacity }}
       >
         <div className="flex items-center gap-2 min-h-7 py-1.5 px-2">
@@ -324,7 +377,10 @@ export function AgentActivityCard({
   if (isFinished) {
     return (
       <li
-        className="relative overflow-hidden rounded-xl border border-primary/20 bg-primary/5 transition-opacity duration-500"
+        className={[
+          "relative overflow-hidden rounded-xl border border-primary/20 transition-opacity duration-500",
+          isPopup ? "bg-background text-foreground shadow-[0_18px_46px_rgba(0,0,0,0.22)]" : "bg-primary/5",
+        ].join(" ")}
         style={{ opacity }}
       >
         <div className="flex items-center gap-2 min-h-7 py-1.5 px-2">
@@ -356,7 +412,14 @@ export function AgentActivityCard({
   const isWaiting = progress.busy && (progress.step === "Preparing scan…" || !progress.step);
 
   return (
-    <li className="relative overflow-hidden rounded-2xl border border-primary/20 bg-primary/[0.045] px-3 py-2.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.7)]">
+    <li
+      className={[
+        "relative overflow-hidden rounded-2xl border border-primary/20 px-3 py-2.5",
+        isPopup
+          ? "bg-background text-foreground shadow-[0_18px_46px_rgba(0,0,0,0.24)]"
+          : "bg-primary/[0.045] shadow-[inset_0_1px_0_hsl(var(--background)/0.7)]",
+      ].join(" ")}
+    >
       <div className="flex items-start gap-2.5">
         <div className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10">
           <LoaderCircleIcon className="size-3 animate-spin text-primary/70" />

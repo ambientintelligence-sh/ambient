@@ -22,13 +22,17 @@ export const agentSuggestionSchema = z.object({
         kind: z
           .enum(["research", "action", "insight", "flag", "followup"])
           .describe("research = share a concrete fact you looked up; action = offer to draft/create/do something specific; insight = point out something the speakers didn't notice; flag = highlight a conflict, mistake, or risk; followup = remind about a loose thread"),
+        surface: z
+          .enum(["callout", "agent_suggestion"])
+          .default("callout")
+          .describe("callout = quick helpful note with dismiss only; agent_suggestion = investigative or larger background work worth dispatching to a long-running agent"),
         flag: z
           .string()
           .describe("Short concrete issue, contradiction, or opportunity noticed in the transcript or tools.")
           .optional(),
         text: z
           .string()
-          .describe("Short, concrete next step or action the user can accept as a task. Keep it actionable and specific, not generic. Good: 'Flag the 45M vs 38M discrepancy before this gets repeated.' Bad: 'Want me to compare the figures and identify any discrepancies?'"),
+          .describe("For callouts, the short useful note itself. For agent_suggestion, the short concrete background task the user can dispatch. Keep it specific, not generic. Good: 'Small flag: the cited figure is 38M, not 45M.' or 'Pull the latest source and compare the figures.' Bad: 'Want me to compare the figures and identify any discrepancies?'"),
         details: z
           .string()
           .describe("Brief context or rationale for the suggestion.")
@@ -39,7 +43,7 @@ export const agentSuggestionSchema = z.object({
           .optional(),
       }),
     )
-    .describe("0-3 grounded suggestions. Each should pair a concrete flag or observation with a specific next step the user could accept as a task."),
+    .describe("0-3 grounded suggestions. Most should be callouts; use agent_suggestion only for complex background work worth dispatching."),
 });
 
 export const taskFromSelectionSchema = z.object({
@@ -362,6 +366,7 @@ export function buildAgentSuggestionPrompt(
   keyPoints: readonly string[] = [],
   educationalContext: readonly string[] = [],
   aggressiveness: TaskSuggestionAggressiveness = "balanced",
+  connectedMcpTools: readonly string[] = [],
 ): string {
   const transcript = recentBlocks
     .map((b) => {
@@ -403,6 +408,9 @@ export function buildAgentSuggestionPrompt(
   const educationalSection = educationalContext.length > 0
     ? `\n\nPrior educational insights (use to inform suggestions, do not repeat):\n${educationalContext.map((text) => `- ${text}`).join("\n")}`
     : "";
+  const connectedMcpToolsSection = connectedMcpTools.length > 0
+    ? `\n\nConnected MCP tools available to long-running agents (mention a provider/tool only when it clearly fits the suggestion):\n${connectedMcpTools.map((text) => `- ${text}`).join("\n")}`
+    : "";
   const aggressivenessSection =
     aggressiveness === "conservative"
       ? "\n\nSuggestion aggressiveness: conservative.\n- Only surface a suggestion when the transcript contains a fairly explicit follow-up, ask, deliverable, or risk.\n- If a suggestion depends on a public factual claim, do one quick external verification pass before surfacing it.\n- Prefer silence over speculative suggestions."
@@ -416,6 +424,7 @@ export function buildAgentSuggestionPrompt(
     historical_suggestions_section: historicalSuggestionsSection,
     key_points_section: keyPointsSection,
     educational_context_section: educationalSection,
+    connected_mcp_tools_section: connectedMcpToolsSection,
     suggestion_aggressiveness_section: aggressivenessSection,
   });
 }

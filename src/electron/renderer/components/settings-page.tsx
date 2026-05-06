@@ -723,7 +723,7 @@ function AgentsTab({
         />
         <SettingRow
           label="Suggestion Level"
-          description="Control how readily Ambient surfaces suggested tasks from the conversation."
+          description="Control how readily Ambient surfaces callouts and agent suggestions from the conversation."
           control={
             <div className="inline-flex items-center border border-border rounded-sm overflow-hidden">
               {TASK_SUGGESTION_AGGRESSIVENESS_OPTIONS.map((option) => (

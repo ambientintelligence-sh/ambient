@@ -22,8 +22,8 @@ const TOUR_STEPS = [
   },
   {
     panel: 2 as const,
-    title: "Suggested Tasks",
-    body: "Suggestions surface as you talk — accept one to put an agent on it.",
+    title: "Tasks",
+    body: "Suggestions surface as you talk — dismiss quick callouts or dispatch deeper work to an agent.",
   },
   {
     panel: 2 as const,

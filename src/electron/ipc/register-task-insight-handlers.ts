@@ -166,6 +166,9 @@ export function registerTaskInsightHandlers({
   });
 
   ipcMain.handle("delete-session", (_event, id: string) => {
+    if (sessionRef.current?.sessionId === id) {
+      return { ok: false, error: "Cannot delete an active session before it is shut down." };
+    }
     db.deleteSession(id);
     return { ok: true };
   });

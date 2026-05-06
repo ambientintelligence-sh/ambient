@@ -126,9 +126,11 @@ export type TaskItem = Readonly<{
 export type TaskSize = "small" | "large";
 
 export type SuggestionKind = "research" | "action" | "insight" | "flag" | "followup";
+export type SuggestionSurface = "callout" | "agent_suggestion";
 
 export type TaskSuggestion = Readonly<{
   id: string;
+  surface: SuggestionSurface;
   text: string;
   flag?: string;
   details?: string;
@@ -143,6 +145,7 @@ export type InsightKind =
   | "context"
   | "fact"
   | "tip"
+  | "callout"
   | "key-point";
 
 export type Insight = Readonly<{

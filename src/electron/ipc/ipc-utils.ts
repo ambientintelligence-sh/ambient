@@ -1,5 +1,6 @@
 import { BrowserWindow } from "electron";
 import type { AppDatabase } from "@core/db/db";
+import { log } from "@core/logger";
 import { Session } from "@core/session";
 import type {
   Agent,
@@ -97,6 +98,10 @@ export function wireSessionEvents(
   });
   activeSession.events.on("block-added", (block: TranscriptBlock) => {
     if (!isCurrentSession()) return;
+    if (!db.getSession(activeSession.sessionId)) {
+      log("WARN", `Ignoring block for missing session ${activeSession.sessionId}`);
+      return;
+    }
     db.insertBlock(activeSession.sessionId, block);
     sendToRenderer(getWindow, "session:block-added", block);
   });

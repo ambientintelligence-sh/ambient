@@ -4,6 +4,7 @@ import {
   buildAgentSuggestionPrompt,
   buildAgentsSummaryPrompt,
   buildTaskFromSelectionPrompt,
+  agentSuggestionSchema,
   agentsSummarySchema,
   finalSummarySchema,
 } from "./analysis";
@@ -67,6 +68,22 @@ describe("buildAgentSuggestionPrompt", () => {
     expect(prompt).toContain("- Austin has major events that can affect hotel prices");
   });
 
+  it("includes connected MCP tools when provided", () => {
+    const prompt = buildAgentSuggestionPrompt(
+      SAMPLE_BLOCKS,
+      [],
+      [],
+      [],
+      [],
+      "balanced",
+      ["linear: create_issue: Create a Linear issue", "notion: search_pages: Search pages"],
+    );
+
+    expect(prompt).toContain("Connected MCP tools available to long-running agents");
+    expect(prompt).toContain("- linear: create_issue: Create a Linear issue");
+    expect(prompt).toContain("- notion: search_pages: Search pages");
+  });
+
   it("asks for separate flag and action output", () => {
     const prompt = buildAgentSuggestionPrompt(SAMPLE_BLOCKS, []);
     expect(prompt).toContain("Recent transcript:");
@@ -81,6 +98,43 @@ describe("buildAgentSuggestionPrompt", () => {
   it("asks for fast external verification in aggressive mode", () => {
     const prompt = buildAgentSuggestionPrompt(SAMPLE_BLOCKS, [], [], [], [], "aggressive");
     expect(prompt).toContain("For concrete public claims, default to a fast web check across a few sources before suggesting.");
+  });
+});
+
+describe("agentSuggestionSchema", () => {
+  it("parses callouts and dispatchable agent suggestions", () => {
+    const result = agentSuggestionSchema.parse({
+      suggestions: [
+        {
+          surface: "callout",
+          kind: "flag",
+          flag: "The number is off.",
+          text: "Small flag: the cited figure is 38M, not 45M.",
+          details: "Verified against the latest source.",
+        },
+        {
+          surface: "agent_suggestion",
+          kind: "research",
+          flag: "The pricing comparison needs more context.",
+          text: "Compare Datadog vs Grafana Cloud pricing for the current infra size.",
+        },
+      ],
+    });
+
+    expect(result.suggestions.map((s) => s.surface)).toEqual(["callout", "agent_suggestion"]);
+  });
+
+  it("defaults old-style suggestions to callouts", () => {
+    const result = agentSuggestionSchema.parse({
+      suggestions: [
+        {
+          kind: "insight",
+          text: "You already decided this last week.",
+        },
+      ],
+    });
+
+    expect(result.suggestions[0].surface).toBe("callout");
   });
 });
 
