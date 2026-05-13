@@ -1792,12 +1792,16 @@ export function App() {
                     }
                     suggestions={suggestions}
                     archivedSuggestions={archivedSuggestions}
+                    agents={agents}
+                    blocks={session.blocks}
+                    sessionMeta={currentSessionMeta}
                     scanBusy={!!suggestionProgress?.busy}
                     rollingKeyPoints={session.rollingKeyPoints}
                     onAcceptSuggestion={handleAcceptSuggestion}
                     onDismissSuggestion={handleDismissSuggestion}
                     onAcceptArchivedTask={handleAcceptArchivedTask}
                     onDeleteArchivedSuggestion={handleDeleteArchivedSuggestion}
+                    onSelectAgent={selectAgent}
                   />
                 }
                 agentContent={

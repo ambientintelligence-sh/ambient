@@ -1,5 +1,5 @@
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
-import type { AppConfig, TaskItem, TaskSuggestion } from "@core/types";
+import type { Agent, AppConfig, SessionMeta, TaskItem, TaskSuggestion, TranscriptBlock } from "@core/types";
 import { ComposerSendButton } from "./composer-send-button";
 import { ModelPicker } from "./model-picker";
 import { SuggestionGrid, type SuggestionGridEntry } from "./suggestion-grid";
@@ -11,12 +11,16 @@ type SessionHomeProps = {
   captureBar?: ReactNode;
   suggestions: TaskSuggestion[];
   archivedSuggestions: TaskItem[];
+  agents: Agent[];
+  blocks: TranscriptBlock[];
+  sessionMeta?: SessionMeta | null;
   scanBusy?: boolean;
   rollingKeyPoints: string[];
   onAcceptSuggestion: (suggestion: TaskSuggestion) => void;
   onDismissSuggestion: (id: string) => void;
   onAcceptArchivedTask: (task: TaskItem) => void;
   onDeleteArchivedSuggestion: (id: string) => void;
+  onSelectAgent: (id: string) => void;
 };
 
 function SectionHeader({ label, meta }: { label: string; meta?: string }) {
@@ -39,12 +43,16 @@ export function SessionHome({
   captureBar,
   suggestions,
   archivedSuggestions,
+  agents,
+  blocks,
+  sessionMeta,
   scanBusy,
   rollingKeyPoints,
   onAcceptSuggestion,
   onDismissSuggestion,
   onAcceptArchivedTask,
   onDeleteArchivedSuggestion,
+  onSelectAgent,
 }: SessionHomeProps) {
   const [taskDraft, setTaskDraft] = useState("");
 
@@ -117,10 +125,23 @@ export function SessionHome({
   const canSubmit = taskDraft.trim().length > 0;
   const liveCount = suggestions.length;
   const totalCount = entries.length;
+  const timelineTimestamps = [
+    sessionMeta?.startedAt,
+    ...blocks.map((block) => block.createdAt),
+    ...entries.map((entry) => entry.createdAt),
+  ].filter((timestamp): timestamp is number => typeof timestamp === "number" && Number.isFinite(timestamp));
+  const timelineStartAt = timelineTimestamps.length > 0
+    ? Math.min(...timelineTimestamps)
+    : Date.now();
+  const timelineEndAt = timelineTimestamps.length > 0
+    ? Math.max(...timelineTimestamps)
+    : timelineStartAt;
   const suggestionMeta =
     liveCount > 0 && totalCount !== liveCount
       ? `${liveCount} live · ${totalCount} total`
-      : `${totalCount} found`;
+      : agents.length > 0
+        ? `${totalCount} found · ${agents.length} agents`
+        : `${totalCount} found`;
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
@@ -132,7 +153,11 @@ export function SessionHome({
             <SectionHeader label="Suggestions" meta={suggestionMeta} />
             <SuggestionGrid
               entries={entries}
+              agents={agents}
               scanBusy={scanBusy}
+              timelineStartAt={timelineStartAt}
+              timelineEndAt={timelineEndAt}
+              onSelectAgent={onSelectAgent}
             />
           </div>
         </div>
