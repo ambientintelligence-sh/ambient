@@ -19,6 +19,12 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export type SuggestionGridEntry = {
   id: string;
@@ -118,17 +124,21 @@ function getMarkerText(marker: TimelineMarker): string {
   return marker.type === "agent" ? marker.agent.task : marker.entry.text;
 }
 
-const FOCUSED_CARD_HEIGHT = 88;
+const FOCUSED_CARD_HEIGHT = 60;
 const FOCUSED_CARD_HALF = FOCUSED_CARD_HEIGHT / 2;
-const FOCUSED_CARD_MIN_SPACING = FOCUSED_CARD_HEIGHT + 12;
-const FOCUSED_TRACK_WIDTH = 56;
+const FOCUSED_CARD_MIN_SPACING = FOCUSED_CARD_HEIGHT + 6;
+const FOCUSED_TRACK_WIDTH = 18;
+const FOCUSED_BRIEFING_WIDTH = 120;
 
 function getFocusedMarkerLayout(
   markers: readonly TimelineMarker[],
   rowStartAt: number,
   rowDuration: number,
 ) {
-  const baseHeight = Math.max(440, markers.length * FOCUSED_CARD_MIN_SPACING);
+  const baseHeight = Math.max(
+    FOCUSED_CARD_HEIGHT + 16,
+    markers.length * FOCUSED_CARD_MIN_SPACING,
+  );
   let previousY = 0;
   const items = markers.map((marker, index) => {
     const idealY = clamp(
@@ -583,6 +593,7 @@ export function SuggestionGrid({
   };
 
   return (
+    <TooltipProvider delayDuration={250}>
     <div
       className="space-y-2"
       onKeyDown={(event) => {
@@ -639,18 +650,18 @@ export function SuggestionGrid({
                 </div>
                 <div
                   ref={focusedScrollRef}
-                  className="max-h-[420px] overflow-y-auto overscroll-y-contain pb-2"
+                  className="overflow-hidden pb-1"
                 >
                   <div
-                    className="relative"
+                    className="relative w-full overflow-hidden"
                     style={{
                       height: rowFocusedLayout.height,
-                      paddingLeft: FOCUSED_TRACK_WIDTH,
+                      boxSizing: "border-box",
                     }}
                   >
                     <span
                       className="absolute top-0 bottom-0 w-px bg-border/55"
-                      style={{ left: FOCUSED_TRACK_WIDTH - 1 }}
+                      style={{ left: FOCUSED_BRIEFING_WIDTH + FOCUSED_TRACK_WIDTH / 2 }}
                     />
                     {rowFocusedLayout.items.map(({ marker, y }) => (
                       <button
@@ -662,7 +673,7 @@ export function SuggestionGrid({
                           focusMarker(marker);
                         }}
                         className="group absolute z-10 flex size-4 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center"
-                        style={{ left: FOCUSED_TRACK_WIDTH - 1, top: y }}
+                        style={{ left: FOCUSED_BRIEFING_WIDTH + FOCUSED_TRACK_WIDTH / 2, top: y }}
                       >
                         <span
                           className={[
@@ -675,74 +686,123 @@ export function SuggestionGrid({
                       </button>
                     ))}
                     {rowFocusedLayout.items.map(({ marker, y }) => {
-                      const isActive = activeMarkerId === marker.id;
-                      const cardBase = [
-                        "group flex h-full w-full cursor-pointer flex-col gap-1.5 rounded-xl border p-2.5 text-left shadow-sm transition-colors",
-                        isActive
-                          ? "border-foreground/25 bg-background text-foreground"
-                          : "border-border/50 bg-background/80 text-foreground/80 hover:border-foreground/20 hover:bg-background hover:text-foreground",
-                      ].join(" ");
-                      const tooltipContent = marker.type === "agent" ? (
-                        <AgentTooltip
-                          agent={marker.agent}
-                          timelineStartAt={startAt}
-                          displayTimestamp={marker.timestamp}
-                          onSelectAgent={onSelectAgent}
-                        />
-                      ) : (
-                        <SuggestionTooltip
-                          entry={marker.entry}
-                          timelineStartAt={startAt}
-                        />
-                      );
-                      const tooltipWidthClass = marker.type === "suggestion" && marker.entry.briefingPoints?.length
-                        ? "w-[460px]"
-                        : "w-80";
-                      return (
+                      const briefingPoints =
+                        marker.type === "suggestion" ? marker.entry.briefingPoints ?? [] : [];
+                      const tooltipText =
+                        briefingPoints[0] ??
+                        (marker.type === "suggestion"
+                          ? marker.entry.transcriptExcerpt ?? marker.entry.details ?? ""
+                          : "");
+                      const hasTooltip = tooltipText.trim().length > 0;
+                      const briefingNode = (
                         <div
-                          key={`zoom-chip-${marker.id}`}
-                          className="absolute z-10"
+                          key={`zoom-briefing-${marker.id}`}
+                          className="absolute flex flex-col items-end gap-1 pr-2 text-right"
                           style={{
-                            left: FOCUSED_TRACK_WIDTH + 12,
-                            right: 4,
+                            left: 0,
+                            width: FOCUSED_BRIEFING_WIDTH,
                             top: y,
                             height: FOCUSED_CARD_HEIGHT,
                             transform: "translateY(-50%)",
                           }}
                         >
-                          <HoverCard openDelay={120} closeDelay={120}>
-                            <HoverCardTrigger asChild>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  focusMarker(marker);
-                                }}
-                                className={cardBase}
-                              >
-                                <div className="flex items-center justify-between gap-2 text-[10px]">
-                                  <span className="font-mono text-muted-foreground/70">
-                                    {formatElapsed(marker.timestamp - startAt)}
-                                  </span>
-                                  {marker.type === "agent" && (
-                                    <BotIcon className="size-3 shrink-0 text-primary" />
-                                  )}
-                                </div>
-                                <p className="line-clamp-3 text-[11px] font-medium leading-snug">
-                                  {getMarkerText(marker)}
-                                </p>
-                              </button>
-                            </HoverCardTrigger>
-                            <HoverCardContent
-                              align="start"
-                              side="right"
-                              sideOffset={10}
-                              className={`${tooltipWidthClass} rounded-2xl border border-border/60 bg-popover/95 p-3.5 shadow-xl backdrop-blur supports-[backdrop-filter]:bg-popover/85`}
-                            >
-                              {tooltipContent}
-                            </HoverCardContent>
-                          </HoverCard>
+                          <span className="font-mono text-[11px] leading-none text-muted-foreground/70">
+                            {formatElapsed(marker.timestamp - startAt)}
+                          </span>
+                          {briefingPoints.length > 0 && (
+                            <p className="line-clamp-2 text-[11px] leading-snug text-muted-foreground/80">
+                              {briefingPoints[0]}
+                            </p>
+                          )}
                         </div>
+                      );
+                      if (!hasTooltip) return briefingNode;
+                      return (
+                        <Tooltip key={`zoom-briefing-${marker.id}`}>
+                          <TooltipTrigger asChild>{briefingNode}</TooltipTrigger>
+                          <TooltipContent side="left" align="center" className="max-w-xs whitespace-normal">
+                            {tooltipText}
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    })}
+                    {rowFocusedLayout.items.map(({ marker, y }) => {
+                      const isActive = activeMarkerId === marker.id;
+                      const cardBase = [
+                        "group flex h-full w-full items-center gap-2 rounded-md border pl-2.5 pr-1.5 py-1.5 text-left shadow-sm transition-colors",
+                        isActive
+                          ? "border-foreground/25 bg-background text-foreground"
+                          : "border-border/50 bg-background/80 text-foreground/80 hover:border-foreground/20 hover:bg-background hover:text-foreground",
+                      ].join(" ");
+                      const suggestionAccept =
+                        marker.type === "suggestion" ? marker.entry.onAccept : undefined;
+                      const cardTooltip = getMarkerText(marker);
+                      const chipNode = (
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            focusMarker(marker);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              focusMarker(marker);
+                            }
+                          }}
+                          className={`${cardBase} absolute z-10 cursor-pointer`}
+                          style={{
+                            left: FOCUSED_BRIEFING_WIDTH + FOCUSED_TRACK_WIDTH,
+                            width: `min(320px, calc(100% - ${FOCUSED_BRIEFING_WIDTH + FOCUSED_TRACK_WIDTH + 8}px))`,
+                            top: y,
+                            height: FOCUSED_CARD_HEIGHT,
+                            transform: "translateY(-50%)",
+                            minWidth: 0,
+                          }}
+                        >
+                          {marker.type === "agent" && (
+                            <BotIcon className="size-3 shrink-0 text-primary" />
+                          )}
+                          <p className="line-clamp-2 flex-1 text-[11px] font-medium leading-snug">
+                            {getMarkerText(marker)}
+                          </p>
+                          {suggestionAccept && (
+                            <button
+                              type="button"
+                              aria-label="Run agent"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                suggestionAccept();
+                              }}
+                              className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-emerald-600 px-2 text-[10px] font-medium text-white shadow-sm transition-colors hover:bg-emerald-500 dark:bg-emerald-500 dark:hover:bg-emerald-400"
+                            >
+                              <PlayIcon className="size-2.5 fill-current" />
+                              Run
+                            </button>
+                          )}
+                          {marker.type === "agent" && onSelectAgent && (
+                            <button
+                              type="button"
+                              aria-label="Open agent"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onSelectAgent(marker.agent.id);
+                              }}
+                              className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-primary px-2 text-[10px] font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+                            >
+                              Open
+                            </button>
+                          )}
+                        </div>
+                      );
+                      return (
+                        <Tooltip key={`zoom-chip-${marker.id}`}>
+                          <TooltipTrigger asChild>{chipNode}</TooltipTrigger>
+                          <TooltipContent side="right" align="center" className="max-w-sm whitespace-normal">
+                            {cardTooltip}
+                          </TooltipContent>
+                        </Tooltip>
                       );
                     })}
                   </div>
@@ -828,5 +888,6 @@ export function SuggestionGrid({
         <span>{formatElapsed(footerEndMs)}</span>
       </div>
     </div>
+    </TooltipProvider>
   );
 }
