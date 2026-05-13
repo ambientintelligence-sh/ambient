@@ -118,30 +118,30 @@ function getMarkerText(marker: TimelineMarker): string {
   return marker.type === "agent" ? marker.agent.task : marker.entry.text;
 }
 
-const FOCUSED_CHIP_WIDTH = 184;
-const FOCUSED_CHIP_HALF = FOCUSED_CHIP_WIDTH / 2;
-const FOCUSED_CHIP_MIN_SPACING = FOCUSED_CHIP_WIDTH + 16;
-const FOCUSED_TRACK_HEIGHT = 176;
+const FOCUSED_CARD_HEIGHT = 88;
+const FOCUSED_CARD_HALF = FOCUSED_CARD_HEIGHT / 2;
+const FOCUSED_CARD_MIN_SPACING = FOCUSED_CARD_HEIGHT + 12;
+const FOCUSED_TRACK_WIDTH = 56;
 
 function getFocusedMarkerLayout(
   markers: readonly TimelineMarker[],
   rowStartAt: number,
   rowDuration: number,
 ) {
-  const baseWidth = Math.max(1200, markers.length * FOCUSED_CHIP_MIN_SPACING);
-  let previousX = 0;
+  const baseHeight = Math.max(440, markers.length * FOCUSED_CARD_MIN_SPACING);
+  let previousY = 0;
   const items = markers.map((marker, index) => {
-    const idealX = clamp(
-      ((marker.timestamp - rowStartAt) / rowDuration) * baseWidth,
-      FOCUSED_CHIP_HALF + 8,
-      baseWidth - FOCUSED_CHIP_HALF - 8,
+    const idealY = clamp(
+      ((marker.timestamp - rowStartAt) / rowDuration) * baseHeight,
+      FOCUSED_CARD_HALF + 8,
+      baseHeight - FOCUSED_CARD_HALF - 8,
     );
-    const x = index === 0 ? idealX : Math.max(idealX, previousX + FOCUSED_CHIP_MIN_SPACING);
-    previousX = x;
-    return { marker, x };
+    const y = index === 0 ? idealY : Math.max(idealY, previousY + FOCUSED_CARD_MIN_SPACING);
+    previousY = y;
+    return { marker, y };
   });
   return {
-    width: Math.max(baseWidth, (items.at(-1)?.x ?? 0) + FOCUSED_CHIP_HALF + 8),
+    height: Math.max(baseHeight, (items.at(-1)?.y ?? 0) + FOCUSED_CARD_HALF + 8),
     items,
   };
 }
@@ -525,10 +525,10 @@ export function SuggestionGrid({
     const target = focusedLayout.items.find(({ marker }) => marker.id === pendingId);
     if (!target) return;
     pendingScrollMarkerIdRef.current = null;
-    const viewportWidth = container.clientWidth;
-    const maxScroll = Math.max(0, focusedLayout.width - viewportWidth);
-    const desired = target.x - viewportWidth / 2;
-    container.scrollLeft = clamp(desired, 0, maxScroll);
+    const viewportHeight = container.clientHeight;
+    const maxScroll = Math.max(0, focusedLayout.height - viewportHeight);
+    const desired = target.y - viewportHeight / 2;
+    container.scrollTop = clamp(desired, 0, maxScroll);
   }, [focusedRow, focusedLayout]);
   const nowElapsed = clamp(Date.now() - startAt, 0, duration - 1);
   const nextRow = Math.min(rows - 1, Math.floor(nowElapsed / rowDuration));
@@ -639,106 +639,113 @@ export function SuggestionGrid({
                 </div>
                 <div
                   ref={focusedScrollRef}
-                  className="overflow-x-auto overscroll-x-contain pb-2"
+                  className="max-h-[420px] overflow-y-auto overscroll-y-contain pb-2"
                 >
-                <div
-                  className="relative"
-                  style={{ width: rowFocusedLayout.width, height: FOCUSED_TRACK_HEIGHT }}
-                >
-                  <span className="absolute inset-x-0 top-4 h-px bg-border/55" />
-                  {rowFocusedLayout.items.map(({ marker, x }) => (
-                    <button
-                      key={`zoom-marker-${marker.id}`}
-                      type="button"
-                      aria-label={`${marker.type === "agent" ? "Agent" : "Suggestion"} at ${formatElapsed(marker.timestamp - startAt)}: ${getMarkerText(marker)}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        focusMarker(marker);
-                      }}
-                      className="group absolute top-[7px] z-10 flex size-4 -translate-x-1/2 cursor-pointer items-center justify-center"
-                      style={{ left: x }}
-                    >
-                      <span
-                        className={[
-                          marker.type === "agent"
-                            ? getAgentMarkerClass(marker.agent)
-                            : ["rounded-full", getSuggestionMarkerClass(marker.entry)].join(" "),
-                          activeMarkerId === marker.id ? "ring-2 ring-foreground/25" : "",
-                        ].join(" ")}
-                      />
-                    </button>
-                  ))}
-                  {rowFocusedLayout.items.map(({ marker, x }) => {
-                    const isActive = activeMarkerId === marker.id;
-                    const chipBase = [
-                      "group flex h-full w-full cursor-pointer flex-col gap-1.5 rounded-xl border p-2.5 text-left shadow-sm transition-colors",
-                      isActive
-                        ? "border-foreground/25 bg-background text-foreground"
-                        : "border-border/50 bg-background/80 text-foreground/80 hover:border-foreground/20 hover:bg-background hover:text-foreground",
-                    ].join(" ");
-                    const tooltipContent = marker.type === "agent" ? (
-                      <AgentTooltip
-                        agent={marker.agent}
-                        timelineStartAt={startAt}
-                        displayTimestamp={marker.timestamp}
-                        onSelectAgent={onSelectAgent}
-                      />
-                    ) : (
-                      <SuggestionTooltip
-                        entry={marker.entry}
-                        timelineStartAt={startAt}
-                      />
-                    );
-                    const tooltipWidthClass = marker.type === "suggestion" && marker.entry.briefingPoints?.length
-                      ? "w-[460px]"
-                      : "w-80";
-                    return (
-                      <div
-                        key={`zoom-chip-${marker.id}`}
-                        className="absolute z-10"
-                        style={{
-                          left: x,
-                          top: 36,
-                          height: FOCUSED_TRACK_HEIGHT - 44,
-                          width: FOCUSED_CHIP_WIDTH,
-                          transform: "translateX(-50%)",
+                  <div
+                    className="relative"
+                    style={{
+                      height: rowFocusedLayout.height,
+                      paddingLeft: FOCUSED_TRACK_WIDTH,
+                    }}
+                  >
+                    <span
+                      className="absolute top-0 bottom-0 w-px bg-border/55"
+                      style={{ left: FOCUSED_TRACK_WIDTH - 1 }}
+                    />
+                    {rowFocusedLayout.items.map(({ marker, y }) => (
+                      <button
+                        key={`zoom-marker-${marker.id}`}
+                        type="button"
+                        aria-label={`${marker.type === "agent" ? "Agent" : "Suggestion"} at ${formatElapsed(marker.timestamp - startAt)}: ${getMarkerText(marker)}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          focusMarker(marker);
                         }}
+                        className="group absolute z-10 flex size-4 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center"
+                        style={{ left: FOCUSED_TRACK_WIDTH - 1, top: y }}
                       >
-                        <HoverCard openDelay={120} closeDelay={120}>
-                          <HoverCardTrigger asChild>
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                focusMarker(marker);
-                              }}
-                              className={chipBase}
+                        <span
+                          className={[
+                            marker.type === "agent"
+                              ? getAgentMarkerClass(marker.agent)
+                              : ["rounded-full", getSuggestionMarkerClass(marker.entry)].join(" "),
+                            activeMarkerId === marker.id ? "ring-2 ring-foreground/25" : "",
+                          ].join(" ")}
+                        />
+                      </button>
+                    ))}
+                    {rowFocusedLayout.items.map(({ marker, y }) => {
+                      const isActive = activeMarkerId === marker.id;
+                      const cardBase = [
+                        "group flex h-full w-full cursor-pointer flex-col gap-1.5 rounded-xl border p-2.5 text-left shadow-sm transition-colors",
+                        isActive
+                          ? "border-foreground/25 bg-background text-foreground"
+                          : "border-border/50 bg-background/80 text-foreground/80 hover:border-foreground/20 hover:bg-background hover:text-foreground",
+                      ].join(" ");
+                      const tooltipContent = marker.type === "agent" ? (
+                        <AgentTooltip
+                          agent={marker.agent}
+                          timelineStartAt={startAt}
+                          displayTimestamp={marker.timestamp}
+                          onSelectAgent={onSelectAgent}
+                        />
+                      ) : (
+                        <SuggestionTooltip
+                          entry={marker.entry}
+                          timelineStartAt={startAt}
+                        />
+                      );
+                      const tooltipWidthClass = marker.type === "suggestion" && marker.entry.briefingPoints?.length
+                        ? "w-[460px]"
+                        : "w-80";
+                      return (
+                        <div
+                          key={`zoom-chip-${marker.id}`}
+                          className="absolute z-10"
+                          style={{
+                            left: FOCUSED_TRACK_WIDTH + 12,
+                            right: 4,
+                            top: y,
+                            height: FOCUSED_CARD_HEIGHT,
+                            transform: "translateY(-50%)",
+                          }}
+                        >
+                          <HoverCard openDelay={120} closeDelay={120}>
+                            <HoverCardTrigger asChild>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  focusMarker(marker);
+                                }}
+                                className={cardBase}
+                              >
+                                <div className="flex items-center justify-between gap-2 text-[10px]">
+                                  <span className="font-mono text-muted-foreground/70">
+                                    {formatElapsed(marker.timestamp - startAt)}
+                                  </span>
+                                  {marker.type === "agent" && (
+                                    <BotIcon className="size-3 shrink-0 text-primary" />
+                                  )}
+                                </div>
+                                <p className="line-clamp-3 text-[11px] font-medium leading-snug">
+                                  {getMarkerText(marker)}
+                                </p>
+                              </button>
+                            </HoverCardTrigger>
+                            <HoverCardContent
+                              align="start"
+                              side="right"
+                              sideOffset={10}
+                              className={`${tooltipWidthClass} rounded-2xl border border-border/60 bg-popover/95 p-3.5 shadow-xl backdrop-blur supports-[backdrop-filter]:bg-popover/85`}
                             >
-                              <div className="flex items-center justify-between gap-2 text-[10px]">
-                                <span className="font-mono text-muted-foreground/70">
-                                  {formatElapsed(marker.timestamp - startAt)}
-                                </span>
-                                {marker.type === "agent" && (
-                                  <BotIcon className="size-3 shrink-0 text-primary" />
-                                )}
-                              </div>
-                              <p className="line-clamp-5 text-[11px] font-medium leading-snug">
-                                {getMarkerText(marker)}
-                              </p>
-                            </button>
-                          </HoverCardTrigger>
-                          <HoverCardContent
-                            align="center"
-                            sideOffset={10}
-                            className={`${tooltipWidthClass} rounded-2xl border border-border/60 bg-popover/95 p-3.5 shadow-xl backdrop-blur supports-[backdrop-filter]:bg-popover/85`}
-                          >
-                            {tooltipContent}
-                          </HoverCardContent>
-                        </HoverCard>
-                      </div>
-                    );
-                  })}
-                </div>
+                              {tooltipContent}
+                            </HoverCardContent>
+                          </HoverCard>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             ) : (
