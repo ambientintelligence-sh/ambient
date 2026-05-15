@@ -1,30 +1,22 @@
 import {
   AlertTriangleIcon,
   BotIcon,
+  ChevronDownIcon,
   CheckCircle2Icon,
-  CircleDotIcon,
+  Clock3Icon,
   LightbulbIcon,
   ListChecksIcon,
   PencilIcon,
   PlayIcon,
   SearchIcon,
-  TimerIcon,
+  SparklesIcon,
+  Trash2Icon,
   XIcon,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { Agent, SuggestionKind } from "@core/types";
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 
 export type SuggestionGridEntry = {
   id: string;
@@ -36,7 +28,7 @@ export type SuggestionGridEntry = {
   transcriptExcerpt?: string;
   kind?: SuggestionKind;
   createdAt: number;
-  /** When undefined the tooltip shows only Dismiss (used for callout-style live suggestions). */
+  /** When undefined the item is an informational callout rather than a runnable task. */
   onAccept?: () => void;
   onDismiss: () => void;
   dismissLabel?: string;
@@ -47,9 +39,12 @@ type SuggestionGridProps = {
   agents?: Agent[];
   scanBusy?: boolean;
   timelineStartAt?: number;
-  timelineEndAt?: number;
   onSelectAgent?: (id: string) => void;
 };
+
+type WorkstreamItem =
+  | { id: string; type: "suggestion"; timestamp: number; entry: SuggestionGridEntry }
+  | { id: string; type: "agent"; timestamp: number; agent: Agent };
 
 const SUGGESTION_KIND_ICONS: Record<SuggestionKind, LucideIcon> = {
   research: SearchIcon,
@@ -67,19 +62,6 @@ const KIND_LABELS: Record<SuggestionKind, string> = {
   followup: "Follow up",
 };
 
-const GRID_COLS = 16;
-const MAX_TIMELINE_ROWS = 6;
-const MIN_TIMELINE_MS = 5 * 60_000;
-const NICE_ROW_DURATIONS_MS = [
-  5 * 60_000,
-  10 * 60_000,
-  15 * 60_000,
-  30 * 60_000,
-  60 * 60_000,
-  90 * 60_000,
-  120 * 60_000,
-];
-
 function relativeTime(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
   if (seconds < 60) return "just now";
@@ -89,16 +71,6 @@ function relativeTime(timestamp: number): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
-}
-
-const MAX_BRIEFING_POINTS = 1;
-
-type TimelineMarker =
-  | { id: string; type: "suggestion"; timestamp: number; entry: SuggestionGridEntry }
-  | { id: string; type: "agent"; timestamp: number; agent: Agent };
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
 
 function formatElapsed(ms: number): string {
@@ -112,55 +84,11 @@ function formatElapsed(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-function chooseRowDuration(durationMs: number): number {
-  const target = Math.max(durationMs, MIN_TIMELINE_MS);
-  return (
-    NICE_ROW_DURATIONS_MS.find((candidate) => Math.ceil(target / candidate) <= MAX_TIMELINE_ROWS) ??
-    Math.ceil(target / MAX_TIMELINE_ROWS)
-  );
-}
-
-function getMarkerText(marker: TimelineMarker): string {
-  return marker.type === "agent" ? marker.agent.task : marker.entry.text;
-}
-
-const FOCUSED_CARD_HEIGHT = 60;
-const FOCUSED_CARD_HALF = FOCUSED_CARD_HEIGHT / 2;
-const FOCUSED_CARD_MIN_SPACING = FOCUSED_CARD_HEIGHT + 6;
-const FOCUSED_TRACK_WIDTH = 18;
-const FOCUSED_BRIEFING_WIDTH = 120;
-
-function getFocusedMarkerLayout(
-  markers: readonly TimelineMarker[],
-  rowStartAt: number,
-  rowDuration: number,
-) {
-  const baseHeight = Math.max(
-    FOCUSED_CARD_HEIGHT + 16,
-    markers.length * FOCUSED_CARD_MIN_SPACING,
-  );
-  let previousY = 0;
-  const items = markers.map((marker, index) => {
-    const idealY = clamp(
-      ((marker.timestamp - rowStartAt) / rowDuration) * baseHeight,
-      FOCUSED_CARD_HALF + 8,
-      baseHeight - FOCUSED_CARD_HALF - 8,
-    );
-    const y = index === 0 ? idealY : Math.max(idealY, previousY + FOCUSED_CARD_MIN_SPACING);
-    previousY = y;
-    return { marker, y };
-  });
-  return {
-    height: Math.max(baseHeight, (items.at(-1)?.y ?? 0) + FOCUSED_CARD_HALF + 8),
-    items,
-  };
-}
-
 function normalizeMatchText(text: string): string {
   return text.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function resolveAgentTimelineTimestamp(
+function resolveAgentTimestamp(
   agent: Agent,
   entries: readonly SuggestionGridEntry[],
   fallbackTimestamp: number,
@@ -178,213 +106,242 @@ function resolveAgentTimelineTimestamp(
     if (!entryText) return false;
     return entryText === agentTask || entryText.includes(agentTask) || agentTask.includes(entryText);
   });
-  if (textMatch) return textMatch.createdAt + fallbackOffset;
 
-  return fallbackTimestamp + fallbackOffset;
+  return textMatch ? textMatch.createdAt + fallbackOffset : fallbackTimestamp + fallbackOffset;
 }
 
-function getSuggestionMarkerClass(entry: SuggestionGridEntry): string {
-  const size = entry.state === "live" ? "size-2" : "size-1.5";
-  switch (entry.kind) {
-    case "flag":
-      return `${size} bg-[oklch(0.62_0.18_32)] shadow-[0_0_0_3px_oklch(0.62_0.18_32/0.16)]`;
-    case "action":
-      return `${size} bg-[oklch(0.7_0.14_78)] shadow-[0_0_0_3px_oklch(0.7_0.14_78/0.18)]`;
-    case "research":
-      return `${size} bg-[oklch(0.58_0.12_220)] shadow-[0_0_0_3px_oklch(0.58_0.12_220/0.16)]`;
-    case "followup":
-      return `${size} bg-[oklch(0.58_0.13_285)] shadow-[0_0_0_3px_oklch(0.58_0.13_285/0.16)]`;
-    case "insight":
-    default:
-      return `${size} bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.18)] dark:bg-emerald-400 dark:shadow-[0_0_0_3px_rgba(52,211,153,0.22)]`;
-  }
-}
-
-function getAgentMarkerClass(agent: Agent): string {
+function statusLabel(agent: Agent): string {
   switch (agent.status) {
     case "running":
-      return "size-2.5 rotate-45 rounded-[2px] bg-primary shadow-[0_0_0_3px_color-mix(in_oklab,var(--primary)_18%,transparent)] animate-pulse";
+      return "Agent running";
     case "failed":
-      return "size-2.5 rotate-45 rounded-[2px] bg-destructive shadow-[0_0_0_3px_color-mix(in_oklab,var(--destructive)_16%,transparent)]";
+      return "Agent needs attention";
     case "completed":
     default:
-      return "size-2.5 rotate-45 rounded-[2px] bg-[oklch(0.63_0.14_145)] shadow-[0_0_0_3px_oklch(0.63_0.14_145/0.16)]";
+      return "Agent result";
   }
 }
 
-function SuggestionTooltip({
+function statusTone(agent: Agent): string {
+  switch (agent.status) {
+    case "running":
+      return "border-primary/35 bg-primary/10 text-primary";
+    case "failed":
+      return "border-destructive/30 bg-destructive/10 text-destructive";
+    case "completed":
+    default:
+      return "border-[oklch(0.63_0.14_145/0.35)] bg-[oklch(0.63_0.14_145/0.12)] text-[oklch(0.43_0.12_145)] dark:text-[oklch(0.76_0.12_145)]";
+  }
+}
+
+function suggestionTone(entry: SuggestionGridEntry): string {
+  switch (entry.kind) {
+    case "flag":
+      return "border-destructive/30 bg-destructive/10 text-destructive";
+    case "action":
+      return "border-[oklch(0.7_0.14_78/0.35)] bg-[oklch(0.7_0.14_78/0.13)] text-[oklch(0.48_0.11_78)] dark:text-[oklch(0.82_0.12_78)]";
+    case "research":
+      return "border-[oklch(0.58_0.12_220/0.35)] bg-[oklch(0.58_0.12_220/0.12)] text-[oklch(0.42_0.1_220)] dark:text-[oklch(0.76_0.1_220)]";
+    case "followup":
+      return "border-[oklch(0.58_0.13_285/0.35)] bg-[oklch(0.58_0.13_285/0.12)] text-[oklch(0.42_0.1_285)] dark:text-[oklch(0.76_0.1_285)]";
+    case "insight":
+    default:
+      return "border-[oklch(0.63_0.14_145/0.35)] bg-[oklch(0.63_0.14_145/0.12)] text-[oklch(0.43_0.12_145)] dark:text-[oklch(0.76_0.12_145)]";
+  }
+}
+
+function Chip({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <span className={`inline-flex h-5 items-center rounded-full border px-2 text-[10px] font-medium leading-none ${className}`}>
+      {children}
+    </span>
+  );
+}
+
+function TimelineMarker({
+  item,
+}: {
+  item: WorkstreamItem;
+}) {
+  if (item.type === "agent") {
+    const StatusIcon =
+      item.agent.status === "completed" ? CheckCircle2Icon :
+      item.agent.status === "failed" ? AlertTriangleIcon :
+      BotIcon;
+    return (
+      <span className={`relative z-10 flex size-7 items-center justify-center rounded-full border shadow-sm ${statusTone(item.agent)}`}>
+        <StatusIcon className="size-3.5" />
+      </span>
+    );
+  }
+
+  const Icon = item.entry.kind ? SUGGESTION_KIND_ICONS[item.entry.kind] : SparklesIcon;
+  return (
+    <span className={`relative z-10 flex size-7 items-center justify-center rounded-full border shadow-sm ${suggestionTone(item.entry)}`}>
+      <Icon className="size-3.5" />
+    </span>
+  );
+}
+
+function SuggestionCard({
   entry,
-  timelineStartAt,
+  expanded,
+  onToggleExpanded,
 }: {
   entry: SuggestionGridEntry;
-  timelineStartAt: number;
+  expanded: boolean;
+  onToggleExpanded: () => void;
 }) {
-  const Icon = entry.kind ? SUGGESTION_KIND_ICONS[entry.kind] : SearchIcon;
-  const flag = entry.flag?.trim();
-  const details = entry.details?.trim();
-  const excerpt = entry.transcriptExcerpt?.trim();
   const kindLabel = entry.kind ? KIND_LABELS[entry.kind] : "Suggestion";
-  const isLive = entry.state === "live";
-  const briefingPoints = entry.briefingPoints ?? [];
-  const visiblePoints = briefingPoints.slice(0, MAX_BRIEFING_POINTS);
-  const hiddenCount = Math.max(0, briefingPoints.length - visiblePoints.length);
-  const hasBriefing = visiblePoints.length > 0;
+  const hasContext = entry.flag?.trim() || entry.details?.trim() || entry.transcriptExcerpt?.trim();
+  const hasMore = Boolean(hasContext || entry.briefingPoints?.length);
+  const acceptLabel = entry.state === "archived" ? "Run again" : "Run agent";
+  const dismissIcon = entry.dismissLabel === "Delete" ? Trash2Icon : XIcon;
+  const DismissIcon = dismissIcon;
 
   return (
-    <div className="flex flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2.5">
-        <span className="flex items-center gap-2">
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300">
-            <Icon className="size-3" />
-          </span>
-          <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/75">
-            {kindLabel}
-          </span>
-        </span>
-        <span className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground/60">
-          {isLive ? (
-            <span className="size-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
-          ) : null}
-          <span>{formatElapsed(entry.createdAt - timelineStartAt)}</span>
-          <span>·</span>
-          <span>{relativeTime(entry.createdAt)}</span>
-        </span>
+    <div className="min-w-0 rounded-lg border border-border/60 bg-background/80 px-3 py-2.5 shadow-sm transition-colors hover:border-border hover:bg-background">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
+              {entry.onAccept ? "Suggested task" : "Session note"}
+            </span>
+            <Chip className={suggestionTone(entry)}>{kindLabel}</Chip>
+            {entry.state === "live" && (
+              <Chip className="border-primary/20 bg-primary/10 text-primary">New</Chip>
+            )}
+          </div>
+          <p className="text-sm font-medium leading-snug text-foreground">{entry.text}</p>
+        </div>
+        {entry.onAccept && (
+          <Button
+            type="button"
+            size="sm"
+            onClick={entry.onAccept}
+            className="shrink-0"
+          >
+            <PlayIcon className="size-3 fill-current" />
+            {acceptLabel}
+          </Button>
+        )}
       </div>
 
-      <div
-        className={[
-          "pt-3",
-          hasBriefing ? "grid grid-cols-[140px_1fr] gap-4" : "block",
-        ].join(" ")}
-      >
-        {hasBriefing && (
-          <div className="flex flex-col gap-1.5 border-r border-border/40 pr-3.5">
-            <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground/65">
-              Briefing
-            </div>
-            <ul className="flex flex-col gap-1.5">
-              {visiblePoints.map((point, i) => (
-                <li
-                  key={`${i}-${point.slice(0, 20)}`}
-                  className="flex items-start gap-1.5 text-2xs leading-relaxed text-muted-foreground"
-                >
-                  <span className="mt-1 size-1 shrink-0 rounded-full bg-emerald-500/70 dark:bg-emerald-400/70" />
-                  <span>{point}</span>
-                </li>
-              ))}
-              {hiddenCount > 0 && (
-                <li className="pl-2.5 text-[10px] text-muted-foreground/55">
-                  + {hiddenCount} earlier
-                </li>
-              )}
-            </ul>
-          </div>
-        )}
-
-        <div className="space-y-2">
-          {flag && (
-            <div className="text-[11px] leading-snug text-muted-foreground/80">
-              {flag}
-            </div>
+      {expanded && hasContext && (
+        <div className="mt-2.5 space-y-2">
+          {entry.flag?.trim() && (
+            <p className="text-xs leading-relaxed text-muted-foreground">{entry.flag}</p>
           )}
-          <div className="text-xs font-medium leading-snug text-foreground">
-            {entry.text}
-          </div>
-          {details && (
-            <p className="text-2xs leading-relaxed text-muted-foreground">{details}</p>
+          {entry.details?.trim() && (
+            <p className="text-xs leading-relaxed text-muted-foreground">{entry.details}</p>
           )}
-          {excerpt && (
-            <blockquote className="border-l-2 border-emerald-500/40 pl-2.5 text-2xs italic leading-relaxed text-muted-foreground/85 dark:border-emerald-400/40">
-              {excerpt}
+          {entry.transcriptExcerpt?.trim() && (
+            <blockquote className="border-l-2 border-border pl-2.5 text-xs italic leading-relaxed text-muted-foreground/85">
+              {entry.transcriptExcerpt}
             </blockquote>
           )}
         </div>
-      </div>
+      )}
 
-      {entry.onAccept && (
-        <div className="mt-3.5 flex items-center gap-1.5 border-t border-border/40 pt-3">
+      {expanded && entry.briefingPoints?.length ? (
+        <div className="mt-2.5 rounded-md bg-muted/45 px-2.5 py-2 text-xs leading-relaxed text-muted-foreground">
+          {entry.briefingPoints[0]}
+        </div>
+      ) : null}
+
+      <div className="mt-2.5 flex items-center justify-between">
+        {hasMore ? (
           <button
             type="button"
-            onClick={entry.onAccept}
-            className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full bg-emerald-600 px-3 text-[11px] font-medium text-white transition-colors hover:bg-emerald-500 dark:bg-emerald-500 dark:hover:bg-emerald-400"
+            onClick={onToggleExpanded}
+            className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
-            <PlayIcon className="size-2.5 fill-current" />
-            Run agent
+            <ChevronDownIcon className={`size-3 transition-transform ${expanded ? "rotate-180" : ""}`} />
+            {expanded ? "Less context" : "Context"}
           </button>
-        </div>
-      )}
+        ) : (
+          <span />
+        )}
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          onClick={entry.onDismiss}
+          className="text-muted-foreground"
+        >
+          <DismissIcon className="size-3" />
+          {entry.dismissLabel ?? "Dismiss"}
+        </Button>
+      </div>
     </div>
   );
 }
 
-function AgentTooltip({
+function AgentCard({
   agent,
-  timelineStartAt,
-  displayTimestamp,
   onSelectAgent,
+  expanded,
+  onToggleExpanded,
 }: {
   agent: Agent;
-  timelineStartAt: number;
-  displayTimestamp: number;
   onSelectAgent?: (id: string) => void;
+  expanded: boolean;
+  onToggleExpanded: () => void;
 }) {
-  const statusIcon =
-    agent.status === "completed" ? CheckCircle2Icon :
-    agent.status === "failed" ? AlertTriangleIcon :
-    CircleDotIcon;
-  const StatusIcon = statusIcon;
+  const resultPreview = agent.result?.trim().split(/\n+/)[0];
   const duration = agent.completedAt
     ? formatElapsed(agent.completedAt - agent.createdAt)
     : relativeTime(agent.createdAt);
-  const resultPreview = agent.result?.trim().split(/\n+/)[0];
+  const hasResult = Boolean(resultPreview);
 
   return (
-    <div className="flex flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2.5">
-        <span className="flex items-center gap-2">
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+    <div className="min-w-0 rounded-lg border border-border/60 bg-background/80 px-3 py-2.5 shadow-sm transition-colors hover:border-border hover:bg-background">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
+              {statusLabel(agent)}
+            </span>
+            <Chip className={statusTone(agent)}>{agent.status}</Chip>
+            <Chip className="border-border/70 bg-muted/45 text-muted-foreground">{duration}</Chip>
+          </div>
+          <p className="text-sm font-medium leading-snug text-foreground">{agent.task}</p>
+        </div>
+        {onSelectAgent && (
+          <Button
+            type="button"
+            variant={agent.status === "running" ? "default" : "outline"}
+            size="sm"
+            onClick={() => onSelectAgent(agent.id)}
+            className="shrink-0"
+          >
             <BotIcon className="size-3" />
-          </span>
-          <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/75">
-            Agent
-          </span>
-        </span>
-        <span className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground/60">
-          <StatusIcon className="size-3" />
-          <span>{agent.status}</span>
-        </span>
-      </div>
-
-      <div className="space-y-2 pt-3">
-        <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground/70">
-          <span className="inline-flex items-center gap-1 font-mono">
-            <TimerIcon className="size-3" />
-            {formatElapsed(displayTimestamp - timelineStartAt)}
-          </span>
-          {agent.createdAt !== displayTimestamp && (
-            <span>launched {relativeTime(agent.createdAt)}</span>
-          )}
-          <span>{duration}</span>
-        </div>
-        <div className="text-xs font-medium leading-snug text-foreground">
-          {agent.task}
-        </div>
-        {resultPreview && (
-          <p className="line-clamp-3 text-2xs leading-relaxed text-muted-foreground">
-            {resultPreview}
-          </p>
+            Open
+          </Button>
         )}
       </div>
 
-      {onSelectAgent && (
-        <div className="mt-3.5 flex items-center gap-1.5 border-t border-border/40 pt-3">
+      {expanded && resultPreview && (
+        <p className="mt-2.5 line-clamp-3 text-xs leading-relaxed text-muted-foreground">
+          {resultPreview}
+        </p>
+      )}
+
+      {hasResult && (
+        <div className="mt-2.5">
           <button
             type="button"
-            onClick={() => onSelectAgent(agent.id)}
-            className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full bg-primary px-3 text-[11px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            onClick={onToggleExpanded}
+            className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
-            <BotIcon className="size-2.5" />
-            Open agent
+            <ChevronDownIcon className={`size-3 transition-transform ${expanded ? "rotate-180" : ""}`} />
+            {expanded ? "Less result" : "Result preview"}
           </button>
         </div>
       )}
@@ -392,72 +349,20 @@ function AgentTooltip({
   );
 }
 
-function pluralize(count: number, singular: string): string {
-  return `${count} ${singular}${count === 1 ? "" : "s"}`;
-}
-
-function CellStats({
-  markers,
-  timelineStartAt,
-}: {
-  readonly markers: readonly TimelineMarker[];
-  readonly timelineStartAt: number;
-}) {
-  const suggestionsByKind = new Map<SuggestionKind | "unspecified", number>();
-  let agentCount = 0;
-  let firstTs = Infinity;
-  let lastTs = -Infinity;
-  for (const marker of markers) {
-    firstTs = Math.min(firstTs, marker.timestamp);
-    lastTs = Math.max(lastTs, marker.timestamp);
-    if (marker.type === "agent") {
-      agentCount += 1;
-    } else {
-      const kind = marker.entry.kind ?? "unspecified";
-      suggestionsByKind.set(kind, (suggestionsByKind.get(kind) ?? 0) + 1);
-    }
-  }
-  const suggestionCount = markers.length - agentCount;
-  const summaryParts: string[] = [];
-  if (suggestionCount > 0) summaryParts.push(pluralize(suggestionCount, "suggestion"));
-  if (agentCount > 0) summaryParts.push(pluralize(agentCount, "agent"));
-
+function EmptyWorkstream({ scanBusy }: { scanBusy: boolean }) {
   return (
-    <div className="flex flex-col gap-2.5">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-[11px] font-medium text-foreground">
-          {summaryParts.join(" · ")}
-        </span>
-        <span className="font-mono text-[10px] text-muted-foreground/60">
-          {formatElapsed(firstTs - timelineStartAt)}
-          {firstTs !== lastTs ? ` – ${formatElapsed(lastTs - timelineStartAt)}` : ""}
-        </span>
+    <div className="rounded-lg border border-dashed border-border/70 bg-muted/25 px-4 py-5 text-center">
+      <div className="mx-auto mb-2 flex size-8 items-center justify-center rounded-full border border-border/70 bg-background text-muted-foreground">
+        {scanBusy ? <Clock3Icon className="size-4 animate-pulse" /> : <SparklesIcon className="size-4" />}
       </div>
-      {(suggestionsByKind.size > 0 || agentCount > 0) && (
-        <ul className="flex flex-col gap-1">
-          {[...suggestionsByKind.entries()].map(([kind, count]) => {
-            const label = kind === "unspecified" ? "Suggestion" : KIND_LABELS[kind];
-            return (
-              <li
-                key={`kind-${kind}`}
-                className="flex items-center gap-2 text-[11px] text-muted-foreground"
-              >
-                <span className="size-1.5 rounded-full bg-foreground/35" />
-                <span>{count} {label.toLowerCase()}{count === 1 ? "" : "s"}</span>
-              </li>
-            );
-          })}
-          {agentCount > 0 && (
-            <li className="flex items-center gap-2 text-[11px] text-muted-foreground">
-              <span className="size-1.5 rotate-45 bg-primary" />
-              <span>{pluralize(agentCount, "agent")}</span>
-            </li>
-          )}
-        </ul>
-      )}
-      <div className="border-t border-border/40 pt-2 text-[10px] text-muted-foreground/55">
-        Click to expand this row
-      </div>
+      <p className="text-sm font-medium text-foreground">
+        {scanBusy ? "Listening for useful work" : "No suggested work yet"}
+      </p>
+      <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-muted-foreground">
+        {scanBusy
+          ? "Tasks and agent results will appear here in session order."
+          : "Start recording or ask an agent below; the workstream will collect suggestions, agent runs, and results."}
+      </p>
     </div>
   );
 }
@@ -467,13 +372,9 @@ export function SuggestionGrid({
   agents = [],
   scanBusy = false,
   timelineStartAt,
-  timelineEndAt,
   onSelectAgent,
 }: SuggestionGridProps) {
-  const [focusedRow, setFocusedRow] = useState<number | null>(null);
-  const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null);
-  const focusedScrollRef = useRef<HTMLDivElement | null>(null);
-  const pendingScrollMarkerIdRef = useRef<string | null>(null);
+  const [expandedItemIds, setExpandedItemIds] = useState<Set<string>>(() => new Set());
   const sortedEntries = useMemo(
     () => [...entries].sort((a, b) => a.createdAt - b.createdAt),
     [entries],
@@ -482,412 +383,89 @@ export function SuggestionGrid({
     () => agents.filter((agent) => !agent.archived).sort((a, b) => a.createdAt - b.createdAt),
     [agents],
   );
-  const markers = useMemo<TimelineMarker[]>(
-    () => {
-      const fallbackTimestamp = sortedEntries.at(-1)?.createdAt ?? timelineStartAt ?? Date.now();
-      const suggestionMarkers = sortedEntries.map((entry): TimelineMarker => ({
-        id: `suggestion-${entry.id}`,
-        type: "suggestion",
-        timestamp: entry.createdAt,
-        entry,
-      }));
-      const agentMarkers = visibleAgents.map((agent, index): TimelineMarker => ({
-        id: `agent-${agent.id}`,
-        type: "agent",
-        timestamp: resolveAgentTimelineTimestamp(
-          agent,
-          sortedEntries,
-          fallbackTimestamp,
-          (index + 1) * 15_000,
-        ),
+  const items = useMemo<WorkstreamItem[]>(() => {
+    const fallbackTimestamp = sortedEntries.at(-1)?.createdAt ?? timelineStartAt ?? Date.now();
+    const suggestionItems = sortedEntries.map((entry): WorkstreamItem => ({
+      id: `suggestion-${entry.id}`,
+      type: "suggestion",
+      timestamp: entry.createdAt,
+      entry,
+    }));
+    const agentItems = visibleAgents.map((agent, index): WorkstreamItem => ({
+      id: `agent-${agent.id}`,
+      type: "agent",
+      timestamp: resolveAgentTimestamp(
         agent,
-      }));
-      return [...suggestionMarkers, ...agentMarkers].sort((a, b) => a.timestamp - b.timestamp);
-    },
-    [sortedEntries, timelineStartAt, visibleAgents],
-  );
-  const markerTimestamps = markers.map((marker) => marker.timestamp);
-  const startAt = timelineStartAt ?? (markerTimestamps.length > 0 ? Math.min(...markerTimestamps) : Date.now());
-  const rawEndAt = timelineEndAt ?? (markerTimestamps.length > 0 ? Math.max(...markerTimestamps) : startAt);
-  const duration = Math.max(MIN_TIMELINE_MS, rawEndAt - startAt);
-  const endAt = startAt + duration;
-  const rowDuration = chooseRowDuration(duration);
-  const rows = clamp(Math.ceil(duration / rowDuration), 1, MAX_TIMELINE_ROWS);
-  const focusedRowMarkers = focusedRow === null
-    ? []
-    : markers.filter((marker) => {
-        const elapsed = clamp(marker.timestamp - startAt, 0, duration - 1);
-        return Math.min(rows - 1, Math.floor(elapsed / rowDuration)) === focusedRow;
-      });
-  const focusedRowStartAt =
-    focusedRow === null ? startAt : startAt + focusedRow * rowDuration;
-  const focusedLayout =
-    focusedRow === null
-      ? null
-      : getFocusedMarkerLayout(focusedRowMarkers, focusedRowStartAt, rowDuration);
+        sortedEntries,
+        fallbackTimestamp,
+        (index + 1) * 15_000,
+      ),
+      agent,
+    }));
 
-  useEffect(() => {
-    if (focusedRow === null || !focusedLayout) return;
-    const pendingId = pendingScrollMarkerIdRef.current;
-    if (!pendingId) return;
-    const container = focusedScrollRef.current;
-    if (!container) return;
-    const target = focusedLayout.items.find(({ marker }) => marker.id === pendingId);
-    if (!target) return;
-    pendingScrollMarkerIdRef.current = null;
-    const viewportHeight = container.clientHeight;
-    const maxScroll = Math.max(0, focusedLayout.height - viewportHeight);
-    const desired = target.y - viewportHeight / 2;
-    container.scrollTop = clamp(desired, 0, maxScroll);
-  }, [focusedRow, focusedLayout]);
-  const nowElapsed = clamp(Date.now() - startAt, 0, duration - 1);
-  const nextRow = Math.min(rows - 1, Math.floor(nowElapsed / rowDuration));
-  const nextCol = Math.min(
-    GRID_COLS - 1,
-    Math.floor(((nowElapsed - nextRow * rowDuration) / rowDuration) * GRID_COLS),
-  );
+    return [...suggestionItems, ...agentItems].sort((a, b) => a.timestamp - b.timestamp);
+  }, [sortedEntries, timelineStartAt, visibleAgents]);
 
-  const markersByCell = useMemo(() => {
-    const cells = new Map<string, TimelineMarker[]>();
-    for (const marker of markers) {
-      const elapsed = clamp(marker.timestamp - startAt, 0, duration - 1);
-      const row = Math.min(rows - 1, Math.floor(elapsed / rowDuration));
-      const rowElapsed = elapsed - row * rowDuration;
-      const col = Math.min(GRID_COLS - 1, Math.floor((rowElapsed / rowDuration) * GRID_COLS));
-      const key = `${row}:${col}`;
-      cells.set(key, [...(cells.get(key) ?? []), marker]);
-    }
-    return cells;
-  }, [duration, markers, rowDuration, rows, startAt]);
+  const startAt = timelineStartAt ?? items[0]?.timestamp ?? Date.now();
 
-  const handleRowKeyDown = (event: KeyboardEvent<HTMLDivElement>, row: number) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      setFocusedRow((current) => current === row ? null : row);
-      setActiveMarkerId(null);
-    }
+  const toggleExpanded = (itemId: string) => {
+    setExpandedItemIds((current) => {
+      const next = new Set(current);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
   };
 
-  const getMarkerRow = (marker: TimelineMarker) => {
-    const elapsed = clamp(marker.timestamp - startAt, 0, duration - 1);
-    return Math.min(rows - 1, Math.floor(elapsed / rowDuration));
-  };
-
-  const focusMarker = (marker: TimelineMarker) => {
-    pendingScrollMarkerIdRef.current = marker.id;
-    setFocusedRow(getMarkerRow(marker));
-    setActiveMarkerId(marker.id);
-  };
-
-  const visibleRows =
-    focusedRow === null
-      ? Array.from({ length: rows }, (_, row) => row)
-      : [focusedRow];
-  const footerStartMs = focusedRow === null ? 0 : focusedRow * rowDuration;
-  const footerEndMs =
-    focusedRow === null ? endAt - startAt : Math.min(duration, (focusedRow + 1) * rowDuration);
-
-  const collapseFocus = () => {
-    setFocusedRow(null);
-    setActiveMarkerId(null);
-  };
+  if (items.length === 0) {
+    return <EmptyWorkstream scanBusy={scanBusy} />;
+  }
 
   return (
-    <TooltipProvider delayDuration={250}>
-    <div
-      className="space-y-2"
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && focusedRow !== null) {
-          event.preventDefault();
-          collapseFocus();
-        }
-      }}
-    >
-      {visibleRows.map((row) => {
-        const rowStartMs = row * rowDuration;
-        const rowEndMs = Math.min(duration, rowStartMs + rowDuration);
-        const isFocused = focusedRow === row;
-        const rowFocusedLayout = isFocused ? focusedLayout : null;
-        return (
-          <div
-            key={`row-${row}`}
-            role="button"
-            tabIndex={0}
-            onClick={() => {
-              setFocusedRow((current) => current === row ? null : row);
-              setActiveMarkerId(null);
-            }}
-            onKeyDown={(event) => handleRowKeyDown(event, row)}
-            className={[
-              "grid cursor-pointer grid-cols-[58px_1fr] gap-2 rounded-lg px-1.5 py-1 transition-colors",
-              isFocused ? "bg-foreground/[0.045] dark:bg-muted/40" : "hover:bg-foreground/[0.025] dark:hover:bg-muted/25",
-            ].join(" ")}
-          >
-            <div className="flex items-center justify-end text-right font-mono text-[10px] leading-tight text-muted-foreground/60">
-              <span>{formatElapsed(rowStartMs)}</span>
-            </div>
-            {rowFocusedLayout ? (
-              <div
-                className="col-start-2 min-w-0"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="mb-1 flex items-center justify-between">
-                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
-                    {formatElapsed(rowStartMs)} – {formatElapsed(rowEndMs)}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="Collapse row"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      collapseFocus();
-                    }}
-                    className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-full px-2 text-[10px] text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
-                  >
-                    <XIcon className="size-3" />
-                    Back
-                  </button>
-                </div>
-                <div
-                  ref={focusedScrollRef}
-                  className="overflow-hidden pb-1"
-                >
-                  <div
-                    className="relative w-full overflow-hidden"
-                    style={{
-                      height: rowFocusedLayout.height,
-                      boxSizing: "border-box",
-                    }}
-                  >
-                    <span
-                      className="absolute top-0 bottom-0 w-px bg-border/55"
-                      style={{ left: FOCUSED_BRIEFING_WIDTH + FOCUSED_TRACK_WIDTH / 2 }}
-                    />
-                    {rowFocusedLayout.items.map(({ marker, y }) => (
-                      <button
-                        key={`zoom-marker-${marker.id}`}
-                        type="button"
-                        aria-label={`${marker.type === "agent" ? "Agent" : "Suggestion"} at ${formatElapsed(marker.timestamp - startAt)}: ${getMarkerText(marker)}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          focusMarker(marker);
-                        }}
-                        className="group absolute z-10 flex size-4 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center"
-                        style={{ left: FOCUSED_BRIEFING_WIDTH + FOCUSED_TRACK_WIDTH / 2, top: y }}
-                      >
-                        <span
-                          className={[
-                            marker.type === "agent"
-                              ? getAgentMarkerClass(marker.agent)
-                              : ["rounded-full", getSuggestionMarkerClass(marker.entry)].join(" "),
-                            activeMarkerId === marker.id ? "ring-2 ring-foreground/25" : "",
-                          ].join(" ")}
-                        />
-                      </button>
-                    ))}
-                    {rowFocusedLayout.items.map(({ marker, y }) => {
-                      const briefingPoints =
-                        marker.type === "suggestion" ? marker.entry.briefingPoints ?? [] : [];
-                      const tooltipText =
-                        briefingPoints[0] ??
-                        (marker.type === "suggestion"
-                          ? marker.entry.transcriptExcerpt ?? marker.entry.details ?? ""
-                          : "");
-                      const hasTooltip = tooltipText.trim().length > 0;
-                      const briefingNode = (
-                        <div
-                          key={`zoom-briefing-${marker.id}`}
-                          className="absolute flex flex-col items-end gap-1 pr-2 text-right"
-                          style={{
-                            left: 0,
-                            width: FOCUSED_BRIEFING_WIDTH,
-                            top: y,
-                            height: FOCUSED_CARD_HEIGHT,
-                            transform: "translateY(-50%)",
-                          }}
-                        >
-                          <span className="font-mono text-[11px] leading-none text-muted-foreground/70">
-                            {formatElapsed(marker.timestamp - startAt)}
-                          </span>
-                          {briefingPoints.length > 0 && (
-                            <p className="line-clamp-2 text-[11px] leading-snug text-muted-foreground/80">
-                              {briefingPoints[0]}
-                            </p>
-                          )}
-                        </div>
-                      );
-                      if (!hasTooltip) return briefingNode;
-                      return (
-                        <Tooltip key={`zoom-briefing-${marker.id}`}>
-                          <TooltipTrigger asChild>{briefingNode}</TooltipTrigger>
-                          <TooltipContent side="left" align="center" className="max-w-xs whitespace-normal">
-                            {tooltipText}
-                          </TooltipContent>
-                        </Tooltip>
-                      );
-                    })}
-                    {rowFocusedLayout.items.map(({ marker, y }) => {
-                      const isActive = activeMarkerId === marker.id;
-                      const cardBase = [
-                        "group flex h-full w-full items-center gap-2 rounded-md border pl-2.5 pr-1.5 py-1.5 text-left shadow-sm transition-colors",
-                        isActive
-                          ? "border-foreground/25 bg-background text-foreground"
-                          : "border-border/50 bg-background/80 text-foreground/80 hover:border-foreground/20 hover:bg-background hover:text-foreground",
-                      ].join(" ");
-                      const suggestionAccept =
-                        marker.type === "suggestion" ? marker.entry.onAccept : undefined;
-                      const cardTooltip = getMarkerText(marker);
-                      const chipNode = (
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            focusMarker(marker);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              focusMarker(marker);
-                            }
-                          }}
-                          className={`${cardBase} absolute z-10 cursor-pointer`}
-                          style={{
-                            left: FOCUSED_BRIEFING_WIDTH + FOCUSED_TRACK_WIDTH,
-                            width: `min(320px, calc(100% - ${FOCUSED_BRIEFING_WIDTH + FOCUSED_TRACK_WIDTH + 8}px))`,
-                            top: y,
-                            height: FOCUSED_CARD_HEIGHT,
-                            transform: "translateY(-50%)",
-                            minWidth: 0,
-                          }}
-                        >
-                          {marker.type === "agent" && (
-                            <BotIcon className="size-3 shrink-0 text-primary" />
-                          )}
-                          <p className="line-clamp-2 flex-1 text-[11px] font-medium leading-snug">
-                            {getMarkerText(marker)}
-                          </p>
-                          {suggestionAccept && (
-                            <button
-                              type="button"
-                              aria-label="Run agent"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                suggestionAccept();
-                              }}
-                              className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-emerald-600 px-2 text-[10px] font-medium text-white shadow-sm transition-colors hover:bg-emerald-500 dark:bg-emerald-500 dark:hover:bg-emerald-400"
-                            >
-                              <PlayIcon className="size-2.5 fill-current" />
-                              Run
-                            </button>
-                          )}
-                          {marker.type === "agent" && onSelectAgent && (
-                            <button
-                              type="button"
-                              aria-label="Open agent"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onSelectAgent(marker.agent.id);
-                              }}
-                              className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-primary px-2 text-[10px] font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-                            >
-                              Open
-                            </button>
-                          )}
-                        </div>
-                      );
-                      return (
-                        <Tooltip key={`zoom-chip-${marker.id}`}>
-                          <TooltipTrigger asChild>{chipNode}</TooltipTrigger>
-                          <TooltipContent side="right" align="center" className="max-w-sm whitespace-normal">
-                            {cardTooltip}
-                          </TooltipContent>
-                        </Tooltip>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div
-                className="grid gap-1.5"
-                style={{ gridTemplateColumns: `repeat(${GRID_COLS}, minmax(0, 1fr))` }}
-              >
-                {Array.from({ length: GRID_COLS }, (_, col) => {
-                  const cellMarkers = markersByCell.get(`${row}:${col}`) ?? [];
-                  const isNext = scanBusy && row === nextRow && col === nextCol;
-                  return (
-                    <div
-                      key={`${row}-${col}`}
-                      className="relative flex h-6 items-center justify-center"
-                    >
-                      <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border/35" />
-                      {cellMarkers.length === 0 ? (
-                        <span
-                          className={[
-                            "relative z-10 rounded-full transition-all",
-                            isNext
-                              ? "size-1.5 animate-pulse bg-emerald-500/45"
-                              : "size-1 bg-foreground/12 dark:bg-foreground/10",
-                          ].join(" ")}
-                        />
-                      ) : (
-                        <HoverCard openDelay={120} closeDelay={120}>
-                          <HoverCardTrigger asChild>
-                            <div className="relative z-10 flex max-w-full flex-wrap items-center justify-center gap-1">
-                              {cellMarkers.slice(0, 3).map((marker) => (
-                                <button
-                                  key={marker.id}
-                                  type="button"
-                                  aria-label={
-                                    marker.type === "agent"
-                                      ? `Agent at ${formatElapsed(marker.timestamp - startAt)}: ${marker.agent.task}`
-                                      : `Suggestion at ${formatElapsed(marker.timestamp - startAt)}: ${marker.entry.text}`
-                                  }
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    focusMarker(marker);
-                                  }}
-                                  className="group flex size-4 cursor-pointer items-center justify-center"
-                                >
-                                  <span
-                                    className={[
-                                      marker.type === "agent"
-                                        ? `transition-transform group-hover:scale-125 ${getAgentMarkerClass(marker.agent)}`
-                                        : `rounded-full transition-transform group-hover:scale-150 ${getSuggestionMarkerClass(marker.entry)}`,
-                                    ].join(" ")}
-                                  />
-                                </button>
-                              ))}
-                              {cellMarkers.length > 3 && (
-                                <span className="rounded-full bg-foreground/10 px-1 font-mono text-[9px] text-muted-foreground">
-                                  +{cellMarkers.length - 3}
-                                </span>
-                              )}
-                            </div>
-                          </HoverCardTrigger>
-                          <HoverCardContent
-                            align="center"
-                            sideOffset={10}
-                            className="w-56 rounded-xl border border-border/60 bg-popover/95 p-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-popover/85"
-                          >
-                            <CellStats markers={cellMarkers} timelineStartAt={startAt} />
-                          </HoverCardContent>
-                        </HoverCard>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
-      <div className="flex items-center justify-between px-[68px] pt-0.5 font-mono text-[10px] text-muted-foreground/45">
-        <span>{formatElapsed(footerStartMs)}</span>
-        <span>{formatElapsed(footerEndMs)}</span>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2 px-1 text-[10px] text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2 rounded-full bg-[oklch(0.58_0.12_220)]" />
+          Suggested task
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <BotIcon className="size-3 text-primary" />
+          Agent work
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-px w-5 bg-border" />
+          Session order
+        </span>
       </div>
+
+      <ol className="relative space-y-3">
+        <span className="absolute bottom-5 left-[48px] top-5 w-px bg-border/70" aria-hidden="true" />
+        {items.map((item) => (
+          <li key={item.id} className="grid grid-cols-[38px_28px_minmax(0,1fr)] gap-2">
+            <div className="pt-1.5 text-right font-mono text-[10px] leading-tight text-muted-foreground/70">
+              <div>{formatElapsed(item.timestamp - startAt)}</div>
+              <div className="mt-1 text-[9px] text-muted-foreground/45">{relativeTime(item.timestamp)}</div>
+            </div>
+            <div className="flex justify-center pt-0.5">
+              <TimelineMarker item={item} />
+            </div>
+            {item.type === "suggestion" ? (
+              <SuggestionCard
+                entry={item.entry}
+                expanded={expandedItemIds.has(item.id)}
+                onToggleExpanded={() => toggleExpanded(item.id)}
+              />
+            ) : (
+              <AgentCard
+                agent={item.agent}
+                onSelectAgent={onSelectAgent}
+                expanded={expandedItemIds.has(item.id)}
+                onToggleExpanded={() => toggleExpanded(item.id)}
+              />
+            )}
+          </li>
+        ))}
+      </ol>
     </div>
-    </TooltipProvider>
   );
 }

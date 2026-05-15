@@ -133,10 +133,7 @@ export function SessionHome({
   const timelineStartAt = timelineTimestamps.length > 0
     ? Math.min(...timelineTimestamps)
     : Date.now();
-  const timelineEndAt = timelineTimestamps.length > 0
-    ? Math.max(...timelineTimestamps)
-    : timelineStartAt;
-  const suggestionMeta =
+  const workstreamMeta =
     liveCount > 0 && totalCount !== liveCount
       ? `${liveCount} live · ${totalCount} total`
       : agents.length > 0
@@ -150,13 +147,12 @@ export function SessionHome({
           {captureBar}
 
           <div className="flex flex-col gap-2.5 px-4 py-5">
-            <SectionHeader label="Suggestions" meta={suggestionMeta} />
+            <SectionHeader label="Session Workstream" meta={workstreamMeta} />
             <SuggestionGrid
               entries={entries}
               agents={agents}
               scanBusy={scanBusy}
               timelineStartAt={timelineStartAt}
-              timelineEndAt={timelineEndAt}
               onSelectAgent={onSelectAgent}
             />
           </div>

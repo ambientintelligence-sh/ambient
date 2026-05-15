@@ -472,6 +472,7 @@ export function RightSidebar({
   suggestionProgress,
   suggestionScanCards = [],
   scanWordBudget,
+  selectedAgentId,
   forceWorkTabKey = 0,
   onAcceptSuggestion,
   onDismissSuggestion,
@@ -491,7 +492,15 @@ export function RightSidebar({
   const [modeBySession, setModeBySession] = useLocalStorage<Record<string, RightRailMode>>("ambient-right-rail-mode-v2", {});
   const [archivedOpen, setArchivedOpen] = useState(false);
   const sessionTabKey = sessionId ?? EMPTY_SESSION_TAB_KEY;
-  const mode = modeBySession[sessionTabKey] ?? "tasks";
+  const onboardingPhase = useUIStore((s) => s.onboardingPhase);
+  const tourStep = useUIStore((s) => s.tourStep);
+  const tasksTabVisible = Boolean(selectedAgentId) || onboardingPhase === "tour" || forceWorkTabKey > 0;
+  const storedMode = modeBySession[sessionTabKey];
+  const mode = tasksTabVisible
+    ? storedMode ?? "tasks"
+    : storedMode === "summary"
+      ? "summary"
+      : "transcript";
   const setMode = (nextMode: RightRailMode) => {
     setModeBySession((prev) => ({ ...prev, [sessionTabKey]: nextMode }));
   };
@@ -499,9 +508,6 @@ export function RightSidebar({
   useEffect(() => {
     if (forceWorkTabKey > 0) setMode("tasks");
   }, [forceWorkTabKey, setMode]);
-
-  const onboardingPhase = useUIStore((s) => s.onboardingPhase);
-  const tourStep = useUIStore((s) => s.tourStep);
 
   useEffect(() => {
     if (onboardingPhase !== "tour") return;
@@ -517,17 +523,19 @@ export function RightSidebar({
     <div className="w-full h-full shrink-0 border-l border-sidebar-border/35 flex flex-col min-h-0 bg-sidebar/90">
       {captureBar}
       <div className="px-2 py-2 shrink-0">
-        <div className="grid grid-cols-3 gap-1 rounded-md bg-foreground/[0.045] p-1 dark:bg-muted/50">
+        <div className={`${tasksTabVisible ? "grid-cols-3" : "grid-cols-2"} grid gap-1 rounded-md bg-foreground/[0.045] p-1 dark:bg-muted/50`}>
           <RailModeButton
             active={mode === "summary"}
             onClick={() => setMode("summary")}
             label="Summary"
           />
-          <RailModeButton
-            active={mode === "tasks"}
-            onClick={() => setMode("tasks")}
-            label="Tasks"
-          />
+          {tasksTabVisible && (
+            <RailModeButton
+              active={mode === "tasks"}
+              onClick={() => setMode("tasks")}
+              label="Tasks"
+            />
+          )}
           <RailModeButton
             active={mode === "transcript"}
             onClick={() => setMode("transcript")}
