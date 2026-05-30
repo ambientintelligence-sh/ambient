@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CaptureRecordButton, CaptureToggleButton } from "./capture-controls";
+import { CaptureRecordButton, CaptureStatusPill, CaptureToggleButton } from "./capture-controls";
 
 type CaptureBarProps = {
   uiState: UIState | null;
@@ -61,7 +61,17 @@ export function CaptureBar({
   const availableTargetLanguages = SUPPORTED_LANGUAGES.filter((l) => l.code !== sourceLang);
 
   return (
-    <div className="flex items-center gap-0.5 border-b border-sidebar-border/35 px-1.5 py-1.5">
+    <div
+      className={[
+        "relative flex items-center gap-0.5 border-b px-1.5 py-1.5 transition-colors",
+        isCapturing
+          ? "border-red-500/20 bg-red-500/[0.055] dark:border-red-400/20 dark:bg-red-400/[0.08]"
+          : "border-sidebar-border/35",
+      ].join(" ")}
+    >
+      {isCapturing && (
+        <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-red-500/40 dark:bg-red-300/45" />
+      )}
       <Select
         value={sourceLang}
         onValueChange={(v) => {
@@ -149,6 +159,18 @@ export function CaptureBar({
       </Select>
 
       <div className="flex-1" />
+
+      <CaptureStatusPill
+        active={isCapturing}
+        status={uiState?.status}
+        label="Ready"
+        className={[
+          "mr-1 rounded-full px-2 py-1 text-2xs",
+          isCapturing
+            ? "bg-red-500/10"
+            : "hidden sm:inline-flex bg-foreground/[0.04]",
+        ].join(" ")}
+      />
 
       <CaptureToggleButton
         active={armedMicInput}

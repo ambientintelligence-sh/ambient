@@ -292,6 +292,20 @@ export function useSession(
     };
   }, [active, resumeSessionId, restartKey]);
 
+  const startRecording = async () => {
+    const result = await window.electronAPI.startRecording();
+    if (!result.ok) {
+      dispatch({ kind: "error", text: result.error ?? "Failed to start recording" });
+    }
+  };
+
+  const stopRecording = async () => {
+    const result = await window.electronAPI.stopRecording();
+    if (!result.ok) {
+      dispatch({ kind: "error", text: result.error ?? "Failed to stop recording" });
+    }
+  };
+
   const toggleRecording = async () => {
     const result = await window.electronAPI.toggleRecording();
     if (!result.ok) {
@@ -324,5 +338,5 @@ export function useSession(
     dispatch({ kind: "error-cleared" });
   };
 
-  return { ...state, toggleRecording, viewSession, clearSession, clearMicAutoStart, clearError };
+  return { ...state, startRecording, stopRecording, toggleRecording, viewSession, clearSession, clearMicAutoStart, clearError };
 }

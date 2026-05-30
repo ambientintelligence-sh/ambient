@@ -1526,7 +1526,8 @@ export class Session {
         ? `${error.name}: ${error.message}${error.cause ? ` cause=${JSON.stringify(error.cause)}` : ""}`
         : toReadableError(error);
       log("ERROR", `Transcription chunk failed after ${elapsed}ms (audio=${chunkDurationMs.toFixed(0)}ms): ${fullError}`);
-      this.events.emit("status", `⚠ ${errorMsg}`);
+      this.events.emit("error", `Transcription failed: ${errorMsg}`);
+      this.events.emit("status", "Transcription failed.");
     } finally {
       this.inFlight.set(source, this.inFlight.get(source)! - 1);
       this.updateInFlightDisplay();

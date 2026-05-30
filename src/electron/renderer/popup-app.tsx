@@ -616,14 +616,14 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
       if (!r.ok) return false;
     }
     if (selection.deviceAudio && !isDeviceAudioActive) {
-      await window.electronAPI.toggleRecording();
+      await window.electronAPI.startRecording();
     }
     return true;
   };
 
   const handleStopCapture = async () => {
-    if (isDeviceAudioActive) await window.electronAPI.toggleRecording();
-    if (isMicActive) await toggleMicRuntime();
+    if (isCaptureActive) await window.electronAPI.stopRecording();
+    if (isMicActive) micCaptureRef.current.stop();
   };
 
   const handleRecordToggle = async () => {
@@ -662,7 +662,8 @@ export function PopupApp({ initialSessionId }: { initialSessionId: string | null
     const next = !armedDeviceAudio;
     setArmedDeviceAudio(next);
     if (currentSessionId && isCaptureActive && next !== isDeviceAudioActive) {
-      await window.electronAPI.toggleRecording();
+      if (next) await window.electronAPI.startRecording();
+      else await window.electronAPI.toggleRecording();
     }
   };
 

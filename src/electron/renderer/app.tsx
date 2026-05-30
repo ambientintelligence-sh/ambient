@@ -580,7 +580,7 @@ export function App() {
     }
 
     if (selection.deviceAudio && !isDeviceAudioActive) {
-      await session.toggleRecording();
+      await session.startRecording();
     }
 
     return true;
@@ -602,7 +602,8 @@ export function App() {
     const next = !armedDeviceAudio;
     setArmedDeviceAudio(next);
     if (session.sessionId && isCaptureActive && next !== isDeviceAudioActive) {
-      await session.toggleRecording();
+      if (next) await session.startRecording();
+      else await session.toggleRecording();
     }
   };
 
@@ -746,11 +747,11 @@ export function App() {
   const handleStopCapture = async () => {
     pendingCaptureStartRef.current = null;
     ui().setRouteNotice("");
-    if (isDeviceAudioActive) {
-      await session.toggleRecording();
+    if (isCaptureActive) {
+      await session.stopRecording();
     }
     if (isMicActive) {
-      await toggleMicRuntime();
+      micCapture.stop();
     }
   };
 
@@ -1243,11 +1244,16 @@ export function App() {
 
   const handleSelectSession = async (sid: string) => {
     await discardEmptyDraftSessionIfNeeded(sid);
-    micCapture.stop();
     ui().setSettingsOpen(false);
     ui().setNewAgentMode(false);
     ui().setRouteNotice("");
     pushSessionPath(sid);
+    if (sessionActive && session.sessionId === sid) {
+      sl().setSelectedSessionId(sid);
+      selectAgent(null);
+      return;
+    }
+    micCapture.stop();
     sl().bumpSessionRestartKey();
     sl().setSelectedSessionId(sid);
     sl().setResumeSessionId(sid);
@@ -1355,7 +1361,7 @@ export function App() {
       prev.synthesisModelId !== normalized.synthesisModelId ||
       prev.transcriptionProvider !== normalized.transcriptionProvider ||
       prev.transcriptionModelId !== normalized.transcriptionModelId;
-    if (modelChanged && sessionActive) {
+    if (modelChanged && sessionActive && !isCaptureActive) {
       sl().bumpSessionRestartKey();
     }
   };
@@ -1976,7 +1982,7 @@ export function App() {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-destructive/80">
-                Scan Error
+                Session Alert
               </div>
               <div className="mt-1 text-xs leading-5 text-destructive break-words">
                 {session.errorText}
