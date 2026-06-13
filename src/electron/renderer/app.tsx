@@ -1710,7 +1710,7 @@ export function App() {
         </div>
       )}
 
-      <div ref={panelLayoutRef} className="flex flex-1 min-h-0">
+      <div ref={panelLayoutRef} className="flex flex-1 min-h-0 overflow-hidden">
         {settingsOpen ? (
           <SettingsPage
             config={appConfig}
@@ -1773,29 +1773,29 @@ export function App() {
             <ErrorBoundary tag="main-middle-panel">
               <SessionCenter
                 mode={sessionCenterMode}
+                captureBar={
+                  <CaptureBar
+                    uiState={session.uiState}
+                    languages={languages}
+                    sourceLang={sourceLang}
+                    targetLang={targetLang}
+                    translateToSelection={translateToSelection}
+                    armedMicInput={armedMicInput}
+                    armedDeviceAudio={armedDeviceAudio}
+                    onSourceLangChange={(lang) => { void handleSourceLangChange(lang); }}
+                    onTargetLangChange={(lang) => { applyTargetLang(lang); ui().setLangError(""); }}
+                    onTranslateToSelectionChange={setTranslateToSelection}
+                    onSetTranslationMode={handleSetTranslationMode}
+                    onRecordToggle={() => { void handleRecordToggle(); }}
+                    onToggleMicInput={() => { void handleToggleMicInputSelection(); }}
+                    onToggleDeviceAudio={() => { void handleToggleDeviceAudioSelection(); }}
+                  />
+                }
                 homeContent={
                   <SessionHome
                     onLaunchAgent={(task) => { void handleLaunchCustomAgent(task); }}
                     appConfig={appConfig}
                     onAppConfigChange={handleAppConfigChange}
-                    captureBar={
-                      <CaptureBar
-                        uiState={session.uiState}
-                        languages={languages}
-                        sourceLang={sourceLang}
-                        targetLang={targetLang}
-                        translateToSelection={translateToSelection}
-                        armedMicInput={armedMicInput}
-                        armedDeviceAudio={armedDeviceAudio}
-                        onSourceLangChange={(lang) => { void handleSourceLangChange(lang); }}
-                        onTargetLangChange={(lang) => { applyTargetLang(lang); ui().setLangError(""); }}
-                        onTranslateToSelectionChange={setTranslateToSelection}
-                        onSetTranslationMode={handleSetTranslationMode}
-                        onRecordToggle={() => { void handleRecordToggle(); }}
-                        onToggleMicInput={() => { void handleToggleMicInputSelection(); }}
-                        onToggleDeviceAudio={() => { void handleToggleDeviceAudioSelection(); }}
-                      />
-                    }
                     suggestions={suggestions}
                     archivedSuggestions={archivedSuggestions}
                     agents={agents}
@@ -1805,7 +1805,6 @@ export function App() {
                     rollingKeyPoints={session.rollingKeyPoints}
                     onAcceptSuggestion={handleAcceptSuggestion}
                     onDismissSuggestion={handleDismissSuggestion}
-                    onAcceptArchivedTask={handleAcceptArchivedTask}
                     onDeleteArchivedSuggestion={handleDeleteArchivedSuggestion}
                     onSelectAgent={selectAgent}
                   />

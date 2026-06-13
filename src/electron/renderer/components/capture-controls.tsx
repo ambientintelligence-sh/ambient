@@ -8,6 +8,12 @@ import {
 } from "lucide-react";
 import type { CSSProperties } from "react";
 import type { UIState } from "@core/types";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type CaptureRecordButtonProps = {
   active: boolean;
@@ -41,13 +47,14 @@ export function CaptureRecordButton({
   className = "",
   style,
 }: CaptureRecordButtonProps) {
+  const label = active ? "Stop recording" : startTitle;
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={status === "connecting"}
-      title={active ? "Stop recording" : startTitle}
-      aria-label={active ? "Stop recording" : startTitle}
+      title={label}
+      aria-label={label}
       style={style}
       className={[
         "flex h-7 w-[86px] shrink-0 items-center justify-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60",
@@ -80,29 +87,39 @@ export function CaptureToggleButton({
   style,
 }: CaptureToggleButtonProps) {
   const isMic = kind === "mic";
-  const label = isMic ? "mic input" : "device audio";
+  const label = isMic ? "Microphone" : "Device audio";
+  const tooltipText = `${label} ${active ? "on" : "off"}. Click to ${active ? "turn off" : "turn on"}.`;
   const Icon = isMic
     ? (active ? MicIcon : MicOffIcon)
     : (active ? Volume2Icon : VolumeXIcon);
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={active ? `${label[0].toUpperCase()}${label.slice(1)} armed (click to disable)` : `${label[0].toUpperCase()}${label.slice(1)} disabled`}
-      aria-label={`Toggle ${label}`}
-      aria-pressed={active}
-      style={style}
-      className={[
-        "flex size-7 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer",
-        active
-          ? "text-foreground bg-foreground/[0.06] hover:bg-foreground/[0.12] dark:bg-white/10 dark:hover:bg-white/15"
-          : "text-muted-foreground/60 hover:text-muted-foreground hover:bg-foreground/[0.06] dark:hover:bg-white/10",
-        className,
-      ].join(" ")}
-    >
-      <Icon className="size-3.5" />
-    </button>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={onClick}
+            title={tooltipText}
+            aria-label={`Toggle ${label.toLowerCase()}`}
+            aria-pressed={active}
+            style={style}
+            className={[
+              "flex size-7 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer",
+              active
+                ? "text-foreground bg-foreground/[0.06] hover:bg-foreground/[0.12] dark:bg-white/10 dark:hover:bg-white/15"
+                : "text-muted-foreground/60 hover:text-muted-foreground hover:bg-foreground/[0.06] dark:hover:bg-white/10",
+              className,
+            ].join(" ")}
+          >
+            <Icon className="size-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={6}>
+          {tooltipText}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

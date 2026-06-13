@@ -201,22 +201,23 @@ function SuggestionCard({
   const kindLabel = entry.kind ? KIND_LABELS[entry.kind] : "Suggestion";
   const hasContext = entry.flag?.trim() || entry.details?.trim() || entry.transcriptExcerpt?.trim();
   const hasMore = Boolean(hasContext || entry.briefingPoints?.length);
-  const acceptLabel = entry.state === "archived" ? "Run again" : "Run agent";
+  const entryLabel = entry.state === "archived"
+    ? "Saved task"
+    : entry.onAccept
+      ? "Suggested task"
+      : "Session note";
   const dismissIcon = entry.dismissLabel === "Delete" ? Trash2Icon : XIcon;
   const DismissIcon = dismissIcon;
 
   return (
-    <div className="min-w-0 rounded-lg border border-border/60 bg-background/80 px-3 py-2.5 shadow-sm transition-colors hover:border-border hover:bg-background">
+    <div className="min-w-0 rounded-lg border border-border/60 bg-background/70 px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors hover:border-border hover:bg-background/90">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
-              {entry.onAccept ? "Suggested task" : "Session note"}
+              {entryLabel}
             </span>
             <Chip className={suggestionTone(entry)}>{kindLabel}</Chip>
-            {entry.state === "live" && (
-              <Chip className="border-primary/20 bg-primary/10 text-primary">New</Chip>
-            )}
           </div>
           <p className="text-sm font-medium leading-snug text-foreground">{entry.text}</p>
         </div>
@@ -228,7 +229,7 @@ function SuggestionCard({
             className="shrink-0"
           >
             <PlayIcon className="size-3 fill-current" />
-            {acceptLabel}
+            Run agent
           </Button>
         )}
       </div>
@@ -301,7 +302,7 @@ function AgentCard({
   const hasResult = Boolean(resultPreview);
 
   return (
-    <div className="min-w-0 rounded-lg border border-border/60 bg-background/80 px-3 py-2.5 shadow-sm transition-colors hover:border-border hover:bg-background">
+    <div className="min-w-0 rounded-lg border border-border/60 bg-background/70 px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors hover:border-border hover:bg-background/90">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-1.5">
@@ -351,8 +352,8 @@ function AgentCard({
 
 function EmptyWorkstream({ scanBusy }: { scanBusy: boolean }) {
   return (
-    <div className="rounded-lg border border-dashed border-border/70 bg-muted/25 px-4 py-5 text-center">
-      <div className="mx-auto mb-2 flex size-8 items-center justify-center rounded-full border border-border/70 bg-background text-muted-foreground">
+    <div className="px-4 py-8 text-center">
+      <div className="mx-auto mb-2 flex size-8 items-center justify-center rounded-full border border-border/70 bg-background/70 text-muted-foreground">
         {scanBusy ? <Clock3Icon className="size-4 animate-pulse" /> : <SparklesIcon className="size-4" />}
       </div>
       <p className="text-sm font-medium text-foreground">
@@ -422,26 +423,11 @@ export function SuggestionGrid({
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 px-1 text-[10px] text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-2 rounded-full bg-[oklch(0.58_0.12_220)]" />
-          Suggested task
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <BotIcon className="size-3 text-primary" />
-          Agent work
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-px w-5 bg-border" />
-          Session order
-        </span>
-      </div>
-
+    <div>
       <ol className="relative space-y-3">
-        <span className="absolute bottom-5 left-[48px] top-5 w-px bg-border/70" aria-hidden="true" />
+        <span className="absolute bottom-6 left-[56px] top-4 w-px bg-border/70" aria-hidden="true" />
         {items.map((item) => (
-          <li key={item.id} className="grid grid-cols-[38px_28px_minmax(0,1fr)] gap-2">
+          <li key={item.id} className="grid grid-cols-[44px_28px_minmax(0,1fr)] gap-3">
             <div className="pt-1.5 text-right font-mono text-[10px] leading-tight text-muted-foreground/70">
               <div>{formatElapsed(item.timestamp - startAt)}</div>
               <div className="mt-1 text-[9px] text-muted-foreground/45">{relativeTime(item.timestamp)}</div>

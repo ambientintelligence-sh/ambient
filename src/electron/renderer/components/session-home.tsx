@@ -1,4 +1,4 @@
-import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useMemo, useState, type KeyboardEvent } from "react";
 import type { Agent, AppConfig, SessionMeta, TaskItem, TaskSuggestion, TranscriptBlock } from "@core/types";
 import { ComposerSendButton } from "./composer-send-button";
 import { ModelPicker } from "./model-picker";
@@ -8,7 +8,6 @@ type SessionHomeProps = {
   onLaunchAgent: (task: string) => void;
   appConfig: AppConfig;
   onAppConfigChange: (next: AppConfig) => void;
-  captureBar?: ReactNode;
   suggestions: TaskSuggestion[];
   archivedSuggestions: TaskItem[];
   agents: Agent[];
@@ -18,19 +17,18 @@ type SessionHomeProps = {
   rollingKeyPoints: string[];
   onAcceptSuggestion: (suggestion: TaskSuggestion) => void;
   onDismissSuggestion: (id: string) => void;
-  onAcceptArchivedTask: (task: TaskItem) => void;
   onDeleteArchivedSuggestion: (id: string) => void;
   onSelectAgent: (id: string) => void;
 };
 
 function SectionHeader({ label, meta }: { label: string; meta?: string }) {
   return (
-    <div className="flex items-center justify-between px-1">
-      <span className="text-2xs uppercase tracking-[0.18em] text-muted-foreground/70">
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-2xs font-medium uppercase tracking-[0.22em] text-muted-foreground/70">
         {label}
       </span>
       {meta && (
-        <span className="font-mono text-2xs text-muted-foreground/60">{meta}</span>
+        <span className="shrink-0 font-mono text-2xs text-muted-foreground/55">{meta}</span>
       )}
     </div>
   );
@@ -40,7 +38,6 @@ export function SessionHome({
   onLaunchAgent,
   appConfig,
   onAppConfigChange,
-  captureBar,
   suggestions,
   archivedSuggestions,
   agents,
@@ -50,7 +47,6 @@ export function SessionHome({
   rollingKeyPoints,
   onAcceptSuggestion,
   onDismissSuggestion,
-  onAcceptArchivedTask,
   onDeleteArchivedSuggestion,
   onSelectAgent,
 }: SessionHomeProps) {
@@ -77,7 +73,6 @@ export function SessionHome({
       details: task.details,
       kind: task.suggestionKind,
       createdAt: task.createdAt,
-      onAccept: () => onAcceptArchivedTask(task),
       onDismiss: () => onDeleteArchivedSuggestion(task.id),
       dismissLabel: "Delete",
     }));
@@ -104,7 +99,6 @@ export function SessionHome({
     rollingKeyPoints,
     onAcceptSuggestion,
     onDismissSuggestion,
-    onAcceptArchivedTask,
     onDeleteArchivedSuggestion,
   ]);
 
@@ -141,12 +135,10 @@ export function SessionHome({
         : `${totalCount} found`;
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-7 px-6 pt-10 pb-8">
-        <div className="overflow-hidden rounded-2xl border border-border/60 bg-background/70 shadow-sm">
-          {captureBar}
-
-          <div className="flex flex-col gap-2.5 px-4 py-5">
+    <div className="relative h-full min-h-0 flex-1 overflow-hidden">
+      <div className="h-full min-h-0 overflow-y-auto overscroll-contain scroll-pb-36">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-7 px-7 pt-8 pb-40">
+          <section className="flex flex-col gap-4">
             <SectionHeader label="Session Workstream" meta={workstreamMeta} />
             <SuggestionGrid
               entries={entries}
@@ -155,10 +147,12 @@ export function SessionHome({
               timelineStartAt={timelineStartAt}
               onSelectAgent={onSelectAgent}
             />
-          </div>
+          </section>
         </div>
+      </div>
 
-        <div className="rounded-2xl border border-border bg-background shadow-sm">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-background via-background/95 to-background/0 px-7 pb-6 pt-12">
+        <div className="pointer-events-auto mx-auto w-full max-w-3xl rounded-lg border border-border/70 bg-background/85 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/72">
           <textarea
             rows={2}
             value={taskDraft}

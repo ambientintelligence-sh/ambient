@@ -14,6 +14,8 @@ import {
   AlertTriangleIcon,
   ListChecksIcon,
   ArchiveIcon,
+  BotIcon,
+  CheckCircle2Icon,
 } from "lucide-react";
 import { SectionLabel } from "@/components/ui/section-label";
 import { useUIStore } from "../stores/ui-store";
@@ -106,6 +108,186 @@ type RightSidebarProps = {
   transcriptContent?: ReactNode;
   captureBar?: ReactNode;
 };
+
+type CompactWorkstreamItem =
+  | { id: string; type: "suggestion"; timestamp: number; suggestion: TaskSuggestion }
+  | { id: string; type: "saved"; timestamp: number; task: TaskItem }
+  | { id: string; type: "agent"; timestamp: number; agent: Agent };
+
+function relativeTime(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function agentStatusText(agent: Agent): string {
+  if (agent.status === "running") return "Running";
+  if (agent.status === "failed") return "Needs attention";
+  return "Result";
+}
+
+function CompactWorkstreamCard({
+  item,
+  selectedAgentId,
+  onSelectAgent,
+  onAcceptSuggestion,
+  onDismissSuggestion,
+  onDeleteArchivedSuggestion,
+}: {
+  item: CompactWorkstreamItem;
+  selectedAgentId?: string | null;
+  onSelectAgent?: (id: string | null) => void;
+  onAcceptSuggestion?: (suggestion: TaskSuggestion) => void;
+  onDismissSuggestion?: (id: string) => void;
+  onDeleteArchivedSuggestion?: (id: string) => void;
+}) {
+  if (item.type === "agent") {
+    const selected = selectedAgentId === item.agent.id;
+    const StatusIcon = item.agent.status === "completed" ? CheckCircle2Icon : BotIcon;
+    return (
+      <li className={`rounded-lg border px-2.5 py-2 ${selected ? "border-primary/35 bg-primary/8" : "border-border/55 bg-background/65"}`}>
+        <div className="flex items-start gap-2">
+          <StatusIcon className={`mt-0.5 size-3.5 shrink-0 ${selected ? "text-primary" : "text-muted-foreground/60"}`} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/65">
+                {agentStatusText(item.agent)}
+              </span>
+              <span className="shrink-0 text-[10px] text-muted-foreground/45">{relativeTime(item.timestamp)}</span>
+            </div>
+            <p className="mt-1 line-clamp-3 text-xs leading-5 text-foreground/85">{item.agent.task}</p>
+            {!selected && onSelectAgent && (
+              <button
+                type="button"
+                onClick={() => onSelectAgent(item.agent.id)}
+                className="mt-1.5 text-[11px] font-medium text-primary/80 transition-colors hover:text-primary"
+              >
+                Open
+              </button>
+            )}
+          </div>
+        </div>
+      </li>
+    );
+  }
+
+  const isSaved = item.type === "saved";
+  const kind = isSaved ? item.task.suggestionKind : item.suggestion.kind;
+  const text = isSaved ? item.task.text : item.suggestion.text;
+  const KindIcon = kind ? SUGGESTION_KIND_ICONS[kind] : SearchIcon;
+  const runnable = !isSaved && item.suggestion.surface === "agent_suggestion";
+
+  return (
+    <li className="rounded-lg border border-border/55 bg-background/65 px-2.5 py-2">
+      <div className="flex items-start gap-2">
+        <KindIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/60" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/65">
+              {isSaved ? "Saved task" : runnable ? "Suggested task" : "Session note"}
+            </span>
+            <span className="shrink-0 text-[10px] text-muted-foreground/45">{relativeTime(item.timestamp)}</span>
+          </div>
+          <p className="mt-1 line-clamp-3 text-xs leading-5 text-foreground/85">{text}</p>
+          <div className="mt-1.5 flex items-center gap-2">
+            {runnable && (
+              <button
+                type="button"
+                onClick={() => onAcceptSuggestion?.(item.suggestion)}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-primary/80 transition-colors hover:text-primary"
+              >
+                <PlayIcon className="size-3" />
+                Run agent
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => isSaved ? onDeleteArchivedSuggestion?.(item.task.id) : onDismissSuggestion?.(item.suggestion.id)}
+              className="text-[11px] text-muted-foreground transition-colors hover:text-destructive"
+            >
+              {isSaved ? "Delete" : "Dismiss"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function AgentSideWorkstream({
+  suggestions,
+  archivedSuggestions,
+  agents,
+  selectedAgentId,
+  onSelectAgent,
+  onAcceptSuggestion,
+  onDismissSuggestion,
+  onDeleteArchivedSuggestion,
+}: {
+  suggestions: TaskSuggestion[];
+  archivedSuggestions: TaskItem[];
+  agents: Agent[];
+  selectedAgentId?: string | null;
+  onSelectAgent?: (id: string | null) => void;
+  onAcceptSuggestion?: (suggestion: TaskSuggestion) => void;
+  onDismissSuggestion?: (id: string) => void;
+  onDeleteArchivedSuggestion?: (id: string) => void;
+}) {
+  const items: CompactWorkstreamItem[] = [
+    ...suggestions.map((suggestion): CompactWorkstreamItem => ({
+      id: `suggestion-${suggestion.id}`,
+      type: "suggestion",
+      timestamp: suggestion.createdAt,
+      suggestion,
+    })),
+    ...archivedSuggestions.map((task): CompactWorkstreamItem => ({
+      id: `saved-${task.id}`,
+      type: "saved",
+      timestamp: task.createdAt,
+      task,
+    })),
+    ...agents
+      .filter((agent) => !agent.archived)
+      .map((agent): CompactWorkstreamItem => ({
+        id: `agent-${agent.id}`,
+        type: "agent",
+        timestamp: agent.createdAt,
+        agent,
+      })),
+  ].sort((a, b) => b.timestamp - a.timestamp);
+
+  if (items.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground italic">
+        Session work will appear here.
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <SectionLabel as="span">Session workstream</SectionLabel>
+      <ul className="mt-2 space-y-1.5">
+        {items.slice(0, 12).map((item) => (
+          <CompactWorkstreamCard
+            key={item.id}
+            item={item}
+            selectedAgentId={selectedAgentId}
+            onSelectAgent={onSelectAgent}
+            onAcceptSuggestion={onAcceptSuggestion}
+            onDismissSuggestion={onDismissSuggestion}
+            onDeleteArchivedSuggestion={onDeleteArchivedSuggestion}
+          />
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export function SuggestionItem({
   suggestion,
@@ -472,8 +654,10 @@ export function RightSidebar({
   suggestionProgress,
   suggestionScanCards = [],
   scanWordBudget,
+  agents = [],
   selectedAgentId,
   forceWorkTabKey = 0,
+  onSelectAgent,
   onAcceptSuggestion,
   onDismissSuggestion,
   archivedSuggestions = [],
@@ -508,6 +692,10 @@ export function RightSidebar({
   useEffect(() => {
     if (forceWorkTabKey > 0) setMode("tasks");
   }, [forceWorkTabKey, setMode]);
+
+  useEffect(() => {
+    if (selectedAgentId) setMode("tasks");
+  }, [selectedAgentId]);
 
   useEffect(() => {
     if (onboardingPhase !== "tour") return;
@@ -545,7 +733,53 @@ export function RightSidebar({
       </div>
       <div className={`flex-1 min-h-0 ${mode === "tasks" ? "overflow-y-auto px-3 pb-3" : "flex flex-col"}`}>
         {mode === "tasks" ? (
-          <>
+          selectedAgentId ? (
+            <div className="space-y-4">
+              {sessionActive && suggestionProgress && !hideScanCounter && (
+                <SuggestionCounterRow progress={suggestionProgress} configBudget={scanWordBudget} />
+              )}
+              {sessionActive && !hideScanActivity && activeSuggestionCards.length > 0 && (
+                <div>
+                  <SectionLabel as="span">Live scan</SectionLabel>
+                  <ul className="mt-2 space-y-1">
+                    {activeSuggestionCards.map((card) => (
+                      <AgentActivityCard
+                        key={card.scanId}
+                        progress={card}
+                        agentSteps={card.agentSteps}
+                        onRequestTaskScan={onRequestTaskScan}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {!hideSuggestions && suggestions.length > 0 && sessionActive && (
+                <div>
+                  <SectionLabel as="span">Live suggestions</SectionLabel>
+                  <ul className="mt-2 space-y-1">
+                    {suggestions.map((s) => (
+                      <SuggestionItem
+                        key={s.id}
+                        suggestion={s}
+                        onAccept={() => onAcceptSuggestion?.(s)}
+                        onDismiss={() => onDismissSuggestion?.(s.id)}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <AgentSideWorkstream
+                suggestions={suggestions}
+                archivedSuggestions={archivedSuggestions}
+                agents={agents}
+                selectedAgentId={selectedAgentId}
+                onSelectAgent={onSelectAgent}
+                onAcceptSuggestion={onAcceptSuggestion}
+                onDismissSuggestion={onDismissSuggestion}
+                onDeleteArchivedSuggestion={onDeleteArchivedSuggestion}
+              />
+            </div>
+          ) : (
             <div>
               {!hideSuggestions && (
                 <div className="sticky top-0 z-20 -mx-1 mb-2 rounded-xl bg-sidebar/88 px-1 py-1 backdrop-blur supports-[backdrop-filter]:bg-sidebar/72">
@@ -631,7 +865,7 @@ export function RightSidebar({
                 </ul>
               )}
             </div>
-          </>
+          )
         ) : mode === "summary" ? (
           <div className="flex-1 min-h-0 flex flex-col">
             <div className="flex-1 min-h-0 overflow-y-auto">
