@@ -5,7 +5,8 @@
       "Bash(npx tsc:*)",
       "Bash(bun run:*)",
       "Bash(curl:*)",
-      "Bash(grep -E \"\\\\.\\(ts|js|json|yml|yaml|md\\)$\")"
+      "Bash(grep -E \"\\\\.\\(ts|js|json|yml|yaml|md\\)$\")",
+      "Bash(pnpm add *)"
     ]
   }
 }

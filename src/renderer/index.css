@@ -1,0 +1,97 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+@theme {
+  --font-sans: 'Inter Variable', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+  --color-void: #000000;
+  --color-panel: #0c0d0f;
+  --color-panel-2: #141619;
+  --color-hairline: rgb(255 255 255 / 0.09);
+
+  --color-ink: #f4f5f6;
+  --color-dim: #838a91;
+  --color-dimmer: #565c63;
+
+  --color-live: #5ee87a;
+  --color-warn: #ffc93c;
+  --color-alert: #ff4d4d;
+  --color-link: #3e9bff;
+  --color-deep: #a77bff;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-void);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: 'tnum' 1, 'cv05' 1;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    user-select: none;
+    cursor: default;
+  }
+
+  button {
+    -webkit-app-region: no-drag;
+  }
+}
+
+@utility label-xs {
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+/* The instrument bezel: brushed metal ring around a black glass panel. */
+@utility bezel {
+  background: linear-gradient(
+    155deg,
+    #9ea1a6 0%,
+    #5b5e63 9%,
+    #2a2c30 26%,
+    #17181b 48%,
+    #43464b 72%,
+    #8f9296 88%,
+    #202225 100%
+  );
+  padding: 6px;
+  border-radius: 34px;
+  box-shadow:
+    0 40px 90px -24px rgb(0 0 0 / 0.95),
+    0 0 0 1px rgb(255 255 255 / 0.1),
+    inset 0 1px 0 rgb(255 255 255 / 0.25);
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.78);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
