@@ -15,6 +15,10 @@
   --color-dim: #838a91;
   --color-dimmer: #565c63;
 
+  --color-led-amber: #ffa32b;
+  --color-led-green: #46e05a;
+  --color-led-pale: #d8e2ec;
+
   --color-live: #5ee87a;
   --color-warn: #ffc93c;
   --color-alert: #ff4d4d;
@@ -93,5 +97,29 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Departure board: LED glow, dot-matrix banding, and the bottom marquee. */
+@utility led {
+  text-shadow: 0 0 7px currentColor;
+}
+
+@utility board-scan {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgb(255 255 255 / 0.035) 0px,
+    rgb(255 255 255 / 0.035) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
   }
 }

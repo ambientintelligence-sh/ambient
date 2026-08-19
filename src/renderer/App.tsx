@@ -2,13 +2,16 @@ import { useEffect, useState } from 'react';
 import { REALTIME_MODEL_ID, REALTIME_VOICE } from '@/shared/config';
 import { activeAgent, activeTool } from './fleet';
 import { useSession } from './use-session';
-import { AgentRing } from './components/AgentRing';
+import { DepartureBoard } from './components/DepartureBoard';
 import { Chip } from './components/Chip';
 import { Clock } from './components/Clock';
 import { ControlButton } from './components/ControlButton';
 import { Sparkline } from './components/Sparkline';
-import { ToolFeed } from './components/ToolFeed';
 import type { TintKey } from './components/tints';
+
+const NOTICE =
+  'SIMULATED DELEGATION — no tools are registered with the realtime session yet, ' +
+  'but every stop advances on a real session event.';
 
 const STATUS_TINT: Readonly<Record<string, TintKey>> = {
   disconnected: 'dim',
@@ -142,25 +145,8 @@ export function App() {
           </p>
 
           {/* ── delegation ────────────────────────────────────────── */}
-          <section className="relative mt-8 rounded-2xl border border-hairline bg-panel px-7 py-6">
-            <div className="mb-5 flex items-center justify-between">
-              <span className="label-xs text-dim">DELEGATION</span>
-              <span className="label-xs rounded-[4px] border border-dimmer px-1.5 py-1 text-dimmer">SIMULATED</span>
-            </div>
+          <DepartureBoard agents={session.fleet.agents} notice={NOTICE} />
 
-            <div className="flex items-start gap-8">
-              <div className="flex flex-1 justify-between">
-                {session.fleet.agents.map((each) => (
-                  <AgentRing key={each.id} agent={each} />
-                ))}
-              </div>
-
-              <div className="w-[210px] shrink-0 border-l border-hairline pl-6">
-                <p className="label-xs mb-3 text-dim">TOOL CALLS</p>
-                <ToolFeed calls={session.fleet.calls} />
-              </div>
-            </div>
-          </section>
         </div>
       </div>
     </div>

@@ -56,7 +56,11 @@ export function useSession(): SessionView {
           break;
         case 'response-created':
           setTurns((count) => count + 1);
-          dispatch({ kind: 'delegate', roll: Math.random() });
+          dispatch({
+            kind: 'delegate',
+            roll: Math.random(),
+            at: new Date().toTimeString().slice(0, 5),
+          });
           break;
         case 'audio-transcript-delta':
           dispatch({ kind: 'advance', roll: Math.random() });
