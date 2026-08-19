@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { openai } from '@ai-sdk/openai';
 import { experimental_useRealtime } from '@ai-sdk/react';
-import { REALTIME_INSTRUCTIONS, REALTIME_MODEL_ID, REALTIME_VOICE } from '@/shared/config';
+import { REALTIME_MODEL_ID, REALTIME_SAMPLE_RATE, REALTIME_SESSION_CONFIG } from '@/shared/config';
 import { INITIAL_FLEET, reduceFleet, type FleetState } from './fleet';
 
 const TRACE_LENGTH = 72;
@@ -43,13 +43,8 @@ export function useSession(): SessionView {
   const realtime = experimental_useRealtime({
     model: openai.experimental_realtime(REALTIME_MODEL_ID),
     api: { token: setupUrl },
-    sessionConfig: {
-      instructions: REALTIME_INSTRUCTIONS,
-      voice: REALTIME_VOICE,
-      outputModalities: ['audio'],
-      inputAudioTranscription: { model: 'whisper-1' },
-      turnDetection: { type: 'semantic-vad' },
-    },
+    sessionConfig: REALTIME_SESSION_CONFIG,
+    sampleRate: REALTIME_SAMPLE_RATE,
     onError: (err) => setError(err.message),
     onEvent: (event) => {
       switch (event.type) {

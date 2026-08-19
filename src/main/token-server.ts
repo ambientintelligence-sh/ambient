@@ -1,11 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import { createOpenAI } from '@ai-sdk/openai';
-import {
-  REALTIME_INSTRUCTIONS,
-  REALTIME_MODEL_ID,
-  REALTIME_VOICE,
-  SETUP_ROUTE,
-} from '../shared/config';
+import { REALTIME_MODEL_ID, REALTIME_SESSION_CONFIG, SETUP_ROUTE } from '../shared/config';
 
 /**
  * The realtime hook fetches its ephemeral credential from a URL. In Electron the
@@ -38,13 +33,7 @@ export async function startTokenServer(apiKey: string | undefined): Promise<{ ur
     openai.experimental_realtime
       .getToken({
         model: REALTIME_MODEL_ID,
-        sessionConfig: {
-          instructions: REALTIME_INSTRUCTIONS,
-          voice: REALTIME_VOICE,
-          outputModalities: ['audio'],
-          inputAudioTranscription: { model: 'whisper-1' },
-          turnDetection: { type: 'semantic-vad' },
-        },
+        sessionConfig: REALTIME_SESSION_CONFIG,
       })
       .then((token) => {
         res.writeHead(200, { 'content-type': 'application/json' });

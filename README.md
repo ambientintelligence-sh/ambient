@@ -32,11 +32,26 @@ renderer ───────┘
 `OPENAI_API_KEY` stays in the main process. The renderer only ever sees a
 short-lived token, minted per connect.
 
+### Audio
+
+Nothing in this app touches audio samples. `startAudioCapture(stream)` opens an
+`AudioContext` at the configured rate, takes channel 0, resamples if the context
+did not honour the rate, converts float32 to little-endian PCM16, base64-encodes
+it and appends it to the input buffer. Playback runs the same chain in reverse.
+All we do is hand it a mono `MediaStream`.
+
+The one thing worth pinning: the SDK hard-codes its capture rate (24 kHz by
+default) but only sends a `format` to OpenAI if you set `inputAudioFormat`. Leave
+it unset and you are relying on the server default happening to match the
+client's. `REALTIME_SESSION_CONFIG` sets both formats explicitly from
+`REALTIME_SAMPLE_RATE`, and the same object is used to mint the token and to send
+the session update, so the two cannot drift.
+
 | Path | Role |
 | --- | --- |
 | `src/main/main.ts` | Window, mic permission, env loading |
 | `src/main/token-server.ts` | Loopback endpoint that mints ephemeral tokens |
-| `src/shared/config.ts` | Model id, voice, system instructions |
+| `src/shared/config.ts` | Model id, voice, instructions, audio format |
 | `src/renderer/use-session.ts` | Realtime session, mic analysis, event → fleet wiring |
 | `src/renderer/fleet.ts` | Pure delegation reducer |
 | `src/renderer/App.tsx` | The cluster |
