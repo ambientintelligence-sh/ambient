@@ -1,6 +1,8 @@
 import { createServer, type Server } from 'node:http';
 import { createOpenAI } from '@ai-sdk/openai';
+import { experimental_getRealtimeToolDefinitions } from 'ai';
 import { REALTIME_MODEL_ID, REALTIME_SESSION_CONFIG, SETUP_ROUTE } from '../shared/config';
+import { REALTIME_TOOLS } from '../shared/tools';
 
 /**
  * The realtime hook fetches its ephemeral credential from a URL. In Electron the
@@ -30,14 +32,14 @@ export async function startTokenServer(apiKey: string | undefined): Promise<{ ur
       return;
     }
 
-    openai.experimental_realtime
-      .getToken({
-        model: REALTIME_MODEL_ID,
-        sessionConfig: REALTIME_SESSION_CONFIG,
-      })
-      .then((token) => {
+    experimental_getRealtimeToolDefinitions({ tools: REALTIME_TOOLS })
+      .then(async (tools) => {
+        const token = await openai.experimental_realtime.getToken({
+          model: REALTIME_MODEL_ID,
+          sessionConfig: { ...REALTIME_SESSION_CONFIG, tools },
+        });
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ ...token, tools: [] }));
+        res.end(JSON.stringify({ ...token, tools }));
       })
       .catch((error: unknown) => {
         res.writeHead(500, { 'content-type': 'application/json' });

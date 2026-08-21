@@ -1,51 +1,95 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { openai } from '@ai-sdk/openai';
 import { experimental_useRealtime } from '@ai-sdk/react';
 import { REALTIME_MODEL_ID, REALTIME_SAMPLE_RATE, REALTIME_SESSION_CONFIG } from '@/shared/config';
-import { INITIAL_FLEET, reduceFleet, type FleetState } from './fleet';
+import type { Worker } from '@/shared/worker';
 
 const TRACE_LENGTH = 72;
 const emptyTrace = () => new Array<number>(TRACE_LENGTH).fill(0);
 
-/** Empty outside Electron (browser preview of the panel). */
-const setupUrl = window.ambient?.setupUrl ?? '';
+const bridge = window.ambient;
 
 export type SessionView = {
   status: 'disconnected' | 'connecting' | 'connected' | 'error';
-  fleet: FleetState;
-  /** Rolling 0..1 mic energy, oldest first. */
+  workers: readonly Worker[];
   inTrace: readonly number[];
-  /** Rolling 0..1 model speech energy, oldest first. */
   outTrace: readonly number[];
   listening: boolean;
   speaking: boolean;
   muted: boolean;
   turns: number;
+  lastReport: string | null;
   error: string | null;
   connect: () => void;
   disconnect: () => void;
   toggleMute: () => void;
 };
 
+const upsert = (workers: readonly Worker[], next: Worker): readonly Worker[] => {
+  const index = workers.findIndex((worker) => worker.name === next.name);
+  if (index === -1) return [...workers, next];
+  return workers.map((worker) => (worker.name === next.name ? next : worker));
+};
+
+const reportText = (worker: Worker) =>
+  worker.status === 'done'
+    ? `Worker ${worker.name} has finished. Its report: ${worker.summary ?? '(no summary)'}`
+    : `Worker ${worker.name} failed. Reason: ${worker.error ?? 'unknown'}`;
+
 export function useSession(): SessionView {
-  const [fleet, dispatch] = useReducer(reduceFleet, INITIAL_FLEET);
+  const [workers, setWorkers] = useState<readonly Worker[]>([]);
   const [inTrace, setInTrace] = useState<readonly number[]>(emptyTrace);
   const [outTrace, setOutTrace] = useState<readonly number[]>(emptyTrace);
   const [listening, setListening] = useState(false);
   const [muted, setMuted] = useState(false);
   const [turns, setTurns] = useState(0);
+  const [lastReport, setLastReport] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const streamRef = useRef<MediaStream | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
+  /** Reports that arrived while the model was mid-response. */
+  const queuedReports = useRef<Worker[]>([]);
+  const responseActive = useRef(false);
+  /** Lets the mount-once subscriptions reach current state without re-binding. */
+  const announceRef = useRef<(worker: Worker) => void>(() => {});
+  const connectedRef = useRef(false);
+
   const realtime = experimental_useRealtime({
     model: openai.experimental_realtime(REALTIME_MODEL_ID),
-    api: { token: setupUrl },
+    api: { token: bridge?.setupUrl ?? '' },
     sessionConfig: REALTIME_SESSION_CONFIG,
     sampleRate: REALTIME_SAMPLE_RATE,
     onError: (err) => setError(err.message),
+    onToolCall: async ({ toolCall }) => {
+      if (!bridge) return { error: 'worker bridge unavailable' };
+
+      if (toolCall.toolName === 'spawn_worker') {
+        const { task } = toolCall.args as { task?: string };
+        if (!task) return { error: 'task is required' };
+        const worker = await bridge.dispatchWorker(task);
+        return {
+          worker: worker.name,
+          status: 'dispatched',
+          note: 'Running in the background. Do not describe results until its report arrives.',
+        };
+      }
+
+      if (toolCall.toolName === 'list_workers') {
+        const list = await bridge.listWorkers();
+        return {
+          workers: list.map((worker) => ({
+            name: worker.name,
+            status: worker.status,
+            lastStep: worker.stops.at(-1)?.tool ?? null,
+          })),
+        };
+      }
+
+      return undefined;
+    },
     onEvent: (event) => {
       switch (event.type) {
         case 'speech-started':
@@ -55,24 +99,69 @@ export function useSession(): SessionView {
           setListening(false);
           break;
         case 'response-created':
+          responseActive.current = true;
           setTurns((count) => count + 1);
-          dispatch({
-            kind: 'delegate',
-            roll: Math.random(),
-            at: new Date().toTimeString().slice(0, 5),
-          });
           break;
-        case 'audio-transcript-delta':
-          dispatch({ kind: 'advance', roll: Math.random() });
+        case 'response-done': {
+          responseActive.current = false;
+          // Drain anything that landed while the model was talking.
+          const queued = queuedReports.current.shift();
+          if (queued && connectedRef.current) announceRef.current(queued);
           break;
-        case 'response-done':
-          dispatch({ kind: 'settle' });
-          break;
+        }
       }
     },
   });
 
-  const speaking = realtime.isPlaying;
+  const sendEvent = realtime.sendEvent;
+  const connected = realtime.status === 'connected';
+
+  /**
+   * A worker finishes long after its tool call returned, so the report is pushed
+   * into the conversation as a new item and a response is requested for it.
+   */
+  const announce = useCallback(
+    (worker: Worker) => {
+      sendEvent({
+        type: 'conversation-item-create',
+        item: { type: 'text-message', role: 'user', text: reportText(worker) },
+      });
+      sendEvent({
+        type: 'response-create',
+        options: {
+          instructions:
+            'A worker just reported back. Relay it to the user in one or two short sentences. ' +
+            'Do not read it verbatim.',
+        },
+      });
+      responseActive.current = true;
+    },
+    [sendEvent],
+  );
+
+  useEffect(() => {
+    announceRef.current = announce;
+    connectedRef.current = connected;
+  });
+
+  // Bound once: worker events arrive for the life of the window.
+  useEffect(() => {
+    if (!bridge) return;
+    return bridge.onWorkerEvent((event) => {
+      setWorkers((current) => upsert(current, event.worker));
+      if (event.kind !== 'report') return;
+
+      setLastReport(
+        event.worker.status === 'done'
+          ? `${event.worker.name} — ${event.worker.summary ?? 'done'}`
+          : `${event.worker.name} — FAILED: ${event.worker.error ?? 'unknown'}`,
+      );
+
+      if (!connectedRef.current) return;
+      if (responseActive.current) queuedReports.current.push(event.worker);
+      else announceRef.current(event.worker);
+    });
+  }, []);
 
   const connect = useCallback(() => {
     setError(null);
@@ -91,7 +180,7 @@ export function useSession(): SessionView {
 
       // connect() reports a bare status code, so probe the endpoint first to
       // surface the real reason (missing key, bad key) on the panel.
-      const probe = await fetch(setupUrl, {
+      const probe = await fetch(bridge?.setupUrl ?? '', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ sessionConfig: {} }),
@@ -119,7 +208,6 @@ export function useSession(): SessionView {
     setListening(false);
     setInTrace(emptyTrace());
     setOutTrace(emptyTrace());
-    dispatch({ kind: 'reset' });
   }, [realtime]);
 
   const toggleMute = useCallback(() => {
@@ -159,13 +247,14 @@ export function useSession(): SessionView {
 
   return {
     status: realtime.status,
-    fleet,
+    workers,
     inTrace,
     outTrace,
     listening,
-    speaking,
+    speaking: realtime.isPlaying,
     muted,
     turns,
+    lastReport,
     error,
     connect,
     disconnect,

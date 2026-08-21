@@ -12,7 +12,8 @@ echo "OPENAI_API_KEY=sk-..." >> .env
 pnpm dev
 ```
 
-macOS will ask for microphone access on first launch.
+macOS will ask for microphone access on first launch. Docker must be running —
+workers execute in containers, and the image is built on first launch.
 
 ## How it fits together
 
@@ -52,18 +53,50 @@ the session update, so the two cannot drift.
 | `src/main/main.ts` | Window, mic permission, env loading |
 | `src/main/token-server.ts` | Loopback endpoint that mints ephemeral tokens |
 | `src/shared/config.ts` | Model id, voice, instructions, audio format |
-| `src/renderer/use-session.ts` | Realtime session, mic analysis, event → fleet wiring |
-| `src/renderer/fleet.ts` | Pure delegation reducer |
+| `src/renderer/use-session.ts` | Realtime session, mic analysis, tool calls, worker reports |
+| `src/main/workers.ts` | Worker registry and container lifecycle |
+| `src/main/docker.ts` | Image build and Docker availability |
+| `src/shared/tools.ts` | Tools exposed to the realtime session |
+| `docker/worker/` | Worker image: pi + the JSONL entry script |
 | `src/renderer/App.tsx` | The cluster |
 
-## What is real and what is not
+## Workers
 
-Real: the realtime session, turn detection, mic capture and level metering,
-speech playback, connection state, turn counts.
+The voice agent has two tools: `spawn_worker` and `list_workers`.
 
-**Simulated** (labelled as such on the panel): the agent roster, tool calls, and
-delegation. No tools are registered with the session yet — the setup endpoint
-sends `tools: []`. Every simulated transition is driven by a real session event
-(`response-created` delegates, `audio-transcript-delta` advances, `response-done`
-settles), so wiring in real tools means replacing `fleet.ts`'s event source with
-`onToolCall` rather than rebuilding the panel.
+`spawn_worker` is deliberately **asynchronous**. It returns as soon as the worker
+has a callsign — it never waits for the work. The model is told to announce the
+callsign and stop, because a realtime session cannot sit silent for a minute
+while a container thinks.
+
+```
+model calls spawn_worker(task)
+  → renderer onToolCall → IPC → main dispatches, returns { worker: "KESTREL", status: "dispatched" }
+  → container starts behind it, streaming JSONL progress to the board
+  → on finish, the report is pushed into the conversation as a new item
+    plus a response-create, and the agent says it out loud
+```
+
+That last step is the only way to speak after a tool call has already returned:
+the result is long gone, so the report enters as a fresh conversation item.
+Reports that arrive mid-response are queued and drained on `response-done`, so a
+worker finishing never cuts the agent off.
+
+Each worker is one `pi` session in its own container, started from `docker/worker`.
+It gets `read`, `write`, `edit`, `bash`, `ls`, `grep` and `find` in an empty
+`/work`, and its tool calls become the stops on the board.
+
+### Security posture
+
+pi ships no permission system — inside the container its bash tool is
+unrestricted. The container is the boundary:
+
+- Nothing from the host is mounted. `/work` starts empty.
+- `--cap-drop=ALL`, `--security-opt=no-new-privileges`, non-root user.
+- Capped at 2 CPUs, 2 GB, 512 pids.
+- The task and API key are passed by env name, not argv, so they do not show up
+  in `docker inspect` or `ps`.
+
+**Network is not restricted**, because the worker has to reach the OpenAI API.
+A worker can therefore fetch and send data. Treat worker output as untrusted, and
+do not hand a worker a task containing secrets.

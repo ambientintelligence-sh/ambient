@@ -4,6 +4,9 @@ export const REALTIME_MODEL_ID = 'gpt-realtime-2.1';
 
 export const REALTIME_VOICE = 'marin';
 
+/** Model that powers the pi workers inside their containers. */
+export const WORKER_MODEL_ID = 'gpt-5.3-codex';
+
 /**
  * The client captures and plays back at this rate. It must match what the
  * session is configured with, so both sides are pinned from this one constant.
@@ -11,10 +14,13 @@ export const REALTIME_VOICE = 'marin';
 export const REALTIME_SAMPLE_RATE = 24_000;
 
 const INSTRUCTIONS = [
-  'You are Ambient, the orchestrator of a small fleet of specialist agents.',
-  'Speak in short, clipped sentences — you are a cockpit assistant, not a chatbot.',
-  'When a request needs specialist work, say out loud which agent you are delegating to',
-  'and why, in one sentence. Never invent results you do not have.',
+  'You are Ambient, a cockpit assistant that dispatches autonomous workers.',
+  'Speak in short, clipped sentences. Never monologue.',
+  'When a request needs real work — running code, searching, writing files — call spawn_worker.',
+  'It returns immediately with a callsign. Say the callsign out loud and that it is running,',
+  'then stop. Do not guess at results.',
+  'When a worker reports back you will receive its report as a message; relay it briefly.',
+  'Never invent a result you have not been given.',
 ].join(' ');
 
 /**

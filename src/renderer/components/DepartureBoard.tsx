@@ -1,84 +1,69 @@
-import type { Agent, AgentPhase, LineColor } from '../fleet';
+import type { Worker, WorkerStatus } from '@/shared/worker';
 
 /** Service colours, in the saturated register an LED board actually shows. */
-const SERVICE_HEX: Readonly<Record<LineColor, string>> = {
-  chuo: '#ff8c1a',
-  yamanote: '#46e05a',
-  keihin: '#35c8f0',
-  hanzomon: '#a98bff',
-};
+const PALETTE = ['#ff8c1a', '#46e05a', '#35c8f0', '#a98bff'] as const;
 
-const STATUS: Readonly<Record<AgentPhase, { label: string; tone: 'green' | 'amber' | 'red' | 'dim' }>> = {
-  idle: { label: 'STANDBY', tone: 'dim' },
-  briefed: { label: 'DEPARTING', tone: 'amber' },
-  working: { label: 'IN TRANSIT', tone: 'green' },
-  reporting: { label: 'ARRIVING', tone: 'green' },
+const STATUS: Readonly<Record<WorkerStatus, { label: string; tone: 'green' | 'amber' | 'red' | 'dim' }>> = {
+  queued: { label: 'DISPATCHED', tone: 'amber' },
+  running: { label: 'IN TRANSIT', tone: 'green' },
   done: { label: 'ARRIVED', tone: 'dim' },
-  blocked: { label: 'DELAYED', tone: 'red' },
+  failed: { label: 'FAILED', tone: 'red' },
 };
 
 const TONE_HEX = { green: '#46e05a', amber: '#ffa32b', red: '#ff5a4d', dim: '#5d6672' } as const;
 
 const GRID = 'grid grid-cols-[142px_64px_minmax(0,1fr)_minmax(0,1.5fr)_104px] items-center gap-x-5';
 
-function Row({ agent }: { agent: Agent }) {
-  const status = STATUS[agent.phase];
-  const hex = SERVICE_HEX[agent.tint];
-  const idle = agent.phase === 'idle';
-  const held = agent.phase === 'blocked';
-  const running = agent.phase === 'working' || agent.phase === 'briefed';
-  const amber = idle ? '#4b535d' : '#ffa32b';
+/** Stable per-worker colour without threading an index through the model. */
+const colourOf = (name: string) =>
+  PALETTE[[...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % PALETTE.length];
+
+function Row({ worker }: { worker: Worker }) {
+  const status = STATUS[worker.status];
+  const hex = colourOf(worker.name);
+  const settled = worker.status === 'done' || worker.status === 'failed';
+  const amber = settled ? '#8b7a52' : '#ffa32b';
+  const current = worker.stops.at(-1);
 
   return (
     <div className={`${GRID} border-t border-white/[0.06] py-3`}>
-      <div
-        className="flex w-fit rounded-[3px] border px-2 py-1"
-        style={{ borderColor: idle ? '#39414b' : hex, color: idle ? '#5d6672' : hex }}
-      >
-        <span className={`label-xs ${idle ? '' : 'led'}`}>{agent.name}</span>
+      <div className="flex w-fit rounded-[3px] border px-2 py-1" style={{ borderColor: hex, color: hex }}>
+        <span className="label-xs led">{worker.name}</span>
       </div>
 
       <div className="font-mono text-[15px] leading-none tracking-tight" style={{ color: amber }}>
-        <span className={idle ? '' : 'led'}>{agent.departedAt ?? '--:--'}</span>
+        <span className="led">{worker.startedAt}</span>
       </div>
 
       <div className="min-w-0">
         <div className="truncate font-mono text-[15px] leading-none" style={{ color: amber }}>
-          <span className={idle ? '' : 'led'}>{agent.tool ?? (idle ? '—' : agent.route[agent.route.length - 1])}</span>
+          <span className="led">{current?.detail || current?.tool || worker.task}</span>
         </div>
-        <div className="label-xs mt-1.5 truncate text-[#5d6672]">{agent.role}</div>
+        <div className="label-xs mt-1.5 truncate text-[#5d6672]">{worker.task}</div>
       </div>
 
       <div className="flex min-w-0 flex-wrap items-center gap-1">
-        {agent.route.map((stop, index) => {
-          const passed = agent.phase === 'done' || index < agent.step;
-          const here = (running || held) && index === agent.step;
-
-          if (here) {
-            return (
-              <span
-                key={stop}
-                className="rounded-[2px] px-1.5 py-[3px] font-mono text-[10px] leading-none text-black"
-                style={{ background: held ? '#ff5a4d' : hex }}
-              >
-                {stop}
-              </span>
-            );
-          }
+        {worker.stops.length === 0 && <span className="label-xs text-[#4b535d]">no steps yet</span>}
+        {worker.stops.map((stop, index) => {
+          const live = !settled && index === worker.stops.length - 1;
           return (
             <span
-              key={stop}
-              className="rounded-[2px] border px-1.5 py-[3px] font-mono text-[10px] leading-none"
-              style={{ borderColor: passed ? `${hex}66` : '#2c333c', color: passed ? hex : '#4b535d' }}
+              key={`${stop.tool}-${index}`}
+              className={`rounded-[2px] px-1.5 py-[3px] font-mono text-[10px] leading-none ${live ? 'text-black' : 'border'}`}
+              style={
+                live
+                  ? { background: hex }
+                  : { borderColor: `${hex}55`, color: settled ? '#5d6672' : hex }
+              }
             >
-              {stop}
+              {stop.tool}
             </span>
           );
         })}
       </div>
 
       <div
-        className={`text-right font-mono text-[11px] leading-none tracking-[0.12em] ${idle ? '' : 'led'}`}
+        className="led text-right font-mono text-[11px] leading-none tracking-[0.12em]"
         style={{ color: TONE_HEX[status.tone] }}
       >
         {status.label}
@@ -87,23 +72,27 @@ function Row({ agent }: { agent: Agent }) {
   );
 }
 
-export function DepartureBoard({ agents, notice }: { agents: readonly Agent[]; notice: string }) {
+export function DepartureBoard({ workers, notice }: { workers: readonly Worker[]; notice: string }) {
   return (
     <section className="relative mt-8 overflow-hidden rounded-2xl border border-hairline bg-[#04060a]">
       <div className="board-scan pointer-events-none absolute inset-0 z-10" />
 
       <div className="relative px-6 pt-4 pb-3">
         <div className={`${GRID} pb-2.5`}>
-          <span className="label-xs text-[#8b95a2]">SERVICE</span>
+          <span className="label-xs text-[#8b95a2]">WORKER</span>
           <span className="label-xs text-[#5d6672]">TIME</span>
-          <span className="label-xs text-[#5d6672]">DESTINATION</span>
-          <span className="label-xs text-[#5d6672]">STOPS</span>
+          <span className="label-xs text-[#5d6672]">DOING</span>
+          <span className="label-xs text-[#5d6672]">STEPS</span>
           <span className="label-xs text-right text-[#5d6672]">STATUS</span>
         </div>
 
-        {agents.map((agent) => (
-          <Row key={agent.id} agent={agent} />
-        ))}
+        {workers.length === 0 ? (
+          <div className="border-t border-white/[0.06] py-10 text-center">
+            <span className="label-xs text-[#4b535d]">no workers dispatched</span>
+          </div>
+        ) : (
+          workers.map((worker) => <Row key={worker.name} worker={worker} />)
+        )}
       </div>
 
       <div className="relative flex h-7 items-center overflow-hidden border-t border-white/[0.06] bg-[#02040a]">

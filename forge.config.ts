@@ -3,7 +3,8 @@ import { MakerZIP } from '@electron-forge/maker-zip';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 
 const config: ForgeConfig = {
-  packagerConfig: { asar: true, name: 'Ambient' },
+  // The worker build context must sit outside the asar so `docker build` can read it.
+  packagerConfig: { asar: true, name: 'Ambient', extraResource: ['docker'] },
   makers: [new MakerZIP({}, ['darwin'])],
   plugins: [
     new VitePlugin({

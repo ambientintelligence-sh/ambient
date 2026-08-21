@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react';
-import { REALTIME_MODEL_ID, REALTIME_VOICE } from '@/shared/config';
-import { activeAgent, activeTool } from './fleet';
+import { REALTIME_MODEL_ID, REALTIME_VOICE, WORKER_MODEL_ID } from '@/shared/config';
+import type { Worker } from '@/shared/worker';
 import { useSession } from './use-session';
-import { DepartureBoard } from './components/DepartureBoard';
 import { Chip } from './components/Chip';
 import { Clock } from './components/Clock';
 import { ControlButton } from './components/ControlButton';
+import { DepartureBoard } from './components/DepartureBoard';
 import { Sparkline } from './components/Sparkline';
 import type { TintKey } from './components/tints';
 
-const NOTICE =
-  'SIMULATED DELEGATION — no tools are registered with the realtime session yet, ' +
-  'but every stop advances on a real session event.';
+const STANDING_NOTICE =
+  `WORKERS RUN pi (${WORKER_MODEL_ID}) IN AN ISOLATED CONTAINER — ` +
+  'EMPTY WORKING DIRECTORY, NOTHING FROM THIS MACHINE IS MOUNTED';
 
 const STATUS_TINT: Readonly<Record<string, TintKey>> = {
   disconnected: 'dim',
@@ -19,6 +19,11 @@ const STATUS_TINT: Readonly<Record<string, TintKey>> = {
   connected: 'live',
   error: 'alert',
 };
+
+const activeWorker = (workers: readonly Worker[]): Worker | null =>
+  workers.find((worker) => worker.status === 'running') ??
+  workers.find((worker) => worker.status === 'queued') ??
+  null;
 
 function useElapsed(running: boolean) {
   const [seconds, setSeconds] = useState(0);
@@ -40,21 +45,20 @@ export function App() {
   const connected = session.status === 'connected';
   const elapsed = useElapsed(connected);
 
-  const agent = activeAgent(session.fleet);
-  const tool = activeTool(session.fleet);
+  const worker = activeWorker(session.workers);
+  const step = worker?.stops.at(-1) ?? null;
   const statusTint = STATUS_TINT[session.status] ?? 'dim';
 
   const mode = session.speaking ? 'SPEAKING' : session.listening ? 'LISTENING' : connected ? 'IDLE' : 'OFFLINE';
   const modeTint: TintKey = session.speaking ? 'link' : session.listening ? 'live' : 'dim';
+  const inFlight = session.workers.filter((each) => each.status !== 'done' && each.status !== 'failed').length;
 
   return (
     <div className="grid h-full place-items-center bg-void p-5 [-webkit-app-region:drag]">
       <div className="bezel w-full max-w-[1080px]">
         <div className="relative overflow-hidden rounded-[28px] bg-void px-9 pt-8 pb-8">
-          {/* glass sheen across the top of the panel */}
           <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/[0.045] to-transparent" />
 
-          {/* ── cluster ───────────────────────────────────────────── */}
           <header className="relative flex items-start gap-10">
             <div className="flex w-[122px] shrink-0 flex-col items-start gap-3 pt-1">
               <div className="flex items-center gap-2">
@@ -65,7 +69,7 @@ export function App() {
               <div className="label-xs leading-[1.9] text-dimmer">
                 <div>{elapsed} ELAPSED</div>
                 <div>{session.turns} TURNS</div>
-                <div>{session.fleet.calls.filter((call) => call.status === 'ok').length} TOOLS RUN</div>
+                <div>{session.workers.length} DISPATCHED</div>
               </div>
             </div>
 
@@ -73,20 +77,20 @@ export function App() {
               <div>
                 <Chip label="MODE" value={mode} tint={modeTint} />
                 <p className="mt-2.5 truncate text-[38px] font-light leading-none tracking-[-0.02em] text-ink">
-                  {agent?.name ?? 'ORCHESTRATOR'}
+                  {worker?.name ?? 'ORCHESTRATOR'}
                 </p>
-                <p className="label-xs mt-2 text-dim">{agent ? agent.role : 'holding the floor'}</p>
+                <p className="label-xs mt-2 truncate text-dim">
+                  {worker ? worker.task : 'holding the floor'}
+                </p>
               </div>
 
               <div>
-                <Chip label="CALLING" value={tool ? 'ACTIVE' : 'IDLE'} tint={tool ? 'warn' : 'dim'} />
+                <Chip label="STEP" value={step ? 'ACTIVE' : 'IDLE'} tint={step ? 'warn' : 'dim'} />
                 <p className="mt-2.5 truncate font-mono text-[32px] font-light leading-none tracking-[-0.03em] text-ink">
-                  {tool ?? '—'}
+                  {step?.tool ?? '—'}
                 </p>
-                <p className="label-xs mt-2 text-dim">
-                  {agent && agent.tool
-                    ? `${agent.id} · step ${agent.step + 1} of 3`
-                    : 'no tool in flight'}
+                <p className="label-xs mt-2 truncate text-dim">
+                  {step?.detail || (worker ? 'starting up' : 'no worker running')}
                 </p>
               </div>
             </div>
@@ -101,17 +105,16 @@ export function App() {
                 <p className="text-[21px] font-medium leading-none text-ink">{REALTIME_VOICE.toUpperCase()}</p>
                 <p className="label-xs mt-1.5 text-dim">VOICE</p>
                 <p className="mt-5 text-[21px] font-medium leading-none text-ink">
-                  {session.fleet.agents.filter((each) => each.phase !== 'idle').length}
-                  <span className="text-dimmer">/{session.fleet.agents.length}</span>
+                  {inFlight}
+                  <span className="text-dimmer">/{session.workers.length || 0}</span>
                 </p>
-                <p className="label-xs mt-1.5 text-dim">FLEET ENGAGED</p>
+                <p className="label-xs mt-1.5 text-dim">IN FLIGHT</p>
                 <p className="label-xs mt-5 text-dimmer">{REALTIME_MODEL_ID}</p>
               </div>
               <Clock />
             </div>
           </header>
 
-          {/* ── controls ──────────────────────────────────────────── */}
           <section className="relative mt-10 flex items-center justify-center gap-3">
             <ControlButton active={!session.muted && connected} tint="live" onClick={session.toggleMute} disabled={!connected}>
               MIC
@@ -144,9 +147,10 @@ export function App() {
             {session.error ?? 'REALTIME SESSION'}
           </p>
 
-          {/* ── delegation ────────────────────────────────────────── */}
-          <DepartureBoard agents={session.fleet.agents} notice={NOTICE} />
-
+          <DepartureBoard
+            workers={session.workers}
+            notice={session.lastReport ? `LATEST REPORT — ${session.lastReport}` : STANDING_NOTICE}
+          />
         </div>
       </div>
     </div>
