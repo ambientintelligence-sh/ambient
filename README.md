@@ -15,6 +15,12 @@ pnpm dev
 macOS will ask for microphone access on first launch. Docker must be running —
 workers execute in containers, and the image is built on first launch.
 
+Ambient opens the Pi delegation setup on launch. Sign in to any provider exposed
+by Pi using OAuth/account login or an API key, then choose a model. Reopen the
+picker with **MODEL**. The choice is saved in Ambient's user-data directory.
+The realtime voice connection still requires `OPENAI_API_KEY`; Pi account login
+only authenticates delegated workers.
+
 ## How it fits together
 
 ```
@@ -84,7 +90,9 @@ worker finishing never cuts the agent off.
 
 Each worker is one `pi` session in its own container, started from `docker/worker`.
 It gets `read`, `write`, `edit`, `bash`, `ls`, `grep` and `find` in an empty
-`/work`, and its tool calls become the stops on the board.
+`/work`, and its tool calls become the stops on the board. The selected provider
+and model are passed per dispatch. Ambient's app-specific Pi credential directory
+is mounted at `/home/node/.pi/agent`, allowing OAuth refreshes to persist.
 
 ### Security posture
 
@@ -94,9 +102,12 @@ unrestricted. The container is the boundary:
 - Nothing from the host is mounted. `/work` starts empty.
 - `--cap-drop=ALL`, `--security-opt=no-new-privileges`, non-root user.
 - Capped at 2 CPUs, 2 GB, 512 pids.
-- The task and API key are passed by env name, not argv, so they do not show up
-  in `docker inspect` or `ps`.
+- The task and provider selection are passed as environment variables rather
+  than command-line arguments. Docker container metadata can still expose
+  environment values to users who can access the Docker daemon.
+- Ambient's Pi credential directory is mounted read/write. Every worker can use
+  every provider credential saved through Ambient, and can persist token refreshes.
 
-**Network is not restricted**, because the worker has to reach the OpenAI API.
+**Network is not restricted**, because workers have to reach model-provider APIs.
 A worker can therefore fetch and send data. Treat worker output as untrusted, and
 do not hand a worker a task containing secrets.

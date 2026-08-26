@@ -50,6 +50,17 @@ export function useSession(): SessionView {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
+  const releaseMedia = useCallback(() => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    void audioCtxRef.current?.close();
+    audioCtxRef.current = null;
+    analyserRef.current = null;
+    setListening(false);
+    setInTrace(emptyTrace());
+    setOutTrace(emptyTrace());
+  }, []);
+
   /** Reports that arrived while the model was mid-response. */
   const queuedReports = useRef<Worker[]>([]);
   const responseActive = useRef(false);
@@ -62,7 +73,10 @@ export function useSession(): SessionView {
     api: { token: bridge?.setupUrl ?? '' },
     sessionConfig: REALTIME_SESSION_CONFIG,
     sampleRate: REALTIME_SAMPLE_RATE,
-    onError: (err) => setError(err.message),
+    onError: (err) => {
+      releaseMedia();
+      setError(err.message);
+    },
     onToolCall: async ({ toolCall }) => {
       if (!bridge) return { error: 'worker bridge unavailable' };
 
@@ -193,22 +207,21 @@ export function useSession(): SessionView {
       await realtime.connect();
       realtime.startAudioCapture(stream);
     })().catch((err: unknown) => {
+      // A setup/connect failure can happen after getUserMedia succeeds. Release
+      // it here so the mic trace and privacy indicator do not keep running
+      // while the session is visibly offline.
+      realtime.stopAudioCapture();
+      realtime.disconnect();
+      releaseMedia();
       setError(err instanceof Error ? err.message : 'microphone unavailable');
     });
-  }, [realtime]);
+  }, [realtime, releaseMedia]);
 
   const disconnect = useCallback(() => {
     realtime.stopAudioCapture();
     realtime.disconnect();
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
-    void audioCtxRef.current?.close();
-    audioCtxRef.current = null;
-    analyserRef.current = null;
-    setListening(false);
-    setInTrace(emptyTrace());
-    setOutTrace(emptyTrace());
-  }, [realtime]);
+    releaseMedia();
+  }, [realtime, releaseMedia]);
 
   const toggleMute = useCallback(() => {
     const next = !muted;

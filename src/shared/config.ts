@@ -33,7 +33,9 @@ export const REALTIME_SESSION_CONFIG: Partial<Experimental_RealtimeSessionConfig
   outputModalities: ['audio'],
   inputAudioFormat: { type: 'audio/pcm', rate: REALTIME_SAMPLE_RATE },
   outputAudioFormat: { type: 'audio/pcm', rate: REALTIME_SAMPLE_RATE },
-  inputAudioTranscription: {},
+  // Do not enable the separate gpt-realtime-whisper transcription service.
+  // The realtime model consumes input audio directly; transcription adds a
+  // second quota requirement and can reject otherwise valid voice sessions.
   turnDetection: { type: 'semantic-vad' },
 };
 

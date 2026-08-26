@@ -5,7 +5,7 @@ import { app } from 'electron';
 
 const run = promisify(execFile);
 
-export const WORKER_IMAGE = 'ambient-pi-worker:1';
+export const WORKER_IMAGE = 'ambient-pi-worker:2';
 
 /** In a packaged app the build context is copied out of the asar as an extraResource. */
 function contextDir(): string {

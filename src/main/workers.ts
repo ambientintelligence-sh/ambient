@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { ensureWorkerImage, WORKER_IMAGE } from './docker';
 import { nextWorkerName } from './worker-names';
+import type { DelegationSelection } from '../shared/auth';
 import type { Worker, WorkerEvent, WorkerStop } from '../shared/worker';
 
 const MAX_STOPS = 8;
@@ -16,7 +17,11 @@ const clock = () => new Date().toTimeString().slice(0, 5);
 
 export type WorkerFleet = ReturnType<typeof createWorkerFleet>;
 
-export function createWorkerFleet(options: { emit: (event: WorkerEvent) => void; model: string }) {
+export function createWorkerFleet(options: {
+  emit: (event: WorkerEvent) => void;
+  getSelection: () => DelegationSelection;
+  agentDir: string;
+}) {
   const workers = new Map<string, Worker>();
   const containers = new Set<string>();
 
@@ -63,8 +68,10 @@ export function createWorkerFleet(options: { emit: (event: WorkerEvent) => void;
     const container = `ambient-worker-${name.toLowerCase()}-${Date.now()}`;
     containers.add(container);
 
-    // Env is passed by name so neither the task nor the API key lands in argv,
-    // where `docker inspect` and `ps` would expose it.
+    const selection = options.getSelection();
+
+    // The app-owned Pi credential directory is shared so OAuth refreshes remain
+    // durable. Workers can read provider credentials, but still cannot see host files.
     const child = spawn(
       'docker',
       [
@@ -72,7 +79,8 @@ export function createWorkerFleet(options: { emit: (event: WorkerEvent) => void;
         '--name', container,
         '--memory=2g', '--cpus=2', '--pids-limit=512',
         '--cap-drop=ALL', '--security-opt=no-new-privileges',
-        '-e', 'OPENAI_API_KEY', '-e', 'PI_TASK', '-e', 'PI_MODEL',
+        '--volume', `${options.agentDir}:/home/node/.pi/agent`,
+        '-e', 'OPENAI_API_KEY', '-e', 'PI_TASK', '-e', 'PI_PROVIDER', '-e', 'PI_MODEL',
         WORKER_IMAGE,
       ],
       {
@@ -80,7 +88,8 @@ export function createWorkerFleet(options: { emit: (event: WorkerEvent) => void;
         env: {
           ...process.env,
           PI_TASK: task,
-          PI_MODEL: options.model,
+          PI_PROVIDER: selection.provider,
+          PI_MODEL: selection.model,
         },
       },
     );

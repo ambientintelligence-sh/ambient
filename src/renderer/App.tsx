@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { REALTIME_MODEL_ID, REALTIME_VOICE, WORKER_MODEL_ID } from '@/shared/config';
+import type { AuthState } from '@/shared/auth';
+import { REALTIME_MODEL_ID, REALTIME_VOICE } from '@/shared/config';
 import type { Worker } from '@/shared/worker';
 import { useSession } from './use-session';
+import { AuthPanel } from './components/AuthPanel';
 import { Chip } from './components/Chip';
 import { Clock } from './components/Clock';
 import { ControlButton } from './components/ControlButton';
@@ -9,9 +11,6 @@ import { DepartureBoard } from './components/DepartureBoard';
 import { Sparkline } from './components/Sparkline';
 import type { TintKey } from './components/tints';
 
-const STANDING_NOTICE =
-  `WORKERS RUN pi (${WORKER_MODEL_ID}) IN AN ISOLATED CONTAINER — ` +
-  'EMPTY WORKING DIRECTORY, NOTHING FROM THIS MACHINE IS MOUNTED';
 
 const STATUS_TINT: Readonly<Record<string, TintKey>> = {
   disconnected: 'dim',
@@ -42,6 +41,8 @@ function useElapsed(running: boolean) {
 
 export function App() {
   const session = useSession();
+  const [setupOpen, setSetupOpen] = useState(true);
+  const [authState, setAuthState] = useState<AuthState | null>(null);
   const connected = session.status === 'connected';
   const elapsed = useElapsed(connected);
 
@@ -52,6 +53,12 @@ export function App() {
   const mode = session.speaking ? 'SPEAKING' : session.listening ? 'LISTENING' : connected ? 'IDLE' : 'OFFLINE';
   const modeTint: TintKey = session.speaking ? 'link' : session.listening ? 'live' : 'dim';
   const inFlight = session.workers.filter((each) => each.status !== 'done' && each.status !== 'failed').length;
+  const delegationModel = authState?.selection
+    ? `${authState.selection.provider}/${authState.selection.model}`
+    : 'SELECT MODEL';
+  const standingNotice =
+    `WORKERS RUN pi (${delegationModel}) IN AN ISOLATED CONTAINER — ` +
+    'EMPTY WORKING DIRECTORY, NOTHING FROM THIS MACHINE IS MOUNTED';
 
   return (
     <div className="grid h-full place-items-center bg-void p-5 [-webkit-app-region:drag]">
@@ -110,6 +117,9 @@ export function App() {
                 </p>
                 <p className="label-xs mt-1.5 text-dim">IN FLIGHT</p>
                 <p className="label-xs mt-5 text-dimmer">{REALTIME_MODEL_ID}</p>
+                <button onClick={() => setSetupOpen(true)} className="label-xs mt-2 max-w-[170px] truncate text-link hover:text-ink">
+                  {delegationModel}
+                </button>
               </div>
               <Clock />
             </div>
@@ -124,11 +134,12 @@ export function App() {
             </ControlButton>
             <ControlButton
               size="lg"
-              active={connected}
+              active={connected || session.status === 'connecting'}
               tint={statusTint}
               onClick={connected ? session.disconnect : session.connect}
+              disabled={session.status === 'connecting'}
             >
-              <span className="text-[17px] leading-none">⏻</span>
+              <span className="text-[17px] leading-none">{session.status === 'connecting' ? '···' : '⏻'}</span>
             </ControlButton>
             <ControlButton active={session.muted} tint="alert" onClick={session.toggleMute} disabled={!connected}>
               MUTE
@@ -137,7 +148,10 @@ export function App() {
               OUT
             </ControlButton>
 
-            <div className="absolute right-0">
+            <div className="absolute right-0 flex gap-2">
+              <ControlButton tint="dim" onClick={() => setSetupOpen(true)}>
+                MODEL
+              </ControlButton>
               <ControlButton tint="dim" onClick={session.disconnect} disabled={!connected}>
                 END
               </ControlButton>
@@ -149,10 +163,11 @@ export function App() {
 
           <DepartureBoard
             workers={session.workers}
-            notice={session.lastReport ? `LATEST REPORT — ${session.lastReport}` : STANDING_NOTICE}
+            notice={session.lastReport ? `LATEST REPORT — ${session.lastReport}` : standingNotice}
           />
         </div>
       </div>
+      <AuthPanel open={setupOpen} onClose={() => setSetupOpen(false)} onState={setAuthState} />
     </div>
   );
 }

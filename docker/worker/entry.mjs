@@ -4,7 +4,6 @@
  * internals, only this stream.
  */
 import { createAgentSession, ModelRuntime, SessionManager } from '@earendil-works/pi-coding-agent';
-import { getBuiltinModel } from '@earendil-works/pi-ai/providers/all';
 
 const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
 
@@ -27,6 +26,7 @@ function textOf(message) {
 }
 
 const task = process.env.PI_TASK ?? '';
+const providerId = process.env.PI_PROVIDER ?? 'openai';
 const modelId = process.env.PI_MODEL ?? 'gpt-5.3-codex';
 
 if (!task) {
@@ -36,9 +36,12 @@ if (!task) {
 
 try {
   const modelRuntime = await ModelRuntime.create();
+  const model = modelRuntime.getModel(providerId, modelId);
+  if (!model) throw new Error(`delegation model not found: ${providerId}/${modelId}`);
+
   const { session } = await createAgentSession({
     cwd: '/work',
-    model: getBuiltinModel('openai', modelId),
+    model,
     tools: ['read', 'write', 'edit', 'bash', 'ls', 'grep', 'find'],
     sessionManager: SessionManager.inMemory(),
     modelRuntime,
