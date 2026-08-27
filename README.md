@@ -77,9 +77,10 @@ It is tool-free and does not spawn a coding session. The advisor returns a direc
 recommendation to the realtime orchestrator, which incorporates it into its reply.
 
 `spawn_worker` is deliberately **asynchronous**. It returns as soon as the worker
-has a callsign — it never waits for the work. The model is told to announce the
-callsign and stop, because a realtime session cannot sit silent for a minute
-while a container thinks.
+has an internal callsign — it never waits for the work. The voice model calls the
+tool without a preamble, then gives one present-progressive acknowledgement such
+as “I’m checking the current pricing.” It does not speak the callsign or narrate
+that it is thinking.
 
 ```
 model calls spawn_worker(task)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-/** The chrome-bezel analog clock that anchors the top-right of the cluster. */
+/** Minimal analog clock that anchors the top-right of the cluster. */
 export function Clock() {
   const [now, setNow] = useState(() => new Date());
 
@@ -29,9 +29,8 @@ export function Clock() {
   };
 
   return (
-    <div className="rounded-full bg-gradient-to-br from-white/50 via-white/10 to-white/35 p-[2px] shadow-[0_6px_18px_-6px_rgba(0,0,0,0.9)]">
-      <div className="rounded-full bg-black p-1">
-        <svg viewBox="0 0 100 100" className="h-[74px] w-[74px]">
+    <div className="rounded-full border border-white/15 bg-white/[0.03] p-1.5">
+      <svg viewBox="0 0 100 100" className="h-[74px] w-[74px]">
           {Array.from({ length: 12 }, (_, index) => {
             const radians = ((index * 30 - 90) * Math.PI) / 180;
             return (
@@ -40,7 +39,7 @@ export function Clock() {
                 x={50 + Math.cos(radians) * 37}
                 y={50 + Math.sin(radians) * 37 + 3.4}
                 textAnchor="middle"
-                fill="#e8eaec"
+                fill="#7d848b"
                 fontSize={9}
                 fontFamily="Inter Variable, sans-serif"
               >
@@ -53,7 +52,6 @@ export function Clock() {
           {hand(seconds * 6, 31, 1, '#ff4d4d')}
           <circle cx={50} cy={50} r={2.2} fill="#ff4d4d" />
         </svg>
-      </div>
     </div>
   );
 }

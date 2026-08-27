@@ -78,26 +78,6 @@
   font-weight: 500;
 }
 
-/* The instrument bezel: brushed metal ring around a black glass panel. */
-@utility bezel {
-  background: linear-gradient(
-    155deg,
-    #9ea1a6 0%,
-    #5b5e63 9%,
-    #2a2c30 26%,
-    #17181b 48%,
-    #43464b 72%,
-    #8f9296 88%,
-    #202225 100%
-  );
-  padding: 6px;
-  border-radius: 34px;
-  box-shadow:
-    0 40px 90px -24px rgb(0 0 0 / 0.95),
-    0 0 0 1px rgb(255 255 255 / 0.1),
-    inset 0 1px 0 rgb(255 255 255 / 0.25);
-}
-
 @keyframes breathe {
   0%,
   100% {

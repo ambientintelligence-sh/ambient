@@ -29,7 +29,7 @@ function Row({ worker }: { worker: Worker }) {
   const current = worker.stops.at(-1);
 
   return (
-    <div className="border-t border-white/[0.06]">
+    <div className="border-b border-white/[0.06]">
       <button
         type="button"
         aria-expanded={expanded}
@@ -108,20 +108,20 @@ function Row({ worker }: { worker: Worker }) {
 
 export function DepartureBoard({ workers }: { workers: readonly Worker[] }) {
   return (
-    <section className="relative mt-8 overflow-hidden rounded-2xl border border-hairline bg-[#04060a]">
+    <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-hairline bg-[#04060a]">
       <div className="board-scan pointer-events-none absolute inset-0 z-10" />
 
-      <div className="relative px-6 pt-4 pb-3">
-        <div className={`${GRID} pb-2.5`}>
-          <span className="label-xs text-[#8b95a2]">WORKER</span>
-          <span className="label-xs text-[#5d6672]">TIME</span>
-          <span className="label-xs text-[#5d6672]">DOING</span>
-          <span className="label-xs text-[#5d6672]">STEPS</span>
-          <span className="label-xs text-right text-[#5d6672]">STATUS</span>
-        </div>
+      <div className={`${GRID} relative border-b border-white/[0.07] px-6 pt-4 pb-3`}>
+        <span className="label-xs text-[#8b95a2]">WORKER</span>
+        <span className="label-xs text-[#5d6672]">TIME</span>
+        <span className="label-xs text-[#5d6672]">DOING</span>
+        <span className="label-xs text-[#5d6672]">STEPS</span>
+        <span className="label-xs text-right text-[#5d6672]">STATUS</span>
+      </div>
 
+      <div className="app-scroll relative min-h-0 flex-1 overflow-y-auto px-6 pb-3">
         {workers.length === 0 ? (
-          <div className="border-t border-white/[0.06] py-10 text-center">
+          <div className="grid h-full place-items-center">
             <span className="label-xs text-[#4b535d]">no workers dispatched</span>
           </div>
         ) : (

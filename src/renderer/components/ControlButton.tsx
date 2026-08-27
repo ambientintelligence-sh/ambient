@@ -28,11 +28,11 @@ export function ControlButton({
       disabled={disabled}
       className={[
         box,
-        'grid place-items-center rounded-full border transition-colors duration-150',
+        'grid place-items-center rounded-full border transition-all duration-150 active:scale-95',
         'label-xs disabled:opacity-30',
         active
           ? `${tone.border} ${tone.text} bg-white/[0.06]`
-          : 'border-white/10 bg-panel-2 text-dim hover:border-white/25 hover:text-ink',
+          : 'border-white/10 bg-white/[0.03] text-dim hover:border-white/25 hover:bg-white/[0.06] hover:text-ink',
       ].join(' ')}
     >
       {children}

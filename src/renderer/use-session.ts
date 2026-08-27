@@ -77,6 +77,8 @@ export function useSession(): SessionView {
   /** Announcements that arrived while the model was mid-response. */
   const queuedAnnouncements = useRef<Announcement[]>([]);
   const responseActive = useRef(false);
+  const playingRef = useRef(false);
+  const drainAnnouncementsRef = useRef<() => void>(() => {});
   const lastProgressDeliveredAt = useRef(0);
   const announcementTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deliverAnnouncementRef = useRef<(announcement: Announcement) => void>(() => {});
@@ -93,6 +95,11 @@ export function useSession(): SessionView {
     sessionConfig: REALTIME_SESSION_CONFIG,
     sampleRate: REALTIME_SAMPLE_RATE,
     onError: (err) => {
+      if (err.message.includes('already shorter than')) {
+        // Recoverable OpenAI truncate rejection from an interrupted audio item.
+        // Keep the realtime session and microphone alive.
+        return;
+      }
       if (err.message.includes('active response in progress')) {
         // A VAD/user response won the race with a background announcement.
         // Keep the conversation item and retry response-create when that turn ends.
@@ -144,7 +151,9 @@ export function useSession(): SessionView {
         return {
           worker: worker.name,
           status: 'dispatched',
-          note: 'Running in the background. Do not describe results until its report arrives.',
+          note:
+            'Acknowledge once with “I’m [short concrete present-progressive action].” ' +
+            'Do not say “I’m thinking,” “On it,” or the worker name. Do not describe results yet.',
         };
       }
 
@@ -196,18 +205,12 @@ export function useSession(): SessionView {
           responseActive.current = true;
           setTurns((count) => count + 1);
           break;
-        case 'response-done': {
+        case 'response-done':
           responseActive.current = false;
-          if (pendingResponseRetry.current) {
-            pendingResponseRetry.current = false;
-            retryResponseRef.current();
-            break;
-          }
-          // Drain anything that landed while the model was talking.
-          const queued = queuedAnnouncements.current.shift();
-          if (queued && connectedRef.current) deliverAnnouncementRef.current(queued);
+          // Generation can finish several seconds before queued audio playback.
+          // Wait for playback to end so offsets never span two response items.
+          drainAnnouncementsRef.current();
           break;
-        }
       }
     },
   });
@@ -267,7 +270,7 @@ export function useSession(): SessionView {
   }, []);
 
   const deliverAnnouncement = useCallback((announcement: Announcement) => {
-    if (responseActive.current) {
+    if (responseActive.current || playingRef.current) {
       enqueueAnnouncement(announcement);
       return;
     }
@@ -278,9 +281,7 @@ export function useSession(): SessionView {
         if (!announcementTimer.current) {
           announcementTimer.current = setTimeout(() => {
             announcementTimer.current = null;
-            if (responseActive.current) return;
-            const queued = queuedAnnouncements.current.shift();
-            if (queued && connectedRef.current) deliverAnnouncementRef.current(queued);
+            drainAnnouncementsRef.current();
           }, delay);
         }
         return;
@@ -290,10 +291,24 @@ export function useSession(): SessionView {
     announce(announcement);
   }, [announce, enqueueAnnouncement]);
 
+  const drainAnnouncements = useCallback(() => {
+    if (responseActive.current || playingRef.current || !connectedRef.current) return;
+    if (pendingResponseRetry.current) {
+      pendingResponseRetry.current = false;
+      retryResponseRef.current();
+      return;
+    }
+    const queued = queuedAnnouncements.current.shift();
+    if (queued) deliverAnnouncementRef.current(queued);
+  }, []);
+
   useEffect(() => {
     deliverAnnouncementRef.current = deliverAnnouncement;
+    drainAnnouncementsRef.current = drainAnnouncements;
     connectedRef.current = connected;
+    playingRef.current = realtime.isPlaying;
     retryResponseRef.current = () => requestAnnouncementResponse(lastResponseInstructions.current);
+    if (!realtime.isPlaying) drainAnnouncements();
   });
 
   useEffect(() => () => {

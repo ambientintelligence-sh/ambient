@@ -10,7 +10,7 @@ export const REALTIME_TOOLS = {
     description: [
       'Dispatch an autonomous Pi worker to run code, edit files, search with Exa, or automate Chrome through DevTools. For factual lookups instruct it to use Exa first; for configuration or interaction instruct it to use Chrome and perform the action.',
       'This returns IMMEDIATELY with a worker name and a status — it does NOT wait for the',
-      'work to finish. Say only “On it.” Do not speak the internal worker name.',
+      'work to finish. Call this tool without a spoken preamble. After it returns, say only “I’m [short concrete present-progressive action].” Never say “I’m thinking,” “On it,” or the internal worker name.',
       'You will be told separately when the worker reports back; only then can you describe results.',
       'Never invent a result before the report arrives.',
     ].join(' '),
