@@ -100,8 +100,11 @@ global five-second gap between progress announcements across all workers. A sepa
 selectable summary model receives the task, recent tools, current activity, and
 previous spoken update. It returns
 `SKIP` for startup, waiting, repetition, or administrative noise; otherwise it
-produces one concrete first-person sentence. Tool completion results are included,
-so updates describe verified accomplishments rather than raw commands. The
+produces `SKIP` or one concrete first-person sentence of up to 24 words. When the
+telemetry supports it, that sentence includes both completed progress and current
+activity; blockers include the workaround being attempted. Tool completion
+results are included, so updates describe verified accomplishments rather than
+raw commands. The
 realtime orchestrator speaks that prepared sentence verbatim. Expanded worker
 rows retain the latest natural-language updates plus raw tool details. Updates that arrive
 mid-response are deduplicated, and a final report replaces stale progress, so
@@ -130,7 +133,16 @@ prompt. **BROWSER HEADLESS/VISIBLE** in the cockpit controls newly dispatched
 workers. Headless mode runs isolated Chromium in the container. Visible mode
 launches a dedicated host Chrome profile and connects to it through a temporary
 DevTools proxy, so browser actions are visible without exposing the user's normal
-Chrome profile. MCP usage statistics, update checks, and CrUX lookups are disabled.
+Chrome profile. In visible mode, a worker records pre-existing tabs before browsing;
+at each checkpoint it selects the relevant result page and closes only intermediate
+tabs it opened. Other users' or workers' pre-existing tabs are preserved. MCP usage
+statistics, update checks, and CrUX lookups are disabled.
+
+Workers route web work by intent: factual lookups (pricing, docs, comparisons,
+current facts) use Exa first and avoid launching Chrome when primary-source search
+results are sufficient. Interaction requests (configure, enable, change, click,
+fill, navigate) use Chrome and perform the requested action. Dynamic pages and
+live verification can also escalate from Exa to Chrome.
 The selected provider and model are passed per dispatch. Ambient's app-specific Pi credential directory
 is mounted at `/home/node/.pi/agent`, allowing OAuth refreshes to persist.
 

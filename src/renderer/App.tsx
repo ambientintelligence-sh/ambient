@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { AuthState } from '@/shared/auth';
 import type { BrowserState } from '@/shared/browser';
 import { REALTIME_MODEL_ID, REALTIME_VOICE } from '@/shared/config';
-import { isActive, type Worker } from '@/shared/worker';
+import { isActive } from '@/shared/worker';
 import type { WorkspaceState } from '@/shared/workspace';
 import { useSession } from './use-session';
 import { AuthPanel } from './components/AuthPanel';
@@ -20,11 +20,6 @@ const STATUS_TINT: Readonly<Record<string, TintKey>> = {
   connected: 'live',
   error: 'alert',
 };
-
-const activeWorker = (workers: readonly Worker[]): Worker | null =>
-  workers.find((worker) => worker.status === 'running') ??
-  workers.find((worker) => worker.status === 'queued') ??
-  null;
 
 function useElapsed(running: boolean) {
   const [seconds, setSeconds] = useState(0);
@@ -67,12 +62,8 @@ export function App() {
   const connected = session.status === 'connected';
   const elapsed = useElapsed(connected);
 
-  const worker = activeWorker(session.workers);
-  const step = worker?.stops.at(-1) ?? null;
   const statusTint = STATUS_TINT[session.status] ?? 'dim';
 
-  const mode = session.speaking ? 'SPEAKING' : session.listening ? 'LISTENING' : connected ? 'IDLE' : 'OFFLINE';
-  const modeTint: TintKey = session.speaking ? 'link' : session.listening ? 'live' : 'dim';
   const inFlight = session.workers.filter((each) => isActive(each.status)).length;
   const delegationModel = authState?.selection
     ? `${authState.selection.provider}/${authState.selection.model}`
@@ -98,26 +89,16 @@ export function App() {
               </div>
             </div>
 
-            <div className="flex min-w-0 flex-1 flex-col gap-5">
-              <div>
-                <Chip label="MODE" value={mode} tint={modeTint} />
-                <p className="mt-2.5 truncate text-[38px] font-light leading-none tracking-[-0.02em] text-ink">
-                  {worker?.name ?? 'ORCHESTRATOR'}
-                </p>
-                <p className="label-xs mt-2 truncate text-dim">
-                  {worker ? worker.task : 'holding the floor'}
-                </p>
-              </div>
-
-              <div>
-                <Chip label="STEP" value={step ? 'ACTIVE' : 'IDLE'} tint={step ? 'warn' : 'dim'} />
-                <p className="mt-2.5 truncate font-mono text-[32px] font-light leading-none tracking-[-0.03em] text-ink">
-                  {step?.tool ?? '—'}
-                </p>
-                <p className="label-xs mt-2 truncate text-dim">
-                  {step?.detail || (worker ? 'starting up' : 'no worker running')}
-                </p>
-              </div>
+            <div className="flex min-h-[154px] min-w-0 flex-1 flex-col">
+              <Chip
+                label="TRANSCRIPT"
+                value={session.speaking ? 'LIVE' : session.transcript ? 'LATEST' : 'READY'}
+                tint={session.speaking ? 'link' : session.transcript ? 'live' : 'dim'}
+              />
+              <p className="mt-4 line-clamp-4 text-[27px] font-light leading-[1.18] tracking-[-0.02em] text-ink">
+                {session.transcript || (connected ? 'Listening.' : 'Voice transcript will appear here.')}
+              </p>
+              <p className="label-xs mt-auto pt-3 text-dimmer">OUTPUT AUDIO TRANSCRIPT</p>
             </div>
 
             <div className="flex shrink-0 flex-col gap-6 pt-2">

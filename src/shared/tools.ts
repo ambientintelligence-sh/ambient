@@ -8,7 +8,7 @@ import { z } from 'zod';
 export const REALTIME_TOOLS = {
   spawn_worker: tool({
     description: [
-      'Dispatch an autonomous worker to carry out a task in its own sandboxed container.',
+      'Dispatch an autonomous Pi worker to run code, edit files, search with Exa, or automate Chrome through DevTools. For factual lookups instruct it to use Exa first; for configuration or interaction instruct it to use Chrome and perform the action.',
       'This returns IMMEDIATELY with a worker name and a status — it does NOT wait for the',
       'work to finish. Say only “On it.” Do not speak the internal worker name.',
       'You will be told separately when the worker reports back; only then can you describe results.',
@@ -18,8 +18,9 @@ export const REALTIME_TOOLS = {
       task: z
         .string()
         .describe(
-          'A complete, self-contained instruction. The worker starts in an empty directory ' +
-            'with no memory of this conversation, so restate everything it needs.',
+          'A complete, self-contained instruction. The worker shares the selected workspace but ' +
+            'has no memory of this conversation, so restate everything it needs. For browser tasks, ' +
+            'explicitly state the site, desired interactions, and expected result.',
         ),
     }),
   }),

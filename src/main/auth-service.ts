@@ -221,7 +221,11 @@ export async function createAuthService(options: {
         'For research, prices, ratings, availability, names, counts, and conclusions are provisional until the final report.',
         'Say “I found the official listing and am verifying it,” not “I confirmed it costs $16.50.”',
         'For later updates, return SKIP for startup, waiting, repetition, or raw inspection commands.',
-        'Otherwise return one natural first-person sentence of at most twelve words.',
+        'Otherwise return one natural first-person sentence of at most twenty-four words.',
+        'When telemetry supports it, include both completed progress and current activity:',
+        '“I found the official product page; now I’m validating its live purchase controls.”',
+        'If blocked, state the blocker and the workaround being attempted.',
+        'Be specific about files, tests, pages, or operations, but do not expose hidden reasoning.',
         'Never use “confirmed” for a factual claim; the final report is the only authoritative answer.',
         'Never say worker, agent, subagent, callsign, waiting, or still working.',
         `Task: ${input.task}`,
@@ -254,9 +258,17 @@ export async function createAuthService(options: {
         /\b(wait(?:ing)?|still working|worker|subagent|agent)\b/i.test(text) ||
         claimsResearchFact ||
         (!input.mandatory && text.toLowerCase() === input.previousSummary?.toLowerCase());
-      if (claimsResearchFact) return input.mandatory ? 'I’m verifying the source details.' : null;
-      if (invalid) return input.mandatory ? 'I’m progressing through the task.' : null;
-      return text.slice(0, 140);
+      if (claimsResearchFact) {
+        return input.mandatory ? 'I found a relevant source; now I’m validating it against the live page.' : null;
+      }
+      if (invalid) {
+        return input.mandatory
+          ? researchTelemetry
+            ? 'I’m checking the strongest sources and validating the latest evidence.'
+            : 'I’m reviewing the current results and preparing the next concrete action.'
+          : null;
+      }
+      return text.slice(0, 220);
     },
 
     async login(providerId: string, method: AuthMethod) {

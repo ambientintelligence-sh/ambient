@@ -23,6 +23,7 @@ export type SessionView = {
   muted: boolean;
   turns: number;
   lastReport: string | null;
+  transcript: string;
   error: string | null;
   connect: () => void;
   disconnect: () => void;
@@ -213,6 +214,17 @@ export function useSession(): SessionView {
 
   const sendEvent = realtime.sendEvent;
   const connected = realtime.status === 'connected';
+  const transcriptMessage = [...realtime.messages]
+    .reverse()
+    .find((message) =>
+      message.role === 'assistant' &&
+      message.parts.some((part) => part.type === 'text' && part.text.trim()),
+    );
+  const transcript = transcriptMessage?.parts
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text)
+    .join(' ')
+    .trim() ?? '';
 
   const requestAnnouncementResponse = useCallback(
     (instructions: string) => {
@@ -425,6 +437,7 @@ export function useSession(): SessionView {
     muted,
     turns,
     lastReport,
+    transcript,
     error,
     connect,
     disconnect,

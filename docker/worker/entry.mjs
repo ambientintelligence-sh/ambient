@@ -46,6 +46,24 @@ function textOf(message) {
 const task = process.env.PI_TASK ?? '';
 const providerId = process.env.PI_PROVIDER ?? 'openai';
 const modelId = process.env.PI_MODEL ?? 'gpt-5.3-codex';
+const webToolPolicy = [
+  'Web tool policy:',
+  'For factual lookups such as model pricing, documentation, comparisons, availability, or current information, use exa_search first.',
+  'Do not open Chrome when Exa results answer the question with adequate primary-source evidence.',
+  'Use Chrome when search is insufficient, a page is dynamic, live verification matters, or the task requires interaction.',
+  'For explicit action requests such as configure, set up, enable, disable, change, fill, or navigate, use Chrome and perform the requested action rather than merely explaining it.',
+  'Do not make purchases, delete accounts, or perform other irreversible actions unless the user explicitly requested that exact action.',
+].join(' ');
+const visibleBrowserPolicy = process.env.PI_BROWSER_MODE === 'visible'
+  ? [
+      'Visible browser presentation rule:',
+      'If you use Chrome, first list the existing pages.',
+      'Before each checkpoint, select the single page most relevant to the requested result.',
+      'Close intermediate tabs that you opened during this task, but never close tabs that existed before the task.',
+      'Do not leave a search page, blank page, login page, or unrelated tab selected when a better result page is available.',
+    ].join(' ')
+  : '';
+const initialTask = `${task}\n\n${webToolPolicy}${visibleBrowserPolicy ? `\n\n${visibleBrowserPolicy}` : ''}`;
 
 if (!task) {
   emit({ type: 'error', message: 'no task supplied' });
@@ -216,7 +234,7 @@ try {
   });
 
   emit({ type: 'ready' });
-  runPrompt(task);
+  runPrompt(initialTask);
   initialStarted = true;
   for (const instruction of pendingInstructions.splice(0)) applySteer(instruction);
 
