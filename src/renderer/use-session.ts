@@ -8,6 +8,10 @@ const TRACE_LENGTH = 72;
 const emptyTrace = () => new Array<number>(TRACE_LENGTH).fill(0);
 
 const bridge = window.ambient;
+// The realtime hook keys its internal store by model object identity. Creating
+// this inside the React render function would replace the connected store on
+// every state update, making an active session appear disconnected.
+const REALTIME_MODEL = openai.experimental_realtime(REALTIME_MODEL_ID);
 
 export type SessionView = {
   status: 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -31,10 +35,17 @@ const upsert = (workers: readonly Worker[], next: Worker): readonly Worker[] => 
   return workers.map((worker) => (worker.name === next.name ? next : worker));
 };
 
-const reportText = (worker: Worker) =>
-  worker.status === 'done'
-    ? `Worker ${worker.name} has finished. Its report: ${worker.summary ?? '(no summary)'}`
-    : `Worker ${worker.name} failed. Reason: ${worker.error ?? 'unknown'}`;
+type Announcement = Readonly<{ kind: 'progress' | 'report'; worker: Worker; summary?: string }>;
+
+const announcementText = ({ kind, worker, summary }: Announcement) => {
+  if (kind === 'progress') {
+    return `Prepared progress update: ${summary ?? 'SKIP'}. This is not a final result.`;
+  }
+  if (worker.status === 'cancelled') return 'Background work was stopped by the user.';
+  return worker.status === 'done'
+    ? `Background work has finished. Report: ${worker.summary ?? '(no summary)'}`
+    : `Background work failed. Reason: ${worker.error ?? 'unknown'}`;
+};
 
 export function useSession(): SessionView {
   const [workers, setWorkers] = useState<readonly Worker[]>([]);
@@ -42,6 +53,7 @@ export function useSession(): SessionView {
   const [outTrace, setOutTrace] = useState<readonly number[]>(emptyTrace);
   const [listening, setListening] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [turns, setTurns] = useState(0);
   const [lastReport, setLastReport] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,15 +73,16 @@ export function useSession(): SessionView {
     setOutTrace(emptyTrace());
   }, []);
 
-  /** Reports that arrived while the model was mid-response. */
-  const queuedReports = useRef<Worker[]>([]);
+  /** Announcements that arrived while the model was mid-response. */
+  const queuedAnnouncements = useRef<Announcement[]>([]);
   const responseActive = useRef(false);
   /** Lets the mount-once subscriptions reach current state without re-binding. */
-  const announceRef = useRef<(worker: Worker) => void>(() => {});
+  const announceRef = useRef<(announcement: Announcement) => void>(() => {});
   const connectedRef = useRef(false);
+  const connectingRef = useRef(false);
 
   const realtime = experimental_useRealtime({
-    model: openai.experimental_realtime(REALTIME_MODEL_ID),
+    model: REALTIME_MODEL,
     api: { token: bridge?.setupUrl ?? '' },
     sessionConfig: REALTIME_SESSION_CONFIG,
     sampleRate: REALTIME_SAMPLE_RATE,
@@ -80,9 +93,40 @@ export function useSession(): SessionView {
     onToolCall: async ({ toolCall }) => {
       if (!bridge) return { error: 'worker bridge unavailable' };
 
+      if (toolCall.toolName === 'phone_a_friend') {
+        const { question, context } = toolCall.args as { question?: string; context?: string };
+        if (!question?.trim()) return { error: 'A focused question is required' };
+        try {
+          const answer = await bridge.askAdvisor(question.trim(), context?.trim());
+          return { answer, instruction: 'Use this advice to answer the user concisely.' };
+        } catch (cause) {
+          return { error: cause instanceof Error ? cause.message : String(cause) };
+        }
+      }
+
+      if (toolCall.toolName === 'select_workspace') {
+        const workspace = await bridge.selectWorkspace();
+        return workspace.path
+          ? { status: 'selected', name: workspace.name, path: workspace.path }
+          : { status: 'cancelled', note: 'No workspace was selected.' };
+      }
+
+      if (toolCall.toolName === 'open_workspace') {
+        try {
+          const workspace = await bridge.openWorkspace();
+          return { status: 'opened', name: workspace.name, path: workspace.path };
+        } catch (cause) {
+          return { error: cause instanceof Error ? cause.message : String(cause) };
+        }
+      }
+
       if (toolCall.toolName === 'spawn_worker') {
         const { task } = toolCall.args as { task?: string };
         if (!task) return { error: 'task is required' };
+        const workspace = await bridge.getWorkspace();
+        if (!workspace.path) {
+          return { error: 'No workspace selected. Call select_workspace, then retry the dispatch.' };
+        }
         const worker = await bridge.dispatchWorker(task);
         return {
           worker: worker.name,
@@ -91,13 +135,36 @@ export function useSession(): SessionView {
         };
       }
 
+      if (toolCall.toolName === 'stop_worker') {
+        const { worker } = toolCall.args as { worker?: string };
+        if (!worker) return { error: 'worker is required' };
+        const result = await bridge.stopWorker(worker);
+        return result.ok ? result : { error: result.error };
+      }
+
+      if (toolCall.toolName === 'steer_worker') {
+        const { worker, instruction } = toolCall.args as { worker?: string; instruction?: string };
+        if (!worker || !instruction) return { error: 'worker and instruction are required' };
+        const result = await bridge.steerWorker(worker, instruction);
+        return result.ok
+          ? {
+              worker: result.worker,
+              status: result.status,
+              note: 'The instruction will be applied at the next safe point. Do not claim it has already changed direction.',
+            }
+          : { error: result.error };
+      }
+
       if (toolCall.toolName === 'list_workers') {
         const list = await bridge.listWorkers();
         return {
           workers: list.map((worker) => ({
             name: worker.name,
+            task: worker.task,
             status: worker.status,
-            lastStep: worker.stops.at(-1)?.tool ?? null,
+            currentActivity: worker.stops.at(-1) ?? null,
+            summary: worker.status === 'done' ? worker.summary : null,
+            error: worker.status === 'failed' ? worker.error : null,
           })),
         };
       }
@@ -119,7 +186,7 @@ export function useSession(): SessionView {
         case 'response-done': {
           responseActive.current = false;
           // Drain anything that landed while the model was talking.
-          const queued = queuedReports.current.shift();
+          const queued = queuedAnnouncements.current.shift();
           if (queued && connectedRef.current) announceRef.current(queued);
           break;
         }
@@ -135,17 +202,18 @@ export function useSession(): SessionView {
    * into the conversation as a new item and a response is requested for it.
    */
   const announce = useCallback(
-    (worker: Worker) => {
+    (announcement: Announcement) => {
       sendEvent({
         type: 'conversation-item-create',
-        item: { type: 'text-message', role: 'user', text: reportText(worker) },
+        item: { type: 'text-message', role: 'user', text: announcementText(announcement) },
       });
       sendEvent({
         type: 'response-create',
         options: {
           instructions:
-            'A worker just reported back. Relay it to the user in one or two short sentences. ' +
-            'Do not read it verbatim.',
+            announcement.kind === 'progress'
+              ? `Say exactly this prepared update, with no additions: ${announcement.summary ?? ''}`
+              : 'Relay the final result in one concise first-person sentence. Never mention workers or callsigns.',
         },
       });
       responseActive.current = true;
@@ -163,21 +231,48 @@ export function useSession(): SessionView {
     if (!bridge) return;
     return bridge.onWorkerEvent((event) => {
       setWorkers((current) => upsert(current, event.worker));
-      if (event.kind !== 'report') return;
+      if (event.kind === 'update') return;
 
       setLastReport(
-        event.worker.status === 'done'
-          ? `${event.worker.name} — ${event.worker.summary ?? 'done'}`
-          : `${event.worker.name} — FAILED: ${event.worker.error ?? 'unknown'}`,
+        event.kind === 'progress'
+          ? `${event.worker.name} — ${event.summary}`
+          : event.worker.status === 'done'
+            ? `${event.worker.name} — ${event.worker.summary ?? 'done'}`
+            : event.worker.status === 'cancelled'
+              ? `${event.worker.name} — STOPPED`
+              : `${event.worker.name} — FAILED: ${event.worker.error ?? 'unknown'}`,
       );
 
       if (!connectedRef.current) return;
-      if (responseActive.current) queuedReports.current.push(event.worker);
-      else announceRef.current(event.worker);
+      const announcement: Announcement = {
+        kind: event.kind,
+        worker: event.worker,
+        ...(event.kind === 'progress' ? { summary: event.summary } : {}),
+      };
+      if (responseActive.current) {
+        // Keep at most one pending heartbeat per worker. A final report replaces
+        // that worker's stale progress so speech can never build a long backlog.
+        queuedAnnouncements.current = queuedAnnouncements.current.filter(
+          (queued) => queued.worker.name !== event.worker.name || (queued.kind === 'report' && event.kind === 'progress'),
+        );
+        if (event.kind === 'report' || !queuedAnnouncements.current.some((queued) => queued.worker.name === event.worker.name)) {
+          queuedAnnouncements.current.push(announcement);
+        }
+      } else announceRef.current(announcement);
     });
   }, []);
 
   const connect = useCallback(() => {
+    // React state and the realtime hook do not update synchronously. This ref
+    // closes the brief window in which a second click could open another session.
+    if (
+      connectingRef.current ||
+      connectedRef.current ||
+      realtime.status === 'connecting' ||
+      realtime.status === 'connected'
+    ) return;
+    connectingRef.current = true;
+    setStarting(true);
     setError(null);
     void (async () => {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -214,10 +309,15 @@ export function useSession(): SessionView {
       realtime.disconnect();
       releaseMedia();
       setError(err instanceof Error ? err.message : 'microphone unavailable');
+    }).finally(() => {
+      connectingRef.current = false;
+      setStarting(false);
     });
   }, [realtime, releaseMedia]);
 
   const disconnect = useCallback(() => {
+    connectingRef.current = false;
+    setStarting(false);
     realtime.stopAudioCapture();
     realtime.disconnect();
     releaseMedia();
@@ -259,7 +359,7 @@ export function useSession(): SessionView {
   }, [realtime.isPlaying]);
 
   return {
-    status: realtime.status,
+    status: starting && realtime.status !== 'connected' ? 'connecting' : realtime.status,
     workers,
     inTrace,
     outTrace,

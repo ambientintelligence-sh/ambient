@@ -68,7 +68,13 @@ the session update, so the two cannot drift.
 
 ## Workers
 
-The voice agent has two tools: `spawn_worker` and `list_workers`.
+The voice agent has seven tools: `phone_a_friend`, `spawn_worker`, `steer_worker`,
+`stop_worker`, `list_workers`, `select_workspace`, and `open_workspace`.
+
+`phone_a_friend` sends one focused question and concise factual context directly
+to the separately selectable **ADVISOR** model through Pi's `completeSimple()`.
+It is tool-free and does not spawn a coding session. The advisor returns a direct
+recommendation to the realtime orchestrator, which incorporates it into its reply.
 
 `spawn_worker` is deliberately **asynchronous**. It returns as soon as the worker
 has a callsign — it never waits for the work. The model is told to announce the
@@ -85,12 +91,33 @@ model calls spawn_worker(task)
 
 That last step is the only way to speak after a tool call has already returned:
 the result is long gone, so the report enters as a fresh conversation item.
-Reports that arrive mid-response are queued and drained on `response-done`, so a
-worker finishing never cuts the agent off.
+While a worker is running, the host samples its latest tool state every five
+seconds. It requests orientation updates at 5, 10, 15, and 20 seconds; after that,
+it requests speech only when activity meaningfully changes. A separately
+selectable summary model receives the task, recent tools, current activity, and
+previous spoken update. It returns
+`SKIP` for startup, waiting, repetition, or administrative noise; otherwise it
+produces one concrete first-person sentence. Tool completion results are included,
+so updates describe verified accomplishments rather than raw commands. The
+realtime orchestrator speaks that prepared sentence verbatim. Expanded worker
+rows retain the latest natural-language updates plus raw tool details. Updates that arrive
+mid-response are deduplicated, and a final report replaces stale progress, so
+speech never interrupts itself or builds an unbounded backlog.
+
+`steer_worker` sends a JSONL command over the selected container's stdin and calls
+Pi's `session.steer()` inside the active session. Steering is cooperative: Pi
+applies it at the next safe point, so a shell command already in flight may finish
+first. Instructions sent while a container is still starting are queued by the
+host and flushed as soon as stdin is available. `stop_worker` marks work stopped,
+asks Pi to abort cleanly over the same channel, and force-kills the container after
+a short grace period if it has not exited.
 
 Each worker is one `pi` session in its own container, started from `docker/worker`.
-It gets `read`, `write`, `edit`, `bash`, `ls`, `grep` and `find` in an empty
-`/work`, and its tool calls become the stops on the board. The selected provider
+The user selects a host folder with **FILES**; Ambient persists that choice and
+mounts it read/write at `/work` for every worker. All workers therefore see the
+same files, and their output appears on the host immediately. Nothing else from
+the host filesystem is visible. Workers get `read`, `write`, `edit`, `bash`, `ls`,
+`grep`, and `find`, and tool calls become stops on the board. The selected provider
 and model are passed per dispatch. Ambient's app-specific Pi credential directory
 is mounted at `/home/node/.pi/agent`, allowing OAuth refreshes to persist.
 
@@ -99,7 +126,9 @@ is mounted at `/home/node/.pi/agent`, allowing OAuth refreshes to persist.
 pi ships no permission system — inside the container its bash tool is
 unrestricted. The container is the boundary:
 
-- Nothing from the host is mounted. `/work` starts empty.
+- Only the explicitly selected workspace is mounted at `/work`, read/write.
+  Workers have full control inside it, including deletion. Other host paths are
+  invisible; Ambient deliberately does not mount the home directory read-only.
 - `--cap-drop=ALL`, `--security-opt=no-new-privileges`, non-root user.
 - Capped at 2 CPUs, 2 GB, 512 pids.
 - The task and provider selection are passed as environment variables rather

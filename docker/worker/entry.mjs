@@ -16,6 +16,17 @@ function detailOf(toolName, args) {
   return text.length > 72 ? `${text.slice(0, 71)}…` : text;
 }
 
+function resultOf(result) {
+  const content = Array.isArray(result?.content) ? result.content : [];
+  const text = content
+    .filter((part) => part?.type === 'text')
+    .map((part) => part.text ?? '')
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > 240 ? `${text.slice(0, 239)}…` : text;
+}
+
 function textOf(message) {
   if (!message || message.role !== 'assistant' || !Array.isArray(message.content)) return '';
   return message.content
@@ -49,10 +60,62 @@ try {
 
   let summary = '';
   let failure = '';
+  let promptStarted = false;
+  const pendingInstructions = [];
+
+  const applySteer = (instruction) => {
+    if (!promptStarted) {
+      pendingInstructions.push(instruction);
+      return;
+    }
+    void session.steer(instruction).catch((error) => {
+      emit({
+        type: 'tool',
+        tool: 'steer_failed',
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    });
+  };
+
+  let inputBuffer = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk) => {
+    inputBuffer += chunk;
+    const lines = inputBuffer.split('\n');
+    inputBuffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const command = JSON.parse(line);
+        if (command?.type === 'steer' && typeof command.instruction === 'string' && command.instruction.trim()) {
+          applySteer(command.instruction.trim());
+        } else if (command?.type === 'abort') {
+          void session.abort().finally(() => process.exit(0));
+        }
+      } catch {
+        emit({ type: 'tool', tool: 'steer_failed', detail: 'invalid command from host' });
+      }
+    }
+  });
 
   session.subscribe((event) => {
     if (event.type === 'tool_execution_start') {
-      emit({ type: 'tool', tool: event.toolName, detail: detailOf(event.toolName, event.args) });
+      emit({
+        type: 'tool',
+        id: event.toolCallId,
+        tool: event.toolName,
+        detail: detailOf(event.toolName, event.args),
+      });
+      return;
+    }
+    if (event.type === 'tool_execution_end') {
+      emit({
+        type: 'tool_result',
+        id: event.toolCallId,
+        tool: event.toolName,
+        result: resultOf(event.result),
+        isError: event.isError,
+      });
       return;
     }
     if (event.type === 'message_end') {
@@ -69,7 +132,10 @@ try {
   });
 
   emit({ type: 'ready' });
-  await session.prompt(task);
+  const promptPromise = session.prompt(task);
+  promptStarted = true;
+  for (const instruction of pendingInstructions.splice(0)) applySteer(instruction);
+  await promptPromise;
 
   if (failure) {
     emit({ type: 'error', message: failure });

@@ -20,6 +20,7 @@ export function AuthPanel(props: {
 }) {
   const [state, setState] = useState<AuthState | null>(null);
   const [providerId, setProviderId] = useState<string | null>(null);
+  const [modelPurpose, setModelPurpose] = useState<'delegation' | 'summary' | 'advisor'>('delegation');
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [prompt, setPrompt] = useState<LoginPrompt | null>(null);
@@ -92,9 +93,13 @@ export function AuthPanel(props: {
   const selectModel = (model: DelegationModel) => {
     if (!bridge) return;
     setBusy(true);
-    void bridge
-      .selectDelegationModel({ provider: model.provider, model: model.id })
-      .then((next) => {
+    const selection = { provider: model.provider, model: model.id };
+    const request = modelPurpose === 'summary'
+      ? bridge.selectSummaryModel(selection)
+      : modelPurpose === 'advisor'
+        ? bridge.selectAdvisorModel(selection)
+        : bridge.selectDelegationModel(selection);
+    void request.then((next) => {
         publish(next);
         props.onClose();
       })
@@ -159,7 +164,26 @@ export function AuthPanel(props: {
           <main className="flex min-h-0 flex-col p-6">
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
-                <p className="label-xs text-dimmer">DELEGATION MODEL</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setModelPurpose('delegation')}
+                    className={`rounded-lg px-3 py-2 label-xs ${modelPurpose === 'delegation' ? 'bg-link/15 text-link' : 'text-dimmer hover:text-ink'}`}
+                  >
+                    DELEGATION
+                  </button>
+                  <button
+                    onClick={() => setModelPurpose('summary')}
+                    className={`rounded-lg px-3 py-2 label-xs ${modelPurpose === 'summary' ? 'bg-deep/15 text-deep' : 'text-dimmer hover:text-ink'}`}
+                  >
+                    SUMMARY
+                  </button>
+                  <button
+                    onClick={() => setModelPurpose('advisor')}
+                    className={`rounded-lg px-3 py-2 label-xs ${modelPurpose === 'advisor' ? 'bg-warn/15 text-warn' : 'text-dimmer hover:text-ink'}`}
+                  >
+                    ADVISOR
+                  </button>
+                </div>
                 <p className="mt-2 truncate text-sm text-dim">
                   {selectedProvider ? selectedProvider.name : 'All connected providers'}
                 </p>
@@ -227,7 +251,12 @@ export function AuthPanel(props: {
               ) : (
                 <div className="grid grid-cols-2 gap-2">
                   {models.map((model) => {
-                    const active = state?.selection?.provider === model.provider && state.selection.model === model.id;
+                    const chosen = modelPurpose === 'summary'
+                      ? state?.summarySelection
+                      : modelPurpose === 'advisor'
+                        ? state?.advisorSelection
+                        : state?.selection;
+                    const active = chosen?.provider === model.provider && chosen.model === model.id;
                     return (
                       <button
                         key={`${model.provider}/${model.id}`}
@@ -250,7 +279,7 @@ export function AuthPanel(props: {
         </div>
 
         <footer className="border-t border-white/10 px-7 py-3 label-xs text-dimmer">
-          VOICE STILL USES OPENAI_API_KEY · PROVIDER CREDENTIALS ARE STORED IN AMBIENT USER DATA
+          ADVISOR POWERS PHONE-A-FRIEND · SUMMARY FILTERS TELEMETRY · VOICE USES OPENAI
         </footer>
       </div>
     </div>

@@ -5,6 +5,7 @@ import { createAuthService, type AuthService } from './auth-service';
 import { ensureWorkerImage } from './docker';
 import { startTokenServer } from './token-server';
 import { createWorkerFleet, type WorkerFleet } from './workers';
+import { createWorkspaceService, type WorkspaceService } from './workspace';
 import type { AuthEvent, AuthMethod, DelegationSelection } from '../shared/auth';
 import { WORKER_MODEL_ID } from '../shared/config';
 
@@ -14,8 +15,20 @@ loadEnv({ quiet: true });
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) app.quit();
+
+app.on('second-instance', () => {
+  const window = BrowserWindow.getAllWindows()[0];
+  if (!window) return;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+});
+
 let fleet: WorkerFleet | null = null;
 let auth: AuthService | null = null;
+let workspace: WorkspaceService | null = null;
 
 const emitAuth = (event: AuthEvent) => {
   for (const window of BrowserWindow.getAllWindows()) window.webContents.send('auth:event', event);
@@ -36,9 +49,11 @@ async function createWindow(setupUrl: string) {
     },
   });
 
-  if (!auth) throw new Error('authentication service is not ready');
+  if (!auth || !workspace) throw new Error('application services are not ready');
   fleet ??= createWorkerFleet({
     getSelection: auth.currentSelection,
+    summarizeProgress: auth.summarizeProgress,
+    getWorkspace: workspace.getPath,
     agentDir: auth.agentDir,
     emit: (event) => {
       if (!window.isDestroyed()) window.webContents.send('worker:event', event);
@@ -65,15 +80,34 @@ app.whenReady().then(async () => {
       if (url.startsWith('https://') || url.startsWith('http://')) void shell.openExternal(url);
     },
   });
+  workspace = await createWorkspaceService(app.getPath('userData'));
 
   ipcMain.handle('worker:dispatch', (_event, task: string) => fleet?.dispatch(task) ?? null);
+  ipcMain.handle('worker:steer', (_event, name: string, instruction: string) =>
+    fleet?.steer(name, instruction) ?? { ok: false, error: 'worker fleet is not ready' },
+  );
+  ipcMain.handle('worker:stop', (_event, name: string) =>
+    fleet?.stop(name) ?? { ok: false, error: 'worker fleet is not ready' },
+  );
   ipcMain.handle('worker:list', () => fleet?.list() ?? []);
+  ipcMain.handle('workspace:state', () => workspace?.state());
+  ipcMain.handle('workspace:select', async (event) => {
+    const state = await workspace?.select(BrowserWindow.fromWebContents(event.sender) ?? undefined);
+    if (state) {
+      for (const window of BrowserWindow.getAllWindows()) window.webContents.send('workspace:event', state);
+    }
+    return state;
+  });
+  ipcMain.handle('workspace:open', () => workspace?.open());
   ipcMain.handle('auth:state', () => auth?.state());
   ipcMain.handle('auth:login', (_event, providerId: string, method: AuthMethod) => auth?.login(providerId, method));
   ipcMain.handle('auth:answer', (_event, promptId: string, value: string) => auth?.answer(promptId, value));
   ipcMain.handle('auth:cancel', () => auth?.cancel());
   ipcMain.handle('auth:logout', (_event, providerId: string) => auth?.logout(providerId));
   ipcMain.handle('auth:select', (_event, selection: DelegationSelection) => auth?.select(selection));
+  ipcMain.handle('auth:select-summary', (_event, selection: DelegationSelection) => auth?.selectSummary(selection));
+  ipcMain.handle('auth:select-advisor', (_event, selection: DelegationSelection) => auth?.selectAdvisor(selection));
+  ipcMain.handle('advisor:ask', (_event, question: string, context?: string) => auth?.askAdvisor(question, context));
   ipcMain.handle('auth:open-url', (_event, url: string) => {
     if (url.startsWith('https://') || url.startsWith('http://')) return shell.openExternal(url);
   });

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AuthState } from '@/shared/auth';
 import { REALTIME_MODEL_ID, REALTIME_VOICE } from '@/shared/config';
-import type { Worker } from '@/shared/worker';
+import { isTerminal, type Worker } from '@/shared/worker';
+import type { WorkspaceState } from '@/shared/workspace';
 import { useSession } from './use-session';
 import { AuthPanel } from './components/AuthPanel';
 import { Chip } from './components/Chip';
@@ -41,8 +42,25 @@ function useElapsed(running: boolean) {
 
 export function App() {
   const session = useSession();
-  const [setupOpen, setSetupOpen] = useState(true);
+  const [setupOpen, setSetupOpen] = useState(false);
   const [authState, setAuthState] = useState<AuthState | null>(null);
+  const [workspace, setWorkspace] = useState<WorkspaceState>({ path: null, name: null });
+  const authInitialized = useRef(false);
+
+  useEffect(() => {
+    const bridge = window.ambient;
+    if (!bridge) return;
+    void bridge.getWorkspace().then(setWorkspace);
+    return bridge.onWorkspaceChanged(setWorkspace);
+  }, []);
+
+  const handleAuthState = (next: AuthState) => {
+    setAuthState(next);
+    if (!authInitialized.current) {
+      authInitialized.current = true;
+      if (!next.selection) setSetupOpen(true);
+    }
+  };
   const connected = session.status === 'connected';
   const elapsed = useElapsed(connected);
 
@@ -52,13 +70,10 @@ export function App() {
 
   const mode = session.speaking ? 'SPEAKING' : session.listening ? 'LISTENING' : connected ? 'IDLE' : 'OFFLINE';
   const modeTint: TintKey = session.speaking ? 'link' : session.listening ? 'live' : 'dim';
-  const inFlight = session.workers.filter((each) => each.status !== 'done' && each.status !== 'failed').length;
+  const inFlight = session.workers.filter((each) => !isTerminal(each.status)).length;
   const delegationModel = authState?.selection
     ? `${authState.selection.provider}/${authState.selection.model}`
     : 'SELECT MODEL';
-  const standingNotice =
-    `WORKERS RUN pi (${delegationModel}) IN AN ISOLATED CONTAINER — ` +
-    'EMPTY WORKING DIRECTORY, NOTHING FROM THIS MACHINE IS MOUNTED';
 
   return (
     <div className="grid h-full place-items-center bg-void p-5 [-webkit-app-region:drag]">
@@ -117,8 +132,15 @@ export function App() {
                 </p>
                 <p className="label-xs mt-1.5 text-dim">IN FLIGHT</p>
                 <p className="label-xs mt-5 text-dimmer">{REALTIME_MODEL_ID}</p>
-                <button onClick={() => setSetupOpen(true)} className="label-xs mt-2 max-w-[170px] truncate text-link hover:text-ink">
+                <button onClick={() => setSetupOpen(true)} className="label-xs mt-2 block max-w-[170px] truncate text-link hover:text-ink">
                   {delegationModel}
+                </button>
+                <button
+                  title={workspace.path ?? 'Choose workspace'}
+                  onClick={() => void window.ambient?.selectWorkspace()}
+                  className={`label-xs mt-2 block max-w-[170px] truncate hover:text-ink ${workspace.path ? 'text-live' : 'text-warn'}`}
+                >
+                  {workspace.name ?? 'NO WORKSPACE'}
                 </button>
               </div>
               <Clock />
@@ -149,6 +171,12 @@ export function App() {
             </ControlButton>
 
             <div className="absolute right-0 flex gap-2">
+              <ControlButton
+                tint={workspace.path ? 'live' : 'warn'}
+                onClick={() => void (workspace.path ? window.ambient?.openWorkspace() : window.ambient?.selectWorkspace())}
+              >
+                FILES
+              </ControlButton>
               <ControlButton tint="dim" onClick={() => setSetupOpen(true)}>
                 MODEL
               </ControlButton>
@@ -161,13 +189,10 @@ export function App() {
             {session.error ?? 'REALTIME SESSION'}
           </p>
 
-          <DepartureBoard
-            workers={session.workers}
-            notice={session.lastReport ? `LATEST REPORT — ${session.lastReport}` : standingNotice}
-          />
+          <DepartureBoard workers={session.workers} />
         </div>
       </div>
-      <AuthPanel open={setupOpen} onClose={() => setSetupOpen(false)} onState={setAuthState} />
+      <AuthPanel open={setupOpen} onClose={() => setSetupOpen(false)} onState={handleAuthState} />
     </div>
   );
 }

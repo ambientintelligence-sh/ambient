@@ -35,12 +35,34 @@ export async function createAuthService(options: {
 
   const selectionPath = path.join(options.agentDir, 'ambient.json');
   let selection: DelegationSelection | null = null;
+  let summarySelection: DelegationSelection | null = null;
+  let advisorSelection: DelegationSelection | null = null;
   try {
-    const saved = JSON.parse(await readFile(selectionPath, 'utf8')) as DelegationSelection;
-    if (saved?.provider && saved?.model) selection = saved;
+    const saved = JSON.parse(await readFile(selectionPath, 'utf8')) as
+      | DelegationSelection
+      | { delegation?: DelegationSelection; summary?: DelegationSelection; advisor?: DelegationSelection };
+    // Migrate the original file shape, which stored only the delegation model.
+    if ('provider' in saved && saved.provider && saved.model) selection = saved;
+    else {
+      const configured = saved as {
+        delegation?: DelegationSelection;
+        summary?: DelegationSelection;
+        advisor?: DelegationSelection;
+      };
+      if (configured.delegation?.provider && configured.delegation.model) selection = configured.delegation;
+      if (configured.summary?.provider && configured.summary.model) summarySelection = configured.summary;
+      if (configured.advisor?.provider && configured.advisor.model) advisorSelection = configured.advisor;
+    }
   } catch {
     // First launch or a discarded/corrupt preference file.
   }
+
+  const persistSelections = () =>
+    writeFile(
+      selectionPath,
+      `${JSON.stringify({ delegation: selection, summary: summarySelection, advisor: advisorSelection }, null, 2)}\n`,
+      { mode: 0o600 },
+    );
 
   let controller: AbortController | null = null;
   let pending: PendingPrompt | null = null;
@@ -80,10 +102,21 @@ export async function createAuthService(options: {
       })
       .sort((a, b) => a.name.localeCompare(b.name));
 
+    const validSelection = selection && available.has(`${selection.provider}/${selection.model}`) ? selection : null;
+    const effectiveSummary = summarySelection ?? validSelection;
+    const effectiveAdvisor = advisorSelection ?? validSelection;
     return {
       providers,
       models,
-      selection: selection && available.has(`${selection.provider}/${selection.model}`) ? selection : null,
+      selection: validSelection,
+      summarySelection:
+        effectiveSummary && available.has(`${effectiveSummary.provider}/${effectiveSummary.model}`)
+          ? effectiveSummary
+          : null,
+      advisorSelection:
+        effectiveAdvisor && available.has(`${effectiveAdvisor.provider}/${effectiveAdvisor.model}`)
+          ? effectiveAdvisor
+          : null,
     };
   }
 
@@ -121,8 +154,97 @@ export async function createAuthService(options: {
       const model = (await runtime.getAvailable(next.provider)).find((item) => item.id === next.model);
       if (!model) throw new Error(`Model is not available: ${next.provider}/${next.model}`);
       selection = next;
-      await writeFile(selectionPath, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+      await persistSelections();
       return state();
+    },
+
+    async selectSummary(next: DelegationSelection) {
+      const model = (await runtime.getAvailable(next.provider)).find((item) => item.id === next.model);
+      if (!model) throw new Error(`Summary model is not available: ${next.provider}/${next.model}`);
+      summarySelection = next;
+      await persistSelections();
+      return state();
+    },
+
+    async selectAdvisor(next: DelegationSelection) {
+      const model = (await runtime.getAvailable(next.provider)).find((item) => item.id === next.model);
+      if (!model) throw new Error(`Advisor model is not available: ${next.provider}/${next.model}`);
+      advisorSelection = next;
+      await persistSelections();
+      return state();
+    },
+
+    async askAdvisor(question: string, context?: string): Promise<string> {
+      const selected = advisorSelection ?? selection ?? options.fallback;
+      const model = runtime.getModel(selected.provider, selected.model);
+      if (!model) throw new Error('The advisor model is not available');
+      const promptText = [
+        'You are the expert advisor behind a concise voice assistant.',
+        'Answer the concrete question directly and accurately.',
+        'Give a recommendation and the key reason. Mention uncertainty when material.',
+        'Do not discuss hidden reasoning or chain-of-thought. Keep the answer under 180 words.',
+        `Question: ${question.slice(0, 4_000)}`,
+        context?.trim() ? `Relevant context: ${context.slice(0, 8_000)}` : '',
+      ].filter(Boolean).join('\n');
+      const response = await runtime.completeSimple(
+        model,
+        { messages: [{ role: 'user', content: promptText, timestamp: Date.now() }] },
+        { reasoning: 'medium', signal: AbortSignal.timeout(30_000) },
+      );
+      const text = response.content
+        .filter((part) => part.type === 'text')
+        .map((part) => part.text)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!text) throw new Error('The advisor returned no answer');
+      return text;
+    },
+
+    async summarizeProgress(input: {
+      task: string;
+      activity: string;
+      recentSteps: string;
+      previousSummary: string | null;
+      mandatory: boolean;
+    }): Promise<string | null> {
+      const selected = summarySelection ?? selection ?? options.fallback;
+      const model = runtime.getModel(selected.provider, selected.model);
+      if (!model) return null;
+      const promptText = [
+        'You are a progress filter for a Jarvis-style voice assistant.',
+        input.mandatory
+          ? 'This is an early orientation update. You MUST return a useful update, never SKIP.'
+          : 'This is a later update. Return SKIP unless something user-meaningful changed.',
+        'Explain concrete progress, prioritizing what has just completed over generic current activity.',
+        'For later updates, return SKIP for startup, waiting, repetition, or raw inspection commands.',
+        'Otherwise return one natural first-person sentence of at most twelve words.',
+        'Use a completed verb when a tool result proves completion; never overclaim beyond the telemetry.',
+        'Never say worker, agent, subagent, callsign, waiting, or still working.',
+        `Task: ${input.task}`,
+        `Current activity: ${input.activity}`,
+        `Recent tool steps: ${input.recentSteps || '(none)'}`,
+        `Previous spoken update: ${input.previousSummary ?? '(none)'}`,
+      ].join('\n');
+      const response = await runtime.completeSimple(
+        model,
+        { messages: [{ role: 'user', content: promptText, timestamp: Date.now() }] },
+        { reasoning: 'minimal', signal: AbortSignal.timeout(12_000) },
+      );
+      const text = response.content
+        .filter((part) => part.type === 'text')
+        .map((part) => part.text)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/^['“”]|['“”]$/g, '');
+      const invalid =
+        !text ||
+        /^skip[.!]?$/i.test(text) ||
+        /\b(wait(?:ing)?|still working|worker|subagent|agent)\b/i.test(text) ||
+        (!input.mandatory && text.toLowerCase() === input.previousSummary?.toLowerCase());
+      if (invalid) return input.mandatory ? 'I’m progressing through the task.' : null;
+      return text.slice(0, 140);
     },
 
     async login(providerId: string, method: AuthMethod) {
@@ -176,6 +298,9 @@ export async function createAuthService(options: {
     async logout(providerId: string) {
       await runtime.logout(providerId);
       if (selection?.provider === providerId) selection = null;
+      if (summarySelection?.provider === providerId) summarySelection = null;
+      if (advisorSelection?.provider === providerId) advisorSelection = null;
+      await persistSelections();
       return state();
     },
   };

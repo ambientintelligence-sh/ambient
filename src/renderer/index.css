@@ -100,7 +100,7 @@
   }
 }
 
-/* Departure board: LED glow, dot-matrix banding, and the bottom marquee. */
+/* Departure board: LED glow and dot-matrix banding. */
 @utility led {
   text-shadow: 0 0 7px currentColor;
 }
@@ -113,13 +113,4 @@
     transparent 1px,
     transparent 3px
   );
-}
-
-@keyframes marquee {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
 }
