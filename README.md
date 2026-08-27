@@ -85,15 +85,18 @@ while a container thinks.
 model calls spawn_worker(task)
   → renderer onToolCall → IPC → main dispatches, returns { worker: "KESTREL", status: "dispatched" }
   → container starts behind it, streaming JSONL progress to the board
-  → on finish, the report is pushed into the conversation as a new item
+  → on checkpoint, the report is pushed into the conversation as a new item
     plus a response-create, and the agent says it out loud
+  → the Pi session and container remain ONLINE for steering or follow-up work
 ```
 
 That last step is the only way to speak after a tool call has already returned:
 the result is long gone, so the report enters as a fresh conversation item.
 While a worker is running, the host samples its latest tool state every five
-seconds. It requests orientation updates at 5, 10, 15, and 20 seconds; after that,
-it requests speech only when activity meaningfully changes. A separately
+seconds. The first four orientation summaries are serialized so slow model calls
+cannot finish in a burst. After that, it speaks on meaningful activity changes,
+with a maximum silence heartbeat at 30 seconds. The renderer also enforces a
+global five-second gap between progress announcements across all workers. A separately
 selectable summary model receives the task, recent tools, current activity, and
 previous spoken update. It returns
 `SKIP` for startup, waiting, repetition, or administrative noise; otherwise it
@@ -104,11 +107,13 @@ rows retain the latest natural-language updates plus raw tool details. Updates t
 mid-response are deduplicated, and a final report replaces stale progress, so
 speech never interrupts itself or builds an unbounded backlog.
 
-`steer_worker` sends a JSONL command over the selected container's stdin and calls
-Pi's `session.steer()` inside the active session. Steering is cooperative: Pi
-applies it at the next safe point, so a shell command already in flight may finish
-first. Instructions sent while a container is still starting are queued by the
-host and flushed as soon as stdin is available. `stop_worker` marks work stopped,
+`steer_worker` sends a JSONL command over the selected container's stdin. During
+an active run it calls Pi's `session.steer()`; while ONLINE and idle it calls
+`session.prompt()` on the same retained session. Steering is cooperative, so a
+shell command already in flight may finish first. Instructions sent while a
+container is still starting are queued by the host and flushed as soon as stdin
+is available. Workers have no normal finished state: they remain ONLINE until
+explicitly stopped or Ambient exits. `stop_worker` marks work stopped,
 asks Pi to abort cleanly over the same channel, and force-kills the container after
 a short grace period if it has not exited.
 
@@ -117,9 +122,27 @@ The user selects a host folder with **FILES**; Ambient persists that choice and
 mounts it read/write at `/work` for every worker. All workers therefore see the
 same files, and their output appears on the host immediately. Nothing else from
 the host filesystem is visible. Workers get `read`, `write`, `edit`, `bash`, `ls`,
-`grep`, and `find`, and tool calls become stops on the board. The selected provider
-and model are passed per dispatch. Ambient's app-specific Pi credential directory
+`grep`, and `find`, and tool calls become stops on the board. Workers also receive
+`exa_search` when `EXA_API_KEY` is configured. Chrome DevTools is integrated through
+`pi-mcp-adapter`: Pi sees one compact `mcp` proxy tool, discovers Chrome tools on
+demand, and starts the MCP server lazily instead of placing 29 schemas in every
+prompt. **BROWSER HEADLESS/VISIBLE** in the cockpit controls newly dispatched
+workers. Headless mode runs isolated Chromium in the container. Visible mode
+launches a dedicated host Chrome profile and connects to it through a temporary
+DevTools proxy, so browser actions are visible without exposing the user's normal
+Chrome profile. MCP usage statistics, update checks, and CrUX lookups are disabled.
+The selected provider and model are passed per dispatch. Ambient's app-specific Pi credential directory
 is mounted at `/home/node/.pi/agent`, allowing OAuth refreshes to persist.
+
+The image includes a writable Python virtual environment at `/opt/pyenv` (already
+on `PATH`). It covers common HTTP, scraping, data-science, spreadsheet, document,
+image, plotting, web-service, database, cloud, typing, linting, and testing work:
+NumPy, pandas, Polars, SciPy, scikit-learn, OpenPyXL, XlsxWriter, python-docx,
+python-pptx, PyPDF2, Pillow, Matplotlib, Seaborn, Requests, HTTPX, aiohttp,
+Beautiful Soup, lxml, FastAPI, Flask, Uvicorn, SQLAlchemy, Pydantic, boto3,
+pytest, Ruff, mypy, Rich, and related utilities. Workers can install additional
+packages into the same venv with normal `pip install`. System utilities include
+zip/unzip, SQLite, a compiler toolchain, Git, ripgrep, curl, jq, and Chromium.
 
 ### Security posture
 
@@ -137,6 +160,7 @@ unrestricted. The container is the boundary:
 - Ambient's Pi credential directory is mounted read/write. Every worker can use
   every provider credential saved through Ambient, and can persist token refreshes.
 
-**Network is not restricted**, because workers have to reach model-provider APIs.
+**Network is not restricted**, because workers have to reach model-provider,
+Exa, and browser targets. Browser pages and search results are untrusted content.
 A worker can therefore fetch and send data. Treat worker output as untrusted, and
 do not hand a worker a task containing secrets.

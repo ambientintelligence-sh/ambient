@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AuthState } from '@/shared/auth';
+import type { BrowserState } from '@/shared/browser';
 import { REALTIME_MODEL_ID, REALTIME_VOICE } from '@/shared/config';
-import { isTerminal, type Worker } from '@/shared/worker';
+import { isActive, type Worker } from '@/shared/worker';
 import type { WorkspaceState } from '@/shared/workspace';
 import { useSession } from './use-session';
 import { AuthPanel } from './components/AuthPanel';
@@ -45,12 +46,14 @@ export function App() {
   const [setupOpen, setSetupOpen] = useState(false);
   const [authState, setAuthState] = useState<AuthState | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceState>({ path: null, name: null });
+  const [browser, setBrowser] = useState<BrowserState>({ mode: 'headless', available: false });
   const authInitialized = useRef(false);
 
   useEffect(() => {
     const bridge = window.ambient;
     if (!bridge) return;
     void bridge.getWorkspace().then(setWorkspace);
+    void bridge.getBrowserState().then(setBrowser);
     return bridge.onWorkspaceChanged(setWorkspace);
   }, []);
 
@@ -70,18 +73,18 @@ export function App() {
 
   const mode = session.speaking ? 'SPEAKING' : session.listening ? 'LISTENING' : connected ? 'IDLE' : 'OFFLINE';
   const modeTint: TintKey = session.speaking ? 'link' : session.listening ? 'live' : 'dim';
-  const inFlight = session.workers.filter((each) => !isTerminal(each.status)).length;
+  const inFlight = session.workers.filter((each) => isActive(each.status)).length;
   const delegationModel = authState?.selection
     ? `${authState.selection.provider}/${authState.selection.model}`
     : 'SELECT MODEL';
 
   return (
-    <div className="grid h-full place-items-center bg-void p-5 [-webkit-app-region:drag]">
+    <div className="app-scroll grid h-full place-items-start justify-items-center overflow-y-auto bg-void p-5">
       <div className="bezel w-full max-w-[1080px]">
         <div className="relative overflow-hidden rounded-[28px] bg-void px-9 pt-8 pb-8">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/[0.045] to-transparent" />
 
-          <header className="relative flex items-start gap-10">
+          <header className="relative flex items-start gap-10 [-webkit-app-region:drag]">
             <div className="flex w-[122px] shrink-0 flex-col items-start gap-3 pt-1">
               <div className="flex items-center gap-2">
                 <span className="text-[15px] leading-none text-ink">◇</span>
@@ -141,6 +144,16 @@ export function App() {
                   className={`label-xs mt-2 block max-w-[170px] truncate hover:text-ink ${workspace.path ? 'text-live' : 'text-warn'}`}
                 >
                   {workspace.name ?? 'NO WORKSPACE'}
+                </button>
+                <button
+                  title="Applies to newly dispatched workers"
+                  disabled={!browser.available}
+                  onClick={() => void window.ambient
+                    ?.setBrowserMode(browser.mode === 'headless' ? 'visible' : 'headless')
+                    .then(setBrowser)}
+                  className="label-xs mt-2 block max-w-[170px] truncate text-dim hover:text-ink disabled:opacity-30"
+                >
+                  BROWSER {browser.mode.toUpperCase()}
                 </button>
               </div>
               <Clock />

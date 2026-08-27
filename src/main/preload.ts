@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { AuthEvent, AuthMethod, AuthState, DelegationSelection } from '../shared/auth';
+import type { BrowserMode, BrowserState } from '../shared/browser';
 import type { Worker, WorkerEvent, WorkerSteerResult, WorkerStopResult } from '../shared/worker';
 import type { WorkspaceState } from '../shared/workspace';
 
@@ -16,6 +17,8 @@ contextBridge.exposeInMainWorld('ambient', {
   getWorkspace: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:state'),
   selectWorkspace: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:select'),
   openWorkspace: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:open'),
+  getBrowserState: (): Promise<BrowserState> => ipcRenderer.invoke('browser:state'),
+  setBrowserMode: (mode: BrowserMode): Promise<BrowserState> => ipcRenderer.invoke('browser:set-mode', mode),
   onWorkspaceChanged: (listener: (state: WorkspaceState) => void) => {
     const handler = (_: unknown, state: WorkspaceState) => listener(state);
     ipcRenderer.on('workspace:event', handler);

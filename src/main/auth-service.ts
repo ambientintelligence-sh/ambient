@@ -216,10 +216,13 @@ export async function createAuthService(options: {
         input.mandatory
           ? 'This is an early orientation update. You MUST return a useful update, never SKIP.'
           : 'This is a later update. Return SKIP unless something user-meaningful changed.',
-        'Explain concrete progress, prioritizing what has just completed over generic current activity.',
+        'This is operational progress, never an interim answer to the user’s question.',
+        'Describe the action or source being checked, not facts discovered in search snippets or page content.',
+        'For research, prices, ratings, availability, names, counts, and conclusions are provisional until the final report.',
+        'Say “I found the official listing and am verifying it,” not “I confirmed it costs $16.50.”',
         'For later updates, return SKIP for startup, waiting, repetition, or raw inspection commands.',
         'Otherwise return one natural first-person sentence of at most twelve words.',
-        'Use a completed verb when a tool result proves completion; never overclaim beyond the telemetry.',
+        'Never use “confirmed” for a factual claim; the final report is the only authoritative answer.',
         'Never say worker, agent, subagent, callsign, waiting, or still working.',
         `Task: ${input.task}`,
         `Current activity: ${input.activity}`,
@@ -238,11 +241,20 @@ export async function createAuthService(options: {
         .replace(/\s+/g, ' ')
         .trim()
         .replace(/^['“”]|['“”]$/g, '');
+      const researchTelemetry = /\b(exa_search|mcp|browser|website|web|price|rating|availability)\b/i.test(
+        `${input.task}\n${input.activity}\n${input.recentSteps}`,
+      );
+      const claimsResearchFact = researchTelemetry && (
+        /(?:[$€£]|\b(?:cad|usd)\b|\b\d+(?:\.\d+)?%)/i.test(text) ||
+        /\b(?:sold out|in stock|costs?|priced?|rated?|confirmed\s+(?:that\s+)?.+\s+is)\b/i.test(text)
+      );
       const invalid =
         !text ||
         /^skip[.!]?$/i.test(text) ||
         /\b(wait(?:ing)?|still working|worker|subagent|agent)\b/i.test(text) ||
+        claimsResearchFact ||
         (!input.mandatory && text.toLowerCase() === input.previousSummary?.toLowerCase());
+      if (claimsResearchFact) return input.mandatory ? 'I’m verifying the source details.' : null;
       if (invalid) return input.mandatory ? 'I’m progressing through the task.' : null;
       return text.slice(0, 140);
     },

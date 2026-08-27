@@ -1,12 +1,13 @@
 import { spawn } from 'node:child_process';
-import type { Writable } from 'node:stream';
 import { ensureWorkerImage, WORKER_IMAGE } from './docker';
 import { nextWorkerName } from './worker-names';
 import type { DelegationSelection } from '../shared/auth';
+import type { BrowserMode } from '../shared/browser';
 import { isTerminal, type Worker, type WorkerEvent, type WorkerStop } from '../shared/worker';
 
 const MAX_STOPS = 8;
 const PROGRESS_INTERVAL_MS = 5_000;
+const MAX_PROGRESS_SILENCE_MS = 30_000;
 
 /** One line of the worker's stdout protocol (see docker/worker/entry.mjs). */
 type WorkerMessage =
@@ -31,12 +32,13 @@ export function createWorkerFleet(options: {
     mandatory: boolean;
   }) => Promise<string | null>;
   getWorkspace: () => string | null;
+  getBrowserConfig: () => Promise<{ mode: BrowserMode; browserUrl?: string }>;
   agentDir: string;
 }) {
   const workers = new Map<string, Worker>();
   const containers = new Set<string>();
-  const inputs = new Map<string, Writable>();
   const containerByWorker = new Map<string, string>();
+  const readyWorkers = new Set<string>();
   const pendingSteers = new Map<string, string[]>();
 
   const patch = (name: string, change: (worker: Worker) => Worker, report = false) => {
@@ -50,12 +52,29 @@ export function createWorkerFleet(options: {
   const fail = (name: string, error: string) =>
     patch(name, (worker) => ({ ...worker, status: 'failed', error }), true);
 
+  function sendControl(name: string, command: object) {
+    const container = containerByWorker.get(name);
+    if (!container) return false;
+    const control = spawn(
+      'docker',
+      ['exec', '-i', container, 'sh', '-c', 'cat >> /tmp/ambient-control.jsonl'],
+      { stdio: ['pipe', 'ignore', 'ignore'] },
+    );
+    control.stdin.end(`${JSON.stringify(command)}\n`);
+    return true;
+  }
+
   function handle(name: string, message: WorkerMessage) {
     const current = workers.get(name);
     if (current && isTerminal(current.status)) return;
     switch (message.type) {
       case 'ready':
+        readyWorkers.add(name);
         patch(name, (worker) => ({ ...worker, status: 'running' }));
+        for (const instruction of pendingSteers.get(name) ?? []) {
+          sendControl(name, { type: 'steer', instruction });
+        }
+        pendingSteers.delete(name);
         return;
       case 'tool': {
         const stop: WorkerStop = {
@@ -83,7 +102,14 @@ export function createWorkerFleet(options: {
         }));
         return;
       case 'done':
-        patch(name, (worker) => ({ ...worker, status: 'done', summary: message.summary }), true);
+        // Progress is provisional telemetry. Once a checkpoint arrives, remove
+        // those lines so stale observations cannot contradict the final report.
+        patch(name, (worker) => ({
+          ...worker,
+          status: 'idle',
+          updates: [],
+          summary: message.summary,
+        }), true);
         return;
       case 'error':
         fail(name, message.message);
@@ -98,7 +124,9 @@ export function createWorkerFleet(options: {
       return;
     }
 
+    let browserConfig: { mode: BrowserMode; browserUrl?: string };
     try {
+      browserConfig = await options.getBrowserConfig();
       await ensureWorkerImage();
     } catch (error) {
       fail(name, error instanceof Error ? error.message : String(error));
@@ -125,50 +153,47 @@ export function createWorkerFleet(options: {
         '--cap-drop=ALL', '--security-opt=no-new-privileges',
         '--volume', `${workspace}:/work`,
         '--volume', `${options.agentDir}:/home/node/.pi/agent`,
-        '-e', 'OPENAI_API_KEY', '-e', 'PI_TASK', '-e', 'PI_PROVIDER', '-e', 'PI_MODEL',
+        '-e', 'OPENAI_API_KEY', '-e', 'EXA_API_KEY',
+        '-e', 'PI_TASK', '-e', 'PI_PROVIDER', '-e', 'PI_MODEL',
+        '-e', 'PI_BROWSER_MODE', '-e', 'PI_BROWSER_URL',
         WORKER_IMAGE,
       ],
       {
-        stdio: ['pipe', 'pipe', 'pipe'],
+        stdio: ['ignore', 'pipe', 'pipe'],
         env: {
           ...process.env,
           PI_TASK: task,
           PI_PROVIDER: selection.provider,
           PI_MODEL: selection.model,
+          PI_BROWSER_MODE: browserConfig.mode,
+          PI_BROWSER_URL: browserConfig.browserUrl ?? '',
         },
       },
     );
-
-    inputs.set(name, child.stdin);
-    for (const instruction of pendingSteers.get(name) ?? []) {
-      child.stdin.write(`${JSON.stringify({ type: 'steer', instruction })}\n`);
-    }
-    pendingSteers.delete(name);
 
     let buffer = '';
     let stderr = '';
     let lastProgressKey = '';
     let lastSpokenSummary: string | null = null;
-    let runningTicks = 0;
-    let summariesInFlight = 0;
-    let latestEmittedSequence = 0;
+    let lastSpokenAt = Date.now();
+    let orientationCount = 0;
+    let summarizing = false;
     const progressTimer = setInterval(() => {
       const worker = workers.get(name);
-      if (worker?.status !== 'running') return;
-      runningTicks += 1;
-      const mandatory = runningTicks <= 4; // 5s, 10s, 15s, and 20s
+      if (worker?.status !== 'running' || summarizing) return;
       const step = worker.stops.at(-1);
       const key = step
         ? `${worker.stops.length}:${step.tool}:${step.detail}:${step.status}:${step.result ?? ''}`
         : 'starting';
+      const orientation = orientationCount < 4;
+      const heartbeat = !orientation && Date.now() - lastSpokenAt >= MAX_PROGRESS_SILENCE_MS;
+      const activityChanged = Boolean(step) && key !== lastProgressKey;
+      if (!orientation && !heartbeat && !activityChanged) return;
 
-      // During the first twenty seconds, always provide orientation. Afterwards,
-      // summarize only changed activity and never overlap filtering requests.
-      if (!mandatory && (key === lastProgressKey || !step || summariesInFlight > 0)) return;
-      if (!mandatory) lastProgressKey = key;
-
-      const sequence = runningTicks;
-      summariesInFlight += 1;
+      // Serialize summary calls. The old concurrent cadence let slow responses
+      // finish together, producing a burst followed by silence.
+      summarizing = true;
+      if (!orientation) lastProgressKey = key;
       void options
         .summarizeProgress({
           task: worker.task,
@@ -180,13 +205,14 @@ export function createWorkerFleet(options: {
             .map((item) => `${item.tool} [${item.status}]: ${item.detail}${item.result ? ` => ${item.result}` : ''}`)
             .join('\n'),
           previousSummary: lastSpokenSummary,
-          mandatory,
+          mandatory: orientation || heartbeat,
         })
         .then((summary) => {
-          if (!summary || sequence <= latestEmittedSequence) return;
+          if (!summary) return;
           const current = workers.get(name);
           if (current?.status !== 'running') return;
-          latestEmittedSequence = sequence;
+          if (orientation) orientationCount += 1;
+          lastSpokenAt = Date.now();
           lastSpokenSummary = summary;
           const next = {
             ...current,
@@ -199,8 +225,8 @@ export function createWorkerFleet(options: {
           // Progress narration is best-effort and must never fail the worker.
         })
         .finally(() => {
-          summariesInFlight -= 1;
-          if (mandatory) lastProgressKey = key;
+          lastProgressKey = key;
+          summarizing = false;
         });
     }, PROGRESS_INTERVAL_MS);
 
@@ -227,7 +253,7 @@ export function createWorkerFleet(options: {
 
     child.on('error', (error) => {
       clearInterval(progressTimer);
-      inputs.delete(name);
+      readyWorkers.delete(name);
       containerByWorker.delete(name);
       pendingSteers.delete(name);
       containers.delete(container);
@@ -236,7 +262,7 @@ export function createWorkerFleet(options: {
 
     child.on('close', (code) => {
       clearInterval(progressTimer);
-      inputs.delete(name);
+      readyWorkers.delete(name);
       containerByWorker.delete(name);
       pendingSteers.delete(name);
       containers.delete(container);
@@ -258,7 +284,7 @@ export function createWorkerFleet(options: {
       }
 
       pendingSteers.delete(callsign);
-      inputs.get(callsign)?.write(`${JSON.stringify({ type: 'abort' })}\n`);
+      if (readyWorkers.has(callsign)) sendControl(callsign, { type: 'abort' });
       patch(callsign, (current) => ({ ...current, status: 'cancelled' }), true);
 
       const container = containerByWorker.get(callsign);
@@ -275,11 +301,10 @@ export function createWorkerFleet(options: {
       const callsign = name.trim().toUpperCase();
       const worker = workers.get(callsign);
       if (!worker) return { ok: false as const, error: `Unknown worker ${callsign || name}` };
-      if (worker.status !== 'queued' && worker.status !== 'running') {
-        return { ok: false as const, error: `${callsign} is already ${worker.status}` };
+      if (worker.status !== 'queued' && worker.status !== 'running' && worker.status !== 'idle') {
+        return { ok: false as const, error: `${callsign} is ${worker.status}` };
       }
-      const input = inputs.get(callsign);
-      if (input) input.write(`${JSON.stringify({ type: 'steer', instruction })}\n`);
+      if (readyWorkers.has(callsign)) sendControl(callsign, { type: 'steer', instruction });
       else pendingSteers.set(callsign, [...(pendingSteers.get(callsign) ?? []), instruction]);
       const stop: WorkerStop = {
         id: `steer-${Date.now()}`,
@@ -288,7 +313,12 @@ export function createWorkerFleet(options: {
         status: 'done',
         result: 'Instruction queued for the active session.',
       };
-      patch(callsign, (current) => ({ ...current, stops: [...current.stops, stop].slice(-MAX_STOPS) }));
+      patch(callsign, (current) => ({
+        ...current,
+        status: current.status === 'idle' ? 'running' : current.status,
+        summary: current.status === 'idle' ? null : current.summary,
+        stops: [...current.stops, stop].slice(-MAX_STOPS),
+      }));
       return { ok: true as const, worker: callsign, status: 'steering queued' as const };
     },
 

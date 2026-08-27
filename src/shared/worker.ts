@@ -1,4 +1,4 @@
-export type WorkerStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+export type WorkerStatus = 'queued' | 'running' | 'idle' | 'failed' | 'cancelled';
 
 export type WorkerStop = Readonly<{
   id: string;
@@ -39,5 +39,6 @@ export type WorkerStopResult =
   | Readonly<{ ok: true; worker: string; status: 'stopped' }>
   | Readonly<{ ok: false; error: string }>;
 
-export const isTerminal = (status: WorkerStatus) =>
-  status === 'done' || status === 'failed' || status === 'cancelled';
+export const isTerminal = (status: WorkerStatus) => status === 'failed' || status === 'cancelled';
+
+export const isActive = (status: WorkerStatus) => status === 'queued' || status === 'running';

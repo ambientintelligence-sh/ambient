@@ -36,7 +36,7 @@ export const REALTIME_TOOLS = {
   }),
   select_workspace: tool({
     description:
-      'Open the native folder picker so the user can choose the host folder shared read/write with all workers.',
+      'Open the native folder picker to change the shared workspace. Never call before normal dispatch: Ambient reuses the saved folder automatically. Use only when no workspace exists or the user explicitly asks to change it.',
     inputSchema: z.object({}),
   }),
   open_workspace: tool({
@@ -46,14 +46,14 @@ export const REALTIME_TOOLS = {
   }),
   stop_worker: tool({
     description:
-      'Immediately stop a queued or running worker. Use when the user asks to stop, cancel, or kill delegated work.',
+      'Immediately stop a queued, running, or online worker. Use when the user asks to stop, cancel, or kill delegated work.',
     inputSchema: z.object({
       worker: z.string().describe('The internal worker callsign, for example KESTREL.'),
     }),
   }),
   steer_worker: tool({
     description: [
-      'Send a new instruction to a running worker so it changes direction at the next safe point.',
+      'Send a new instruction to a running or online worker, preserving its Pi session context.',
       'Use this when the user corrects, redirects, or adds requirements to previously delegated work.',
       'Steering is cooperative: a currently running shell command may finish before the instruction is applied.',
     ].join(' '),

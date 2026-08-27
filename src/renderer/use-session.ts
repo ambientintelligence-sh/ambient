@@ -42,8 +42,8 @@ const announcementText = ({ kind, worker, summary }: Announcement) => {
     return `Prepared progress update: ${summary ?? 'SKIP'}. This is not a final result.`;
   }
   if (worker.status === 'cancelled') return 'Background work was stopped by the user.';
-  return worker.status === 'done'
-    ? `Background work has finished. Report: ${worker.summary ?? '(no summary)'}`
+  return worker.status === 'idle'
+    ? `Background work reached a checkpoint and remains online. Report: ${worker.summary ?? '(no summary)'}`
     : `Background work failed. Reason: ${worker.error ?? 'unknown'}`;
 };
 
@@ -76,8 +76,13 @@ export function useSession(): SessionView {
   /** Announcements that arrived while the model was mid-response. */
   const queuedAnnouncements = useRef<Announcement[]>([]);
   const responseActive = useRef(false);
+  const lastProgressDeliveredAt = useRef(0);
+  const announcementTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deliverAnnouncementRef = useRef<(announcement: Announcement) => void>(() => {});
+  const pendingResponseRetry = useRef(false);
+  const lastResponseInstructions = useRef('');
+  const retryResponseRef = useRef<() => void>(() => {});
   /** Lets the mount-once subscriptions reach current state without re-binding. */
-  const announceRef = useRef<(announcement: Announcement) => void>(() => {});
   const connectedRef = useRef(false);
   const connectingRef = useRef(false);
 
@@ -87,6 +92,13 @@ export function useSession(): SessionView {
     sessionConfig: REALTIME_SESSION_CONFIG,
     sampleRate: REALTIME_SAMPLE_RATE,
     onError: (err) => {
+      if (err.message.includes('active response in progress')) {
+        // A VAD/user response won the race with a background announcement.
+        // Keep the conversation item and retry response-create when that turn ends.
+        pendingResponseRetry.current = true;
+        responseActive.current = true;
+        return;
+      }
       releaseMedia();
       setError(err.message);
     },
@@ -163,7 +175,7 @@ export function useSession(): SessionView {
             task: worker.task,
             status: worker.status,
             currentActivity: worker.stops.at(-1) ?? null,
-            summary: worker.status === 'done' ? worker.summary : null,
+            summary: worker.status === 'idle' ? worker.summary : null,
             error: worker.status === 'failed' ? worker.error : null,
           })),
         };
@@ -185,9 +197,14 @@ export function useSession(): SessionView {
           break;
         case 'response-done': {
           responseActive.current = false;
+          if (pendingResponseRetry.current) {
+            pendingResponseRetry.current = false;
+            retryResponseRef.current();
+            break;
+          }
           // Drain anything that landed while the model was talking.
           const queued = queuedAnnouncements.current.shift();
-          if (queued && connectedRef.current) announceRef.current(queued);
+          if (queued && connectedRef.current) deliverAnnouncementRef.current(queued);
           break;
         }
       }
@@ -196,6 +213,15 @@ export function useSession(): SessionView {
 
   const sendEvent = realtime.sendEvent;
   const connected = realtime.status === 'connected';
+
+  const requestAnnouncementResponse = useCallback(
+    (instructions: string) => {
+      lastResponseInstructions.current = instructions;
+      sendEvent({ type: 'response-create', options: { instructions } });
+      responseActive.current = true;
+    },
+    [sendEvent],
+  );
 
   /**
    * A worker finishes long after its tool call returned, so the report is pushed
@@ -207,24 +233,60 @@ export function useSession(): SessionView {
         type: 'conversation-item-create',
         item: { type: 'text-message', role: 'user', text: announcementText(announcement) },
       });
-      sendEvent({
-        type: 'response-create',
-        options: {
-          instructions:
-            announcement.kind === 'progress'
-              ? `Say exactly this prepared update, with no additions: ${announcement.summary ?? ''}`
-              : 'Relay the final result in one concise first-person sentence. Never mention workers or callsigns.',
-        },
-      });
-      responseActive.current = true;
+      requestAnnouncementResponse(
+        announcement.kind === 'progress'
+          ? `Say exactly this prepared update, with no additions: ${announcement.summary ?? ''}`
+          : 'This checkpoint is authoritative and supersedes provisional progress. Relay it concisely; correct any earlier conflict. Never mention workers or callsigns.',
+      );
     },
-    [sendEvent],
+    [sendEvent, requestAnnouncementResponse],
   );
 
+  const enqueueAnnouncement = useCallback((announcement: Announcement) => {
+    queuedAnnouncements.current = queuedAnnouncements.current.filter(
+      (queued) =>
+        queued.worker.name !== announcement.worker.name ||
+        (queued.kind === 'report' && announcement.kind === 'progress'),
+    );
+    if (announcement.kind === 'report') queuedAnnouncements.current.unshift(announcement);
+    else if (!queuedAnnouncements.current.some((queued) => queued.worker.name === announcement.worker.name)) {
+      queuedAnnouncements.current.push(announcement);
+    }
+  }, []);
+
+  const deliverAnnouncement = useCallback((announcement: Announcement) => {
+    if (responseActive.current) {
+      enqueueAnnouncement(announcement);
+      return;
+    }
+    if (announcement.kind === 'progress') {
+      const delay = Math.max(0, 5_000 - (Date.now() - lastProgressDeliveredAt.current));
+      if (delay > 0) {
+        enqueueAnnouncement(announcement);
+        if (!announcementTimer.current) {
+          announcementTimer.current = setTimeout(() => {
+            announcementTimer.current = null;
+            if (responseActive.current) return;
+            const queued = queuedAnnouncements.current.shift();
+            if (queued && connectedRef.current) deliverAnnouncementRef.current(queued);
+          }, delay);
+        }
+        return;
+      }
+      lastProgressDeliveredAt.current = Date.now();
+    }
+    announce(announcement);
+  }, [announce, enqueueAnnouncement]);
+
   useEffect(() => {
-    announceRef.current = announce;
+    deliverAnnouncementRef.current = deliverAnnouncement;
     connectedRef.current = connected;
+    retryResponseRef.current = () => requestAnnouncementResponse(lastResponseInstructions.current);
   });
+
+  useEffect(() => () => {
+    if (announcementTimer.current) clearTimeout(announcementTimer.current);
+  }, []);
 
   // Bound once: worker events arrive for the life of the window.
   useEffect(() => {
@@ -236,8 +298,8 @@ export function useSession(): SessionView {
       setLastReport(
         event.kind === 'progress'
           ? `${event.worker.name} — ${event.summary}`
-          : event.worker.status === 'done'
-            ? `${event.worker.name} — ${event.worker.summary ?? 'done'}`
+          : event.worker.status === 'idle'
+            ? `${event.worker.name} — ONLINE: ${event.worker.summary ?? 'checkpoint reached'}`
             : event.worker.status === 'cancelled'
               ? `${event.worker.name} — STOPPED`
               : `${event.worker.name} — FAILED: ${event.worker.error ?? 'unknown'}`,
@@ -249,16 +311,7 @@ export function useSession(): SessionView {
         worker: event.worker,
         ...(event.kind === 'progress' ? { summary: event.summary } : {}),
       };
-      if (responseActive.current) {
-        // Keep at most one pending heartbeat per worker. A final report replaces
-        // that worker's stale progress so speech can never build a long backlog.
-        queuedAnnouncements.current = queuedAnnouncements.current.filter(
-          (queued) => queued.worker.name !== event.worker.name || (queued.kind === 'report' && event.kind === 'progress'),
-        );
-        if (event.kind === 'report' || !queuedAnnouncements.current.some((queued) => queued.worker.name === event.worker.name)) {
-          queuedAnnouncements.current.push(announcement);
-        }
-      } else announceRef.current(announcement);
+      deliverAnnouncementRef.current(announcement);
     });
   }, []);
 
@@ -317,6 +370,10 @@ export function useSession(): SessionView {
 
   const disconnect = useCallback(() => {
     connectingRef.current = false;
+    pendingResponseRetry.current = false;
+    queuedAnnouncements.current = [];
+    if (announcementTimer.current) clearTimeout(announcementTimer.current);
+    announcementTimer.current = null;
     setStarting(false);
     realtime.stopAudioCapture();
     realtime.disconnect();

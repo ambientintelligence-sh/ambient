@@ -7,7 +7,7 @@ const PALETTE = ['#ff8c1a', '#46e05a', '#35c8f0', '#a98bff'] as const;
 const STATUS: Readonly<Record<WorkerStatus, { label: string; tone: 'green' | 'amber' | 'red' | 'dim' }>> = {
   queued: { label: 'DISPATCHED', tone: 'amber' },
   running: { label: 'IN TRANSIT', tone: 'green' },
-  done: { label: 'ARRIVED', tone: 'dim' },
+  idle: { label: 'ONLINE', tone: 'green' },
   failed: { label: 'FAILED', tone: 'red' },
   cancelled: { label: 'STOPPED', tone: 'dim' },
 };

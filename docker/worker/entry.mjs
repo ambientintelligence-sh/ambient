@@ -3,7 +3,14 @@
  * reports progress as LF-delimited JSON on stdout — the host never sees pi's
  * internals, only this stream.
  */
-import { createAgentSession, ModelRuntime, SessionManager } from '@earendil-works/pi-coding-agent';
+import { readFile, writeFile } from 'node:fs/promises';
+import {
+  createAgentSession,
+  DefaultResourceLoader,
+  ModelRuntime,
+  SessionManager,
+} from '@earendil-works/pi-coding-agent';
+import { createExaTools } from './exa-tool.mjs';
 
 const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
 
@@ -50,53 +57,130 @@ try {
   const model = modelRuntime.getModel(providerId, modelId);
   if (!model) throw new Error(`delegation model not found: ${providerId}/${modelId}`);
 
+  const exaTools = createExaTools();
+  const resourceLoader = new DefaultResourceLoader({
+    cwd: '/work',
+    agentDir: '/home/node/.pi/agent',
+    additionalExtensionPaths: ['/app/mcp-extension.ts'],
+  });
+  await resourceLoader.reload();
   const { session } = await createAgentSession({
     cwd: '/work',
     model,
-    tools: ['read', 'write', 'edit', 'bash', 'ls', 'grep', 'find'],
+    tools: ['read', 'write', 'edit', 'bash', 'ls', 'grep', 'find', 'mcp', ...exaTools.map((tool) => tool.name)],
+    customTools: exaTools,
+    resourceLoader,
     sessionManager: SessionManager.inMemory(),
     modelRuntime,
   });
+  await session.bindExtensions({ mode: 'print' });
 
   let summary = '';
   let failure = '';
-  let promptStarted = false;
+  let activeRun = null;
+  let initialStarted = false;
   const pendingInstructions = [];
 
+  const runPrompt = (text) => {
+    summary = '';
+    failure = '';
+    const promise = session.prompt(text);
+    activeRun = promise;
+    void (async () => {
+      try {
+        await promise;
+      } catch (error) {
+        failure = error instanceof Error ? error.message : String(error);
+      } finally {
+        activeRun = null;
+      }
+
+      if (failure) {
+        emit({ type: 'error', message: failure });
+        session.dispose();
+        process.exit(1);
+      }
+
+      // A steer can land after Pi has decided to settle but before prompt()
+      // resolves. Recover that stranded queue as a new turn in the same session.
+      const queued = session.clearQueue();
+      const continuation = [...queued.steering, ...queued.followUp];
+      if (continuation.length > 0) {
+        runPrompt(continuation.join('\n\n'));
+        return;
+      }
+      emit({ type: 'done', summary: summary || 'Finished with no closing summary.' });
+    })();
+  };
+
   const applySteer = (instruction) => {
-    if (!promptStarted) {
+    if (!initialStarted) {
       pendingInstructions.push(instruction);
       return;
     }
-    void session.steer(instruction).catch((error) => {
-      emit({
-        type: 'tool',
-        tool: 'steer_failed',
-        detail: error instanceof Error ? error.message : String(error),
-      });
+    if (!activeRun && !session.isStreaming) {
+      runPrompt(instruction);
+      return;
+    }
+    void session.steer(instruction).then(() => {
+      // steer() can successfully enqueue just after the agent loop settles.
+      // If so, pull that orphaned message back out and explicitly resume.
+      if (!activeRun && session.isIdle && session.pendingMessageCount > 0) {
+        const queued = session.clearQueue();
+        const continuation = [...queued.steering, ...queued.followUp];
+        if (continuation.length > 0) runPrompt(continuation.join('\n\n'));
+      }
+    }).catch((error) => {
+      // The active run can settle between the state check and steer(). Resume
+      // the same Pi session with a fresh prompt instead of dropping the update.
+      if (!activeRun && !session.isStreaming) runPrompt(instruction);
+      else {
+        emit({
+          type: 'tool',
+          tool: 'steer_failed',
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
   };
 
-  let inputBuffer = '';
-  process.stdin.setEncoding('utf8');
-  process.stdin.on('data', (chunk) => {
-    inputBuffer += chunk;
-    const lines = inputBuffer.split('\n');
-    inputBuffer = lines.pop() ?? '';
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const command = JSON.parse(line);
-        if (command?.type === 'steer' && typeof command.instruction === 'string' && command.instruction.trim()) {
-          applySteer(command.instruction.trim());
-        } else if (command?.type === 'abort') {
-          void session.abort().finally(() => process.exit(0));
+  const controlPath = '/tmp/ambient-control.jsonl';
+  await writeFile(controlPath, '');
+  let controlOffset = 0;
+  let controlCarry = '';
+  let readingControl = false;
+  const controlTimer = setInterval(() => {
+    if (readingControl) return;
+    readingControl = true;
+    void readFile(controlPath)
+      .then((content) => {
+        if (content.length <= controlOffset) return;
+        controlCarry += content.subarray(controlOffset).toString('utf8');
+        controlOffset = content.length;
+        const lines = controlCarry.split('\n');
+        controlCarry = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const command = JSON.parse(line);
+            if (command?.type === 'steer' && typeof command.instruction === 'string' && command.instruction.trim()) {
+              applySteer(command.instruction.trim());
+            } else if (command?.type === 'abort') {
+              clearInterval(controlTimer);
+              void session.abort().finally(() => {
+                session.dispose();
+                process.exit(0);
+              });
+            }
+          } catch {
+            emit({ type: 'tool', tool: 'steer_failed', detail: 'invalid command from host' });
+          }
         }
-      } catch {
-        emit({ type: 'tool', tool: 'steer_failed', detail: 'invalid command from host' });
-      }
-    }
-  });
+      })
+      .finally(() => {
+        readingControl = false;
+      });
+  }, 200);
 
   session.subscribe((event) => {
     if (event.type === 'tool_execution_start') {
@@ -132,18 +216,12 @@ try {
   });
 
   emit({ type: 'ready' });
-  const promptPromise = session.prompt(task);
-  promptStarted = true;
+  runPrompt(task);
+  initialStarted = true;
   for (const instruction of pendingInstructions.splice(0)) applySteer(instruction);
-  await promptPromise;
 
-  if (failure) {
-    emit({ type: 'error', message: failure });
-    process.exit(1);
-  }
-
-  emit({ type: 'done', summary: summary || 'Finished with no closing summary.' });
-  process.exit(0);
+  // Keep the Pi session and container online. Later steering messages
+  // resume this same conversation, preserving context and browser state.
 } catch (error) {
   emit({ type: 'error', message: error instanceof Error ? error.message : String(error) });
   process.exit(1);

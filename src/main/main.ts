@@ -2,11 +2,13 @@ import { app, BrowserWindow, ipcMain, shell, systemPreferences } from 'electron'
 import path from 'node:path';
 import { config as loadEnv } from 'dotenv';
 import { createAuthService, type AuthService } from './auth-service';
+import { createBrowserService } from './browser';
 import { ensureWorkerImage } from './docker';
 import { startTokenServer } from './token-server';
 import { createWorkerFleet, type WorkerFleet } from './workers';
 import { createWorkspaceService, type WorkspaceService } from './workspace';
 import type { AuthEvent, AuthMethod, DelegationSelection } from '../shared/auth';
+import type { BrowserMode } from '../shared/browser';
 import { WORKER_MODEL_ID } from '../shared/config';
 
 loadEnv({ path: path.join(app.getAppPath(), '../../.env'), quiet: true });
@@ -29,6 +31,7 @@ app.on('second-instance', () => {
 let fleet: WorkerFleet | null = null;
 let auth: AuthService | null = null;
 let workspace: WorkspaceService | null = null;
+let browser: Awaited<ReturnType<typeof createBrowserService>> | null = null;
 
 const emitAuth = (event: AuthEvent) => {
   for (const window of BrowserWindow.getAllWindows()) window.webContents.send('auth:event', event);
@@ -49,11 +52,12 @@ async function createWindow(setupUrl: string) {
     },
   });
 
-  if (!auth || !workspace) throw new Error('application services are not ready');
+  if (!auth || !workspace || !browser) throw new Error('application services are not ready');
   fleet ??= createWorkerFleet({
     getSelection: auth.currentSelection,
     summarizeProgress: auth.summarizeProgress,
     getWorkspace: workspace.getPath,
+    getBrowserConfig: browser.workerConfig,
     agentDir: auth.agentDir,
     emit: (event) => {
       if (!window.isDestroyed()) window.webContents.send('worker:event', event);
@@ -81,6 +85,7 @@ app.whenReady().then(async () => {
     },
   });
   workspace = await createWorkspaceService(app.getPath('userData'));
+  browser = await createBrowserService(app.getPath('userData'));
 
   ipcMain.handle('worker:dispatch', (_event, task: string) => fleet?.dispatch(task) ?? null);
   ipcMain.handle('worker:steer', (_event, name: string, instruction: string) =>
@@ -99,6 +104,8 @@ app.whenReady().then(async () => {
     return state;
   });
   ipcMain.handle('workspace:open', () => workspace?.open());
+  ipcMain.handle('browser:state', () => browser?.state());
+  ipcMain.handle('browser:set-mode', (_event, mode: BrowserMode) => browser?.setMode(mode));
   ipcMain.handle('auth:state', () => auth?.state());
   ipcMain.handle('auth:login', (_event, providerId: string, method: AuthMethod) => auth?.login(providerId, method));
   ipcMain.handle('auth:answer', (_event, promptId: string, value: string) => auth?.answer(promptId, value));
@@ -126,7 +133,10 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('before-quit', () => fleet?.shutdown());
+app.on('before-quit', () => {
+  fleet?.shutdown();
+  browser?.shutdown();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
