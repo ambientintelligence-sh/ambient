@@ -202,9 +202,11 @@ export async function createAuthService(options: {
     },
 
     async summarizeProgress(input: {
-      task: string;
-      activity: string;
-      recentSteps: string;
+      activities: readonly {
+        task: string;
+        activity: string;
+        recentSteps: string;
+      }[];
       previousSummary: string | null;
       mandatory: boolean;
     }): Promise<string | null> {
@@ -212,26 +214,30 @@ export async function createAuthService(options: {
       const model = runtime.getModel(selected.provider, selected.model);
       if (!model) return null;
       const promptText = [
-        'You are a progress filter for a Jarvis-style voice assistant.',
+        'You are a fleet-level progress editor for a Jarvis-style voice assistant.',
         input.mandatory
-          ? 'This is an early orientation update. You MUST return a useful update, never SKIP.'
-          : 'This is a later update. Return SKIP unless something user-meaningful changed.',
+          ? 'Return one useful combined orientation update, never SKIP.'
+          : 'Return SKIP unless the combined state has changed in a user-meaningful way.',
+        `There are ${input.activities.length} active delegated tasks. Summarize them together as one digest.`,
+        'Cover every active task when practical, combining similar activity instead of issuing separate notifications.',
+        'Use at most two natural sentences and forty words total.',
         'This is operational progress, never an interim answer to the user’s question.',
         'Describe the action or source being checked, not facts discovered in search snippets or page content.',
         'For research, prices, ratings, availability, names, counts, and conclusions are provisional until the final report.',
         'Say “I found the official listing and am verifying it,” not “I confirmed it costs $16.50.”',
         'For later updates, return SKIP for startup, waiting, repetition, or raw inspection commands.',
-        'Otherwise return one natural first-person sentence of at most twenty-four words.',
-        'When telemetry supports it, include both completed progress and current activity:',
-        '“I found the official product page; now I’m validating its live purchase controls.”',
+        'Use compact parallel phrasing, for example: “I’m checking current pricing while comparing the implementation options and running the test suite.”',
+        'When telemetry supports it, include completed progress and current activity without turning them into separate alerts.',
         'If blocked, state the blocker and the workaround being attempted.',
         'Be specific about files, tests, pages, or operations, but do not expose hidden reasoning.',
         'Never use “confirmed” for a factual claim; the final report is the only authoritative answer.',
         'Never say worker, agent, subagent, callsign, waiting, or still working.',
-        `Task: ${input.task}`,
-        `Current activity: ${input.activity}`,
-        `Recent tool steps: ${input.recentSteps || '(none)'}`,
-        `Previous spoken update: ${input.previousSummary ?? '(none)'}`,
+        ...input.activities.flatMap((item, index) => [
+          `Active task ${index + 1}: ${item.task}`,
+          `Activity ${index + 1}: ${item.activity}`,
+          `Recent steps ${index + 1}: ${item.recentSteps || '(none)'}`,
+        ]),
+        `Previous fleet digest: ${input.previousSummary ?? '(none)'}`,
       ].join('\n');
       const response = await runtime.completeSimple(
         model,
@@ -246,7 +252,7 @@ export async function createAuthService(options: {
         .trim()
         .replace(/^['“”]|['“”]$/g, '');
       const researchTelemetry = /\b(exa_search|mcp|browser|website|web|price|rating|availability)\b/i.test(
-        `${input.task}\n${input.activity}\n${input.recentSteps}`,
+        input.activities.map((item) => `${item.task}\n${item.activity}\n${item.recentSteps}`).join('\n'),
       );
       const claimsResearchFact = researchTelemetry && (
         /(?:[$€£]|\b(?:cad|usd)\b|\b\d+(?:\.\d+)?%)/i.test(text) ||

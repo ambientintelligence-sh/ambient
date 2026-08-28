@@ -25,15 +25,16 @@ only authenticates delegated workers.
 
 ```
 Electron main ──┐
-                ├─ loopback HTTP server  ──► openai.experimental_realtime.getToken()
+                ├─ loopback HTTP server  ──► openai.realtime.clientSecrets.create()
                 │  (127.0.0.1, random port, /api/realtime/setup)
                 │
 renderer ───────┘
-  experimental_useRealtime({ api: { token: <that url> } })
+  RealtimeAgent + RealtimeSession + OpenAIRealtimeWebRTC
       │
-      ├─ POST setup  → { token, url, tools }
-      ├─ WebSocket   → wss://api.openai.com/v1/realtime
-      └─ mic         → getUserMedia → realtime.startAudioCapture(stream)
+      ├─ POST setup  → short-lived `ek_...` client secret
+      ├─ WebRTC      → OpenAI Realtime API
+      ├─ media track → native full-duplex microphone and playback
+      └─ data channel → tools, events, transcripts, and conversation state
 ```
 
 `OPENAI_API_KEY` stays in the main process. The renderer only ever sees a
@@ -41,18 +42,16 @@ short-lived token, minted per connect.
 
 ### Audio
 
-Nothing in this app touches audio samples. `startAudioCapture(stream)` opens an
-`AudioContext` at the configured rate, takes channel 0, resamples if the context
-did not honour the rate, converts float32 to little-endian PCM16, base64-encodes
-it and appends it to the input buffer. Playback runs the same chain in reverse.
-All we do is hand it a mono `MediaStream`.
+The official OpenAI Agents SDK owns audio transport. The renderer passes its mono
+`MediaStream` to `OpenAIRealtimeWebRTC`; WebRTC carries microphone and remote
+audio as native media tracks. Ambient creates a separate analyser only for the
+20 Hz meter—it does not encode, queue, resample, or schedule model audio.
 
-The one thing worth pinning: the SDK hard-codes its capture rate (24 kHz by
-default) but only sends a `format` to OpenAI if you set `inputAudioFormat`. Leave
-it unset and you are relying on the server default happening to match the
-client's. `REALTIME_SESSION_CONFIG` sets both formats explicitly from
-`REALTIME_SAMPLE_RATE`, and the same object is used to mint the token and to send
-the session update, so the two cannot drift.
+Semantic VAD is configured with `createResponse: true` and
+`interruptResponse: true`. The server owns the output buffer and automatically
+handles barge-in and truncation. Output-audio transcript events populate the
+center display. Input transcription remains disabled, avoiding a separate
+Whisper quota requirement.
 
 | Path | Role |
 | --- | --- |
@@ -62,7 +61,6 @@ the session update, so the two cannot drift.
 | `src/renderer/use-session.ts` | Realtime session, mic analysis, tool calls, worker reports |
 | `src/main/workers.ts` | Worker registry and container lifecycle |
 | `src/main/docker.ts` | Image build and Docker availability |
-| `src/shared/tools.ts` | Tools exposed to the realtime session |
 | `docker/worker/` | Worker image: pi + the JSONL entry script |
 | `src/renderer/App.tsx` | The cluster |
 
@@ -86,30 +84,25 @@ that it is thinking.
 model calls spawn_worker(task)
   → renderer onToolCall → IPC → main dispatches, returns { worker: "KESTREL", status: "dispatched" }
   → container starts behind it, streaming JSONL progress to the board
-  → on checkpoint, the report is pushed into the conversation as a new item
-    plus a response-create, and the agent says it out loud
+  → on checkpoint, the report enters the realtime session as a new message;
+    the SDK's response sequencer lets the agent say it out loud
   → the Pi session and container remain ONLINE for steering or follow-up work
 ```
 
 That last step is the only way to speak after a tool call has already returned:
 the result is long gone, so the report enters as a fresh conversation item.
-While a worker is running, the host samples its latest tool state every five
-seconds. The first four orientation summaries are serialized so slow model calls
-cannot finish in a burst. After that, it speaks on meaningful activity changes,
-with a maximum silence heartbeat at 30 seconds. The renderer also enforces a
-global five-second gap between progress announcements across all workers. A separately
-selectable summary model receives the task, recent tools, current activity, and
-previous spoken update. It returns
-`SKIP` for startup, waiting, repetition, or administrative noise; otherwise it
-produces `SKIP` or one concrete first-person sentence of up to 24 words. When the
-telemetry supports it, that sentence includes both completed progress and current
-activity; blockers include the workaround being attempted. Tool completion
-results are included, so updates describe verified accomplishments rather than
-raw commands. The
-realtime orchestrator speaks that prepared sentence verbatim. Expanded worker
-rows retain the latest natural-language updates plus raw tool details. Updates that arrive
-mid-response are deduplicated, and a final report replaces stale progress, so
-speech never interrupts itself or builds an unbounded backlog.
+Every five seconds, the host takes one snapshot of the entire active fleet—not
+one snapshot per worker. The separately selectable summary model receives every
+active task, its recent tools and current activity, plus the previous fleet
+digest. It combines them into at most two sentences and 40 words, or returns
+`SKIP` when nothing user-meaningful changed. One initial orientation is required;
+a 30-second maximum-silence heartbeat keeps long operations observable.
+
+The renderer therefore receives at most one provisional fleet digest per cycle,
+regardless of whether one worker or ten are active. Newer queued digests replace
+older ones, and the global five-second speech gap remains as a final guard.
+Authoritative checkpoints and failures still arrive as reports. Progress never
+announces provisional research facts, and reports supersede stale telemetry.
 
 `steer_worker` sends a JSONL command over the selected container's stdin. During
 an active run it calls Pi's `session.steer()`; while ONLINE and idle it calls

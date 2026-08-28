@@ -25,9 +25,11 @@ export function createWorkerFleet(options: {
   emit: (event: WorkerEvent) => void;
   getSelection: () => DelegationSelection;
   summarizeProgress: (input: {
-    task: string;
-    activity: string;
-    recentSteps: string;
+    activities: readonly {
+      task: string;
+      activity: string;
+      recentSteps: string;
+    }[];
     previousSummary: string | null;
     mandatory: boolean;
   }) => Promise<string | null>;
@@ -40,6 +42,63 @@ export function createWorkerFleet(options: {
   const containerByWorker = new Map<string, string>();
   const readyWorkers = new Set<string>();
   const pendingSteers = new Map<string, string[]>();
+  let lastFleetKey = '';
+  let lastFleetSummary: string | null = null;
+  let lastFleetSpokenAt = Date.now();
+  let fleetOriented = false;
+  let fleetSummarizing = false;
+
+  const progressTimer = setInterval(() => {
+    const active = [...workers.values()].filter((worker) => worker.status === 'running');
+    if (active.length === 0) {
+      lastFleetKey = '';
+      lastFleetSummary = null;
+      fleetOriented = false;
+      return;
+    }
+    if (fleetSummarizing) return;
+
+    const activities = active.map((worker) => {
+      const step = worker.stops.at(-1);
+      return {
+        task: worker.task,
+        activity: step
+          ? `${step.tool}${step.detail ? ` — ${step.detail}` : ''}`
+          : 'Analyzing the task and deciding the first action.',
+        recentSteps: worker.stops
+          .slice(-3)
+          .map((item) => `${item.tool} [${item.status}]: ${item.detail}${item.result ? ` => ${item.result}` : ''}`)
+          .join('\n'),
+      };
+    });
+    const key = active.map((worker) => {
+      const step = worker.stops.at(-1);
+      return `${worker.name}:${worker.stops.length}:${step?.tool ?? 'starting'}:${step?.detail ?? ''}:${step?.status ?? ''}`;
+    }).join('|');
+    const heartbeat = Date.now() - lastFleetSpokenAt >= MAX_PROGRESS_SILENCE_MS;
+    const changed = key !== lastFleetKey;
+    const mandatory = !fleetOriented || heartbeat;
+    if (!mandatory && !changed) return;
+
+    fleetSummarizing = true;
+    lastFleetKey = key;
+    void options.summarizeProgress({ activities, previousSummary: lastFleetSummary, mandatory })
+      .then((summary) => {
+        if (!summary) return;
+        const current = [...workers.values()].filter((worker) => worker.status === 'running');
+        if (current.length === 0) return;
+        fleetOriented = true;
+        lastFleetSpokenAt = Date.now();
+        lastFleetSummary = summary;
+        options.emit({ kind: 'fleet-progress', workers: current, summary });
+      })
+      .catch(() => {
+        // Progress narration is best-effort and must never fail workers.
+      })
+      .finally(() => {
+        fleetSummarizing = false;
+      });
+  }, PROGRESS_INTERVAL_MS);
 
   const patch = (name: string, change: (worker: Worker) => Worker, report = false) => {
     const current = workers.get(name);
@@ -173,62 +232,6 @@ export function createWorkerFleet(options: {
 
     let buffer = '';
     let stderr = '';
-    let lastProgressKey = '';
-    let lastSpokenSummary: string | null = null;
-    let lastSpokenAt = Date.now();
-    let orientationCount = 0;
-    let summarizing = false;
-    const progressTimer = setInterval(() => {
-      const worker = workers.get(name);
-      if (worker?.status !== 'running' || summarizing) return;
-      const step = worker.stops.at(-1);
-      const key = step
-        ? `${worker.stops.length}:${step.tool}:${step.detail}:${step.status}:${step.result ?? ''}`
-        : 'starting';
-      const orientation = orientationCount < 4;
-      const heartbeat = !orientation && Date.now() - lastSpokenAt >= MAX_PROGRESS_SILENCE_MS;
-      const activityChanged = Boolean(step) && key !== lastProgressKey;
-      if (!orientation && !heartbeat && !activityChanged) return;
-
-      // Serialize summary calls. The old concurrent cadence let slow responses
-      // finish together, producing a burst followed by silence.
-      summarizing = true;
-      if (!orientation) lastProgressKey = key;
-      void options
-        .summarizeProgress({
-          task: worker.task,
-          activity: step
-            ? `${step.tool}${step.detail ? ` — ${step.detail}` : ''}`
-            : 'Analyzing the task and deciding the first action.',
-          recentSteps: worker.stops
-            .slice(-3)
-            .map((item) => `${item.tool} [${item.status}]: ${item.detail}${item.result ? ` => ${item.result}` : ''}`)
-            .join('\n'),
-          previousSummary: lastSpokenSummary,
-          mandatory: orientation || heartbeat,
-        })
-        .then((summary) => {
-          if (!summary) return;
-          const current = workers.get(name);
-          if (current?.status !== 'running') return;
-          if (orientation) orientationCount += 1;
-          lastSpokenAt = Date.now();
-          lastSpokenSummary = summary;
-          const next = {
-            ...current,
-            updates: [...current.updates, { at: clock(), text: summary }].slice(-12),
-          };
-          workers.set(name, next);
-          options.emit({ kind: 'progress', worker: next, summary });
-        })
-        .catch(() => {
-          // Progress narration is best-effort and must never fail the worker.
-        })
-        .finally(() => {
-          lastProgressKey = key;
-          summarizing = false;
-        });
-    }, PROGRESS_INTERVAL_MS);
 
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => {
@@ -252,7 +255,6 @@ export function createWorkerFleet(options: {
     });
 
     child.on('error', (error) => {
-      clearInterval(progressTimer);
       readyWorkers.delete(name);
       containerByWorker.delete(name);
       pendingSteers.delete(name);
@@ -261,7 +263,6 @@ export function createWorkerFleet(options: {
     });
 
     child.on('close', (code) => {
-      clearInterval(progressTimer);
       readyWorkers.delete(name);
       containerByWorker.delete(name);
       pendingSteers.delete(name);
@@ -343,6 +344,7 @@ export function createWorkerFleet(options: {
 
     /** Containers are --rm, but a hard quit would otherwise leave them running. */
     shutdown() {
+      clearInterval(progressTimer);
       for (const container of containers) {
         spawn('docker', ['kill', container], { stdio: 'ignore' }).unref();
       }

@@ -23,12 +23,12 @@ export type Worker = Readonly<{
 }>;
 
 /**
- * `progress` is a five-second heartbeat suitable for a short spoken summary.
- * `report` is terminal — it carries the worker's actual result.
+ * Progress is one fleet-wide digest, never one notification per worker.
+ * `report` is authoritative — it carries a worker's checkpoint or failure.
  */
 export type WorkerEvent =
   | { kind: 'update'; worker: Worker }
-  | { kind: 'progress'; worker: Worker; summary: string }
+  | { kind: 'fleet-progress'; workers: readonly Worker[]; summary: string }
   | { kind: 'report'; worker: Worker };
 
 export type WorkerSteerResult =
