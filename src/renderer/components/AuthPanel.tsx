@@ -15,6 +15,7 @@ const compactNumber = (value: number) => (value >= 1_000_000 ? `${value / 1_000_
 
 export function AuthPanel(props: {
   open: boolean;
+  initialPurpose?: 'delegation' | 'summary' | 'advisor';
   onClose: () => void;
   onState: (state: AuthState) => void;
 }) {
@@ -34,6 +35,10 @@ export function AuthPanel(props: {
   };
 
   const refresh = () => bridge?.getAuthState().then(publish).catch((cause) => setError(String(cause)));
+
+  useEffect(() => {
+    if (props.open) setModelPurpose(props.initialPurpose ?? 'delegation');
+  }, [props.open, props.initialPurpose]);
 
   useEffect(() => {
     void refresh();
@@ -114,8 +119,8 @@ export function AuthPanel(props: {
       <div className="flex h-[min(680px,88vh)] w-[min(980px,94vw)] flex-col overflow-hidden rounded-3xl border border-white/10 bg-panel shadow-2xl">
         <header className="flex items-center justify-between border-b border-white/10 px-7 py-5">
           <div>
-            <p className="label-xs text-link">PI DELEGATION</p>
-            <h2 className="mt-2 text-2xl font-light text-ink">Connect a provider. Pick a model.</h2>
+            <p className="label-xs text-link">MODELS & SECOND OPINION</p>
+            <h2 className="mt-2 text-2xl font-light text-ink">Choose how Ambient works and reviews.</h2>
           </div>
           <button className="rounded-full border border-white/10 px-4 py-2 label-xs text-dim hover:text-ink" onClick={props.onClose}>
             CLOSE
@@ -279,7 +284,7 @@ export function AuthPanel(props: {
         </div>
 
         <footer className="border-t border-white/10 px-7 py-3 label-xs text-dimmer">
-          ADVISOR POWERS PHONE-A-FRIEND · SUMMARY FILTERS TELEMETRY · VOICE USES OPENAI
+          ADVISOR PROVIDES AN INDEPENDENT SECOND OPINION · SUMMARY FILTERS UPDATES · VOICE USES OPENAI
         </footer>
       </div>
     </div>

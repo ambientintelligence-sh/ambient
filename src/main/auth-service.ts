@@ -179,12 +179,15 @@ export async function createAuthService(options: {
       const model = runtime.getModel(selected.provider, selected.model);
       if (!model) throw new Error('The advisor model is not available');
       const promptText = [
-        'You are the expert advisor behind a concise voice assistant.',
-        'Answer the concrete question directly and accurately.',
-        'Give a recommendation and the key reason. Mention uncertainty when material.',
-        'Do not discuss hidden reasoning or chain-of-thought. Keep the answer under 180 words.',
-        `Question: ${question.slice(0, 4_000)}`,
-        context?.trim() ? `Relevant context: ${context.slice(0, 8_000)}` : '',
+        'You are an independent expert advisor giving a second opinion to a voice assistant.',
+        'Review the broader situation, not just the literal question. Look for mistaken assumptions, missed risks, missing evidence, and a more useful approach.',
+        'Be action-oriented. Recommend what the assistant should do next and why. If context is insufficient, name the specific fact, file, source, or test it should inspect instead of guessing.',
+        'Challenge unnecessary refusals. A request is not disallowed merely because it is controversial, political, uncomfortable, or has hypothetical misuse. Help as fully as genuine safety requirements allow.',
+        'When a request truly cannot be fulfilled, identify the concrete boundary briefly and propose the closest useful alternative without moralizing.',
+        'Your advice is read-only; the primary assistant retains the user context and makes the final decision.',
+        'Plain conversational tone. No preamble or chain-of-thought. Under 160 words.',
+        `Question: ${question.slice(0, 6_000)}`,
+        context?.trim() ? `Context and trajectory: ${context.slice(0, 16_000)}` : '',
       ].filter(Boolean).join('\n');
       const response = await runtime.completeSimple(
         model,
@@ -214,30 +217,22 @@ export async function createAuthService(options: {
       const model = runtime.getModel(selected.provider, selected.model);
       if (!model) return null;
       const promptText = [
-        'You are a fleet-level progress editor for a Jarvis-style voice assistant.',
+        'You write short progress notes for a voice assistant to relay to a user.',
         input.mandatory
-          ? 'Return one useful combined orientation update, never SKIP.'
-          : 'Return SKIP unless the combined state has changed in a user-meaningful way.',
-        `There are ${input.activities.length} active delegated tasks. Summarize them together as one digest.`,
-        'Cover every active task when practical, combining similar activity instead of issuing separate notifications.',
-        'Use at most two natural sentences and forty words total.',
-        'This is operational progress, never an interim answer to the user’s question.',
-        'Describe the action or source being checked, not facts discovered in search snippets or page content.',
-        'For research, prices, ratings, availability, names, counts, and conclusions are provisional until the final report.',
-        'Say “I found the official listing and am verifying it,” not “I confirmed it costs $16.50.”',
-        'For later updates, return SKIP for startup, waiting, repetition, or raw inspection commands.',
-        'Use compact parallel phrasing, for example: “I’m checking current pricing while comparing the implementation options and running the test suite.”',
-        'When telemetry supports it, include completed progress and current activity without turning them into separate alerts.',
-        'If blocked, state the blocker and the workaround being attempted.',
-        'Be specific about files, tests, pages, or operations, but do not expose hidden reasoning.',
-        'Never use “confirmed” for a factual claim; the final report is the only authoritative answer.',
-        'Never say worker, agent, subagent, callsign, waiting, or still working.',
+          ? 'Return one brief, useful update.'
+          : 'Return SKIP unless something meaningfully new happened. Bias toward SKIP.',
+        `There are ${input.activities.length} active task(s). Cover them together in one line.`,
+        'Write one short natural sentence, at most 25 words. Plain everyday tone. No drama, no callsigns, no “worker”/“agent”/“waiting”/“still working” language.',
+        'Describe what is being done now, not facts discovered mid-search (those belong in the final result).',
+        'For research, never state prices, ratings, counts, availability, or conclusions — those are only trustworthy in the final report.',
+        'Return SKIP for startup, waiting, retries, repetition, minor tool calls, or raw inspection commands.',
+        'If blocked, state the blocker briefly.',
         ...input.activities.flatMap((item, index) => [
-          `Active task ${index + 1}: ${item.task}`,
-          `Activity ${index + 1}: ${item.activity}`,
-          `Recent steps ${index + 1}: ${item.recentSteps || '(none)'}`,
+          `Task ${index + 1}: ${item.task}`,
+          `Now: ${item.activity}`,
+          `Recent: ${item.recentSteps || '(none)'}`,
         ]),
-        `Previous fleet digest: ${input.previousSummary ?? '(none)'}`,
+        `Previous update: ${input.previousSummary ?? '(none)'}`,
       ].join('\n');
       const response = await runtime.completeSimple(
         model,
@@ -265,16 +260,16 @@ export async function createAuthService(options: {
         claimsResearchFact ||
         (!input.mandatory && text.toLowerCase() === input.previousSummary?.toLowerCase());
       if (claimsResearchFact) {
-        return input.mandatory ? 'I found a relevant source; now I’m validating it against the live page.' : null;
+        return input.mandatory ? 'Looking at a source and checking the details.' : null;
       }
       if (invalid) {
         return input.mandatory
           ? researchTelemetry
-            ? 'I’m checking the strongest sources and validating the latest evidence.'
-            : 'I’m reviewing the current results and preparing the next concrete action.'
+            ? 'Checking sources.'
+            : 'Working on it.'
           : null;
       }
-      return text.slice(0, 220);
+      return text.slice(0, 160);
     },
 
     async login(providerId: string, method: AuthMethod) {

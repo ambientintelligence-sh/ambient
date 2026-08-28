@@ -176,7 +176,7 @@ export async function createBrowserService(stateDir: string) {
       } catch {
         // Chrome is still starting.
       }
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 60));
     }
     throw new Error('Visible Chrome did not expose its debugging endpoint');
   }
@@ -188,6 +188,12 @@ export async function createBrowserService(stateDir: string) {
       if (next === 'visible' && !available) throw new Error('Visible browser mode currently requires macOS');
       mode = next;
       await writeFile(statePath, `${JSON.stringify({ mode }, null, 2)}\n`, { mode: 0o600 });
+      // Pre-warm Chrome so the first worker doesn't pay the cold-start cost.
+      if (next === 'visible') {
+        void ensureVisible().catch(() => {
+          // Pre-warm is best-effort; the next dispatch will retry and surface errors.
+        });
+      }
       return state();
     },
     async workerConfig(): Promise<{ mode: BrowserMode; browserUrl?: string }> {

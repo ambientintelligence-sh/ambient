@@ -53,11 +53,20 @@ async function createWindow(setupUrl: string) {
   });
 
   if (!auth || !workspace || !browser) throw new Error('application services are not ready');
+  const configuredLocation = process.env.EXA_USER_LOCATION?.trim().toUpperCase();
+  const localeLocation = app.getLocaleCountryCode().trim().toUpperCase();
+  const exaUserLocation = /^[A-Z]{2}$/.test(configuredLocation ?? '')
+    ? configuredLocation!
+    : /^[A-Z]{2}$/.test(localeLocation)
+      ? localeLocation
+      : null;
+
   fleet ??= createWorkerFleet({
     getSelection: auth.currentSelection,
     summarizeProgress: auth.summarizeProgress,
     getWorkspace: workspace.getPath,
     getBrowserConfig: browser.workerConfig,
+    exaUserLocation,
     agentDir: auth.agentDir,
     emit: (event) => {
       if (!window.isDestroyed()) window.webContents.send('worker:event', event);

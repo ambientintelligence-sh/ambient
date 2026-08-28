@@ -25,6 +25,9 @@ export function createExaTools() {
           query: params.query,
           type: 'auto',
           numResults: params.numResults ?? 5,
+          ...(process.env.EXA_USER_LOCATION
+            ? { userLocation: process.env.EXA_USER_LOCATION }
+            : {}),
           contents: { text: { maxCharacters: 1800 } },
         }),
         signal,

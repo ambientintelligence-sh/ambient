@@ -39,6 +39,7 @@ function useElapsed(running: boolean) {
 export function App() {
   const session = useSession();
   const [setupOpen, setSetupOpen] = useState(false);
+  const [setupPurpose, setSetupPurpose] = useState<'delegation' | 'summary' | 'advisor'>('delegation');
   const [authState, setAuthState] = useState<AuthState | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceState>({ path: null, name: null });
   const [browser, setBrowser] = useState<BrowserState>({ mode: 'headless', available: false });
@@ -56,7 +57,10 @@ export function App() {
     setAuthState(next);
     if (!authInitialized.current) {
       authInitialized.current = true;
-      if (!next.selection) setSetupOpen(true);
+      if (!next.selection) {
+        setSetupPurpose('delegation');
+        setSetupOpen(true);
+      }
     }
   };
   const connected = session.status === 'connected';
@@ -68,6 +72,9 @@ export function App() {
   const delegationModel = authState?.selection
     ? `${authState.selection.provider}/${authState.selection.model}`
     : 'SELECT MODEL';
+  const advisorModel = authState?.advisorSelection
+    ? `${authState.advisorSelection.provider}/${authState.advisorSelection.model}`
+    : 'SET ADVISOR';
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-void">
@@ -114,8 +121,18 @@ export function App() {
             </p>
             <p className="label-xs mt-1.5 text-dim">IN FLIGHT</p>
             <p className="label-xs mt-5 text-dimmer">{REALTIME_MODEL_ID}</p>
-            <button onClick={() => setSetupOpen(true)} className="label-xs mt-2 block max-w-[170px] truncate text-link hover:text-ink">
+            <button
+              onClick={() => { setSetupPurpose('delegation'); setSetupOpen(true); }}
+              className="label-xs mt-2 block max-w-[170px] truncate text-link hover:text-ink"
+            >
               {delegationModel}
+            </button>
+            <button
+              title={authState?.advisorSelection ? `Second opinion: ${advisorModel}` : 'Pick a model for independent second opinions'}
+              onClick={() => { setSetupPurpose('advisor'); setSetupOpen(true); }}
+              className={`label-xs mt-2 block max-w-[170px] truncate hover:text-ink ${authState?.advisorSelection ? 'text-warn' : 'text-dimmer'}`}
+            >
+              SECOND OPINION {authState?.advisorSelection ? '· ON' : '· OFF'}
             </button>
             <button
               title={workspace.path ?? 'Choose workspace'}
@@ -169,7 +186,10 @@ export function App() {
           >
             FILES
           </ControlButton>
-          <ControlButton tint="dim" onClick={() => setSetupOpen(true)}>
+          <ControlButton tint="warn" onClick={() => { setSetupPurpose('advisor'); setSetupOpen(true); }}>
+            ADVISOR
+          </ControlButton>
+          <ControlButton tint="dim" onClick={() => { setSetupPurpose('delegation'); setSetupOpen(true); }}>
             MODEL
           </ControlButton>
           <ControlButton tint="dim" onClick={session.disconnect} disabled={!connected}>
@@ -185,7 +205,12 @@ export function App() {
         <DepartureBoard workers={session.workers} />
       </main>
 
-      <AuthPanel open={setupOpen} onClose={() => setSetupOpen(false)} onState={handleAuthState} />
+      <AuthPanel
+        open={setupOpen}
+        initialPurpose={setupPurpose}
+        onClose={() => setSetupOpen(false)}
+        onState={handleAuthState}
+      />
     </div>
   );
 }

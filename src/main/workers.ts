@@ -6,8 +6,8 @@ import type { BrowserMode } from '../shared/browser';
 import { isTerminal, type Worker, type WorkerEvent, type WorkerStop } from '../shared/worker';
 
 const MAX_STOPS = 8;
-const PROGRESS_INTERVAL_MS = 5_000;
-const MAX_PROGRESS_SILENCE_MS = 30_000;
+const PROGRESS_INTERVAL_MS = 10_000;
+const MAX_PROGRESS_SILENCE_MS = 60_000;
 
 /** One line of the worker's stdout protocol (see docker/worker/entry.mjs). */
 type WorkerMessage =
@@ -35,6 +35,7 @@ export function createWorkerFleet(options: {
   }) => Promise<string | null>;
   getWorkspace: () => string | null;
   getBrowserConfig: () => Promise<{ mode: BrowserMode; browserUrl?: string }>;
+  exaUserLocation: string | null;
   agentDir: string;
 }) {
   const workers = new Map<string, Worker>();
@@ -212,7 +213,7 @@ export function createWorkerFleet(options: {
         '--cap-drop=ALL', '--security-opt=no-new-privileges',
         '--volume', `${workspace}:/work`,
         '--volume', `${options.agentDir}:/home/node/.pi/agent`,
-        '-e', 'OPENAI_API_KEY', '-e', 'EXA_API_KEY',
+        '-e', 'OPENAI_API_KEY', '-e', 'EXA_API_KEY', '-e', 'EXA_USER_LOCATION',
         '-e', 'PI_TASK', '-e', 'PI_PROVIDER', '-e', 'PI_MODEL',
         '-e', 'PI_BROWSER_MODE', '-e', 'PI_BROWSER_URL',
         WORKER_IMAGE,
@@ -224,6 +225,7 @@ export function createWorkerFleet(options: {
           PI_TASK: task,
           PI_PROVIDER: selection.provider,
           PI_MODEL: selection.model,
+          EXA_USER_LOCATION: options.exaUserLocation ?? '',
           PI_BROWSER_MODE: browserConfig.mode,
           PI_BROWSER_URL: browserConfig.browserUrl ?? '',
         },

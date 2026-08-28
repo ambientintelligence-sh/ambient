@@ -15,7 +15,7 @@ import {
 import type { Worker } from '@/shared/worker';
 
 const TRACE_LENGTH = 72;
-const PROGRESS_GAP_MS = 5_000;
+const PROGRESS_GAP_MS = 12_000;
 const emptyTrace = () => new Array<number>(TRACE_LENGTH).fill(0);
 const bridge = window.ambient;
 
@@ -48,14 +48,14 @@ const upsert = (workers: readonly Worker[], next: Worker): readonly Worker[] => 
 
 const announcementText = (announcement: Announcement) => {
   if (announcement.kind === 'progress') {
-    return `Prepared fleet progress digest: ${announcement.summary}. This is provisional operational status, not a final result. Speak the prepared digest exactly as one update.`;
+    return `Background update: ${announcement.summary}. Relay only if it adds real information; otherwise stay quiet.`;
   }
   const { worker } = announcement;
-  if (worker.status === 'cancelled') return 'Background work was stopped by the user.';
+  if (worker.status === 'cancelled') return 'Background work was stopped.';
   if (worker.status === 'idle') {
-    return `Authoritative background-work checkpoint: ${worker.summary ?? '(no summary)'}. This supersedes provisional progress. Relay it concisely.`;
+    return `Final result: ${worker.summary ?? '(no summary)'}. Deliver this plainly as the answer.`;
   }
-  return `Background work failed. Reason: ${worker.error ?? 'unknown'}`;
+  return `Background work failed: ${worker.error ?? 'unknown'}.`;
 };
 
 const stringify = (value: unknown) => JSON.stringify(value);
@@ -66,14 +66,17 @@ function createVoiceTools() {
     tool({
       name: 'phone_a_friend',
       description:
-        'Ask the configured expert advisor a focused question. Use when uncertain, comparing important approaches, or explicitly asked for a second opinion.',
+        'Get an independent second opinion. Before calling, tell the user “I’m getting a second opinion.” Use for tradeoffs, difficult judgment, unfamiliar domains, ambiguous requests, and before a possibly unnecessary refusal. Ask broadly, share rich relevant context, and invite overlooked concerns or better approaches.',
       parameters: z.object({
-        question: z.string().describe('Focused question for the advisor.'),
-        context: z.string().optional().describe('Only the facts and constraints needed to answer.'),
+        question: z.string().describe('Broad question about what to do, decide, check, or reconsider.'),
+        context: z.string().optional().describe('Relevant conversation, task history, constraints, attempted approach, and available evidence.'),
       }),
       execute: async ({ question, context }) => {
         const answer = await bridge.askAdvisor(question.trim(), context?.trim());
-        return stringify({ answer, instruction: 'Use this advice to answer concisely.' });
+        return stringify({
+          answer,
+          instruction: 'Evaluate this independent advice against the user’s intent and your full context, then use the helpful parts. If it requests missing evidence, investigate rather than guess.',
+        });
       },
     }),
     tool({
@@ -97,7 +100,7 @@ function createVoiceTools() {
     tool({
       name: 'spawn_worker',
       description:
-        'Dispatch a Pi worker for code, files, Exa research, or Chrome automation. Use Exa first for factual lookups; use Chrome for configuration and interaction. Returns immediately.',
+        'Dispatch a Pi worker for code, files, search, or browser automation. Always tell it to use Exa search first for factual lookups; only use the browser when Exa is insufficient or the task needs interaction. Returns immediately.',
       parameters: z.object({
         task: z.string().describe('Complete self-contained task with all relevant context and expected result.'),
       }),
