@@ -10,6 +10,13 @@ export type WorkerStop = Readonly<{
 
 export type WorkerUpdate = Readonly<{ at: string; text: string }>;
 
+export type WorkerDisplay = Readonly<{
+  id: string;
+  title: string;
+  html: string;
+  createdAt: number;
+}>;
+
 export type Worker = Readonly<{
   name: string;
   task: string;
@@ -18,6 +25,7 @@ export type Worker = Readonly<{
   startedAt: string;
   stops: readonly WorkerStop[];
   updates: readonly WorkerUpdate[];
+  display: WorkerDisplay | null;
   summary: string | null;
   error: string | null;
 }>;

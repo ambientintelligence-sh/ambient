@@ -53,7 +53,10 @@ const announcementInstruction = (announcement: Announcement) => {
   const { worker } = announcement;
   if (worker.status === 'cancelled') return 'Tell the user exactly: “Stopped.”';
   if (worker.status === 'idle') {
-    return `The requested background work finished. Give the user its definitive result naturally and concisely. Do not call it an update, checkpoint, or provisional result. Result: ${worker.summary ?? '(no summary)'}`;
+    const visualContext = worker.display
+      ? ` A dashboard widget titled “${worker.display.title}” is now visible. Tell the user it is on screen and speak only the key takeaway; do not read the whole widget aloud.`
+      : '';
+    return `The requested background work finished.${visualContext} Give the user its definitive result naturally and concisely. Do not call it an update, checkpoint, or provisional result. Result: ${worker.summary ?? '(no summary)'}`;
   }
   return `Tell the user briefly that the task failed and give this reason: ${worker.error ?? 'unknown'}`;
 };
@@ -100,9 +103,9 @@ function createVoiceTools() {
     tool({
       name: 'spawn_worker',
       description:
-        'Dispatch a Pi worker for code, files, search, or browser automation. Always tell it to use Exa search first for factual lookups; only use the browser when Exa is insufficient or the task needs interaction. Returns immediately.',
+        'Dispatch a Pi worker for code, files, search, or browser automation. Workers have a show_widget tool for HTML widgets inside Ambient. If the user says “widget” or asks to put something on the dashboard, explicitly tell the worker to call show_widget. Also request it when structured visual results would be clearer on screen. Always use Exa first for factual lookups; only use the browser when Exa is insufficient or interaction is required. Returns immediately.',
       parameters: z.object({
-        task: z.string().describe('Complete self-contained task with all relevant context and expected result.'),
+        task: z.string().describe('Complete self-contained task with all relevant context and expected result. If the user requested a widget, explicitly require the show_widget tool.'),
       }),
       execute: async ({ task }) => {
         const workspace = await bridge.getWorkspace();

@@ -13,6 +13,7 @@ type WorkerMessage =
   | { type: 'ready' }
   | { type: 'tool'; id: string; tool: string; detail?: string }
   | { type: 'tool_result'; id: string; tool: string; result?: string; isError: boolean }
+  | { type: 'display'; title: string; html: string }
   | { type: 'done'; summary: string }
   | { type: 'error'; message: string };
 
@@ -151,6 +152,17 @@ export function createWorkerFleet(options: {
                 }
               : stop,
           ),
+        }));
+        return;
+      case 'display':
+        patch(name, (worker) => ({
+          ...worker,
+          display: {
+            id: `${name}-${Date.now()}`,
+            title: message.title.trim().slice(0, 120) || 'Result',
+            html: message.html.slice(0, 120_000),
+            createdAt: Date.now(),
+          },
         }));
         return;
       case 'done':
@@ -312,6 +324,7 @@ export function createWorkerFleet(options: {
         ...current,
         status: current.status === 'idle' ? 'running' : current.status,
         summary: current.status === 'idle' ? null : current.summary,
+        display: current.status === 'idle' ? null : current.display,
         stops: [...current.stops, stop].slice(-MAX_STOPS),
       }));
       return { ok: true as const, worker: callsign, status: 'steering queued' as const };
@@ -327,6 +340,7 @@ export function createWorkerFleet(options: {
         startedAt: clock(),
         stops: [],
         updates: [],
+        display: null,
         summary: null,
         error: null,
       };

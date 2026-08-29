@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { AuthState } from '@/shared/auth';
 import type { BrowserState } from '@/shared/browser';
 import { REALTIME_MODEL_ID, REALTIME_VOICE } from '@/shared/config';
-import { isActive } from '@/shared/worker';
+import { isActive, type Worker } from '@/shared/worker';
 import type { WorkspaceState } from '@/shared/workspace';
 import { useSession } from './use-session';
 import { AuthPanel } from './components/AuthPanel';
@@ -11,6 +11,7 @@ import { Clock } from './components/Clock';
 import { ControlButton } from './components/ControlButton';
 import { DepartureBoard } from './components/DepartureBoard';
 import { Sparkline } from './components/Sparkline';
+import { WidgetDock } from './components/WidgetDock';
 import type { TintKey } from './components/tints';
 
 
@@ -43,6 +44,7 @@ export function App() {
   const [authState, setAuthState] = useState<AuthState | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceState>({ path: null, name: null });
   const [browser, setBrowser] = useState<BrowserState>({ mode: 'headless', available: false });
+  const [dismissedDisplayIds, setDismissedDisplayIds] = useState<ReadonlySet<string>>(() => new Set());
   const authInitialized = useRef(false);
 
   useEffect(() => {
@@ -69,6 +71,27 @@ export function App() {
   const statusTint = STATUS_TINT[session.status] ?? 'dim';
 
   const inFlight = session.workers.filter((each) => isActive(each.status)).length;
+  const widgetWorkers = session.workers
+    .filter((worker) =>
+      worker.status === 'idle' &&
+      worker.display &&
+      !dismissedDisplayIds.has(worker.display.id),
+    )
+    .sort((a, b) => (b.display?.createdAt ?? 0) - (a.display?.createdAt ?? 0));
+
+  const showDisplay = (worker: Worker) => {
+    if (!worker.display) return;
+    setDismissedDisplayIds((current) => {
+      const next = new Set(current);
+      next.delete(worker.display!.id);
+      return next;
+    });
+  };
+
+  const dismissDisplay = (id: string) => {
+    setDismissedDisplayIds((current) => new Set(current).add(id));
+  };
+
   const delegationModel = authState?.selection
     ? `${authState.selection.provider}/${authState.selection.model}`
     : 'SELECT MODEL';
@@ -201,8 +224,11 @@ export function App() {
         {session.error ?? 'REALTIME SESSION'}
       </p>
 
-      <main className="relative mt-6 flex min-h-0 flex-1 px-9 pb-7">
-        <DepartureBoard workers={session.workers} />
+      <main className="relative mt-6 flex min-h-0 flex-1 flex-col gap-3 px-9 pb-7">
+        {widgetWorkers.length > 0 && (
+          <WidgetDock workers={widgetWorkers} onDismiss={dismissDisplay} />
+        )}
+        <DepartureBoard workers={session.workers} onDisplay={showDisplay} />
       </main>
 
       <AuthPanel

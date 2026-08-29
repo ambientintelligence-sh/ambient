@@ -27,7 +27,7 @@ ENV PATH="/opt/pyenv/bin:${PATH}" \
 WORKDIR /app
 COPY package.json ./
 RUN npm install --ignore-scripts --omit=dev --no-audit --no-fund
-COPY entry.mjs exa-tool.mjs mcp-extension.ts ./
+COPY entry.mjs exa-tool.mjs show-widget-tool.mjs mcp-extension.ts ./
 
 # Workers start in an empty scratch directory. Nothing from the host is mounted.
 RUN mkdir -p /work && chown -R node:node /work /app

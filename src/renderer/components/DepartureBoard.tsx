@@ -20,7 +20,7 @@ const GRID = 'grid grid-cols-[142px_64px_minmax(0,1fr)_minmax(0,1.5fr)_104px] it
 const colourOf = (name: string) =>
   PALETTE[[...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % PALETTE.length];
 
-function Row({ worker }: { worker: Worker }) {
+function Row({ worker, onDisplay }: { worker: Worker; onDisplay: (worker: Worker) => void }) {
   const [expanded, setExpanded] = useState(false);
   const status = STATUS[worker.status];
   const hex = colourOf(worker.name);
@@ -99,6 +99,15 @@ function Row({ worker }: { worker: Worker }) {
             </div>
           ))}
           {worker.summary && <p className="text-led-green"><span className="label-xs mr-3">RESULT</span>{worker.summary}</p>}
+          {worker.display && (
+            <button
+              type="button"
+              onClick={() => onDisplay(worker)}
+              className="w-fit rounded-md border border-warn/40 px-3 py-2 label-xs text-warn hover:bg-warn/10"
+            >
+              VIEW {worker.display.title}
+            </button>
+          )}
           {worker.error && <p className="text-alert"><span className="label-xs mr-3">ERROR</span>{worker.error}</p>}
         </div>
       )}
@@ -106,7 +115,13 @@ function Row({ worker }: { worker: Worker }) {
   );
 }
 
-export function DepartureBoard({ workers }: { workers: readonly Worker[] }) {
+export function DepartureBoard({
+  workers,
+  onDisplay,
+}: {
+  workers: readonly Worker[];
+  onDisplay: (worker: Worker) => void;
+}) {
   return (
     <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-hairline bg-[#04060a]">
       <div className="board-scan pointer-events-none absolute inset-0 z-10" />
@@ -125,7 +140,7 @@ export function DepartureBoard({ workers }: { workers: readonly Worker[] }) {
             <span className="label-xs text-[#4b535d]">no workers dispatched</span>
           </div>
         ) : (
-          workers.map((worker) => <Row key={worker.name} worker={worker} />)
+          workers.map((worker) => <Row key={worker.name} worker={worker} onDisplay={onDisplay} />)
         )}
       </div>
     </section>

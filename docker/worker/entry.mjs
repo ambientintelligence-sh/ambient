@@ -11,6 +11,7 @@ import {
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
 import { createExaTools } from './exa-tool.mjs';
+import { createShowWidgetTool } from './show-widget-tool.mjs';
 
 const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
 
@@ -18,7 +19,7 @@ const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
 function detailOf(toolName, args) {
   if (!args || typeof args !== 'object') return '';
   const raw =
-    args.command ?? args.path ?? args.file_path ?? args.filePath ?? args.pattern ?? args.query ?? '';
+    args.command ?? args.path ?? args.file_path ?? args.filePath ?? args.pattern ?? args.query ?? args.title ?? '';
   const text = String(raw).replace(/\s+/g, ' ').trim();
   return text.length > 72 ? `${text.slice(0, 71)}…` : text;
 }
@@ -63,7 +64,16 @@ const visibleBrowserPolicy = process.env.PI_BROWSER_MODE === 'visible'
       'Do not leave a search page, blank page, login page, or unrelated tab selected when a better result page is available.',
     ].join(' ')
   : '';
-const initialTask = `${task}\n\n${webToolPolicy}${visibleBrowserPolicy ? `\n\n${visibleBrowserPolicy}` : ''}`;
+const presentationPolicy = [
+  'Dashboard presentation policy:',
+  'When the user asks for a widget, says to show something as a widget, or asks to put a result on the dashboard, you must call show_widget once near completion.',
+  'You may also call show_widget when the final result benefits from visual structure—such as options, comparisons, plans, schedules, tables, or a compact report.',
+  'Provide a polished, readable, responsive HTML fragment with semantic markup and inline CSS. Do not use JavaScript, forms, iframes, or event handlers.',
+  'Use show_widget only for useful final information, never progress, raw logs, or decorative filler.',
+  'After showing a widget, still give a short spoken closing summary that says what is on screen and highlights the most important conclusion.',
+  'If no widget was requested and a visual adds no value, return the normal closing summary only.',
+].join(' ');
+const initialTask = `${task}\n\n${webToolPolicy}${visibleBrowserPolicy ? `\n\n${visibleBrowserPolicy}` : ''}\n\n${presentationPolicy}`;
 
 if (!task) {
   emit({ type: 'error', message: 'no task supplied' });
@@ -76,6 +86,8 @@ try {
   if (!model) throw new Error(`delegation model not found: ${providerId}/${modelId}`);
 
   const exaTools = createExaTools();
+  const showWidgetTool = createShowWidgetTool(emit);
+  const customTools = [...exaTools, showWidgetTool];
   const resourceLoader = new DefaultResourceLoader({
     cwd: '/work',
     agentDir: '/home/node/.pi/agent',
@@ -85,8 +97,8 @@ try {
   const { session } = await createAgentSession({
     cwd: '/work',
     model,
-    tools: ['read', 'write', 'edit', 'bash', 'ls', 'grep', 'find', 'mcp', ...exaTools.map((tool) => tool.name)],
-    customTools: exaTools,
+    tools: ['read', 'write', 'edit', 'bash', 'ls', 'grep', 'find', 'mcp', ...customTools.map((tool) => tool.name)],
+    customTools,
     resourceLoader,
     sessionManager: SessionManager.inMemory(),
     modelRuntime,
