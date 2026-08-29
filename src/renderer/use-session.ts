@@ -46,16 +46,16 @@ const upsert = (workers: readonly Worker[], next: Worker): readonly Worker[] => 
   return workers.map((worker) => (worker.name === next.name ? next : worker));
 };
 
-const announcementText = (announcement: Announcement) => {
+const announcementInstruction = (announcement: Announcement) => {
   if (announcement.kind === 'progress') {
-    return `Background update: ${announcement.summary}. Relay only if it adds real information; otherwise stay quiet.`;
+    return `Speak exactly this progress update and nothing else: “${announcement.summary}”`;
   }
   const { worker } = announcement;
-  if (worker.status === 'cancelled') return 'Background work was stopped.';
+  if (worker.status === 'cancelled') return 'Tell the user exactly: “Stopped.”';
   if (worker.status === 'idle') {
-    return `Final result: ${worker.summary ?? '(no summary)'}. Deliver this plainly as the answer.`;
+    return `The requested background work finished. Give the user its definitive result naturally and concisely. Do not call it an update, checkpoint, or provisional result. Result: ${worker.summary ?? '(no summary)'}`;
   }
-  return `Background work failed: ${worker.error ?? 'unknown'}.`;
+  return `Tell the user briefly that the task failed and give this reason: ${worker.error ?? 'unknown'}`;
 };
 
 const stringify = (value: unknown) => JSON.stringify(value);
@@ -172,6 +172,7 @@ export function useSession(): SessionView {
   const [error, setError] = useState<string | null>(null);
 
   const realtimeRef = useRef<RealtimeSession | null>(null);
+  const transportRef = useRef<OpenAIRealtimeWebRTC | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -226,8 +227,8 @@ export function useSession(): SessionView {
   }, []);
 
   const deliverAnnouncement = useCallback((announcement: Announcement) => {
-    const realtime = realtimeRef.current;
-    if (!realtime || !connectedRef.current) return;
+    const transport = transportRef.current;
+    if (!transport || !connectedRef.current) return;
     if (responseActiveRef.current || listeningRef.current || speakingRef.current) {
       enqueueAnnouncement(announcement);
       return;
@@ -247,7 +248,13 @@ export function useSession(): SessionView {
       lastProgressDeliveredAt.current = Date.now();
     }
     responseActiveRef.current = true;
-    realtime.sendMessage(announcementText(announcement));
+    // Use a one-off response instruction rather than sendMessage(). sendMessage
+    // creates a user conversation item, which makes internal updates look like
+    // things the user said and invites acknowledgements such as “Got it.”
+    transport.sendEvent({
+      type: 'response.create',
+      response: { instructions: announcementInstruction(announcement) },
+    });
   }, [enqueueAnnouncement]);
 
   useEffect(() => {
@@ -314,6 +321,7 @@ export function useSession(): SessionView {
       }
 
       const transport = new OpenAIRealtimeWebRTC({ mediaStream: stream });
+      transportRef.current = transport;
       const agent = new RealtimeAgent({
         name: 'Ambient',
         instructions: REALTIME_INSTRUCTIONS,
@@ -401,6 +409,7 @@ export function useSession(): SessionView {
       .catch((cause: unknown) => {
         realtimeRef.current?.close();
         realtimeRef.current = null;
+        transportRef.current = null;
         connectedRef.current = false;
         setStatus('error');
         releaseMedia();
@@ -420,6 +429,7 @@ export function useSession(): SessionView {
     announcementTimer.current = null;
     realtimeRef.current?.close();
     realtimeRef.current = null;
+    transportRef.current = null;
     releaseMedia();
     setStatus('disconnected');
   }, [releaseMedia]);

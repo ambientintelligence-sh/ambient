@@ -7,7 +7,6 @@ import { isTerminal, type Worker, type WorkerEvent, type WorkerStop } from '../s
 
 const MAX_STOPS = 8;
 const PROGRESS_INTERVAL_MS = 10_000;
-const MAX_PROGRESS_SILENCE_MS = 60_000;
 
 /** One line of the worker's stdout protocol (see docker/worker/entry.mjs). */
 type WorkerMessage =
@@ -45,8 +44,6 @@ export function createWorkerFleet(options: {
   const pendingSteers = new Map<string, string[]>();
   let lastFleetKey = '';
   let lastFleetSummary: string | null = null;
-  let lastFleetSpokenAt = Date.now();
-  let fleetOriented = false;
   let fleetSummarizing = false;
 
   const progressTimer = setInterval(() => {
@@ -54,7 +51,6 @@ export function createWorkerFleet(options: {
     if (active.length === 0) {
       lastFleetKey = '';
       lastFleetSummary = null;
-      fleetOriented = false;
       return;
     }
     if (fleetSummarizing) return;
@@ -76,20 +72,16 @@ export function createWorkerFleet(options: {
       const step = worker.stops.at(-1);
       return `${worker.name}:${worker.stops.length}:${step?.tool ?? 'starting'}:${step?.detail ?? ''}:${step?.status ?? ''}`;
     }).join('|');
-    const heartbeat = Date.now() - lastFleetSpokenAt >= MAX_PROGRESS_SILENCE_MS;
     const changed = key !== lastFleetKey;
-    const mandatory = !fleetOriented || heartbeat;
-    if (!mandatory && !changed) return;
+    if (!changed) return;
 
     fleetSummarizing = true;
     lastFleetKey = key;
-    void options.summarizeProgress({ activities, previousSummary: lastFleetSummary, mandatory })
+    void options.summarizeProgress({ activities, previousSummary: lastFleetSummary, mandatory: false })
       .then((summary) => {
         if (!summary) return;
         const current = [...workers.values()].filter((worker) => worker.status === 'running');
         if (current.length === 0) return;
-        fleetOriented = true;
-        lastFleetSpokenAt = Date.now();
         lastFleetSummary = summary;
         options.emit({ kind: 'fleet-progress', workers: current, summary });
       })
