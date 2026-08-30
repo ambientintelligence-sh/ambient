@@ -2,6 +2,7 @@ import type { AuthEvent, AuthMethod, AuthState, DelegationSelection } from '@/sh
 import type { BrowserMode, BrowserState } from '@/shared/browser';
 import type { LocalContextState, LocalContextUpdate } from '@/shared/local-context';
 import type { CancelWorkResult, DispatchWorkResult, RouterEvent, WorkJob } from '@/shared/router';
+import type { NetworkState } from '@/shared/sandbox';
 import type { WorkerEvent } from '@/shared/worker';
 import type { WorkspaceState } from '@/shared/workspace';
 
@@ -19,6 +20,9 @@ declare global {
       onWorkspaceChanged: (listener: (state: WorkspaceState) => void) => () => void;
       getBrowserState: () => Promise<BrowserState>;
       setBrowserMode: (mode: BrowserMode) => Promise<BrowserState>;
+      getNetworkState: () => Promise<NetworkState>;
+      setNetworkEnabled: (enabled: boolean) => Promise<NetworkState>;
+      onNetworkChanged: (listener: (state: NetworkState) => void) => () => void;
       getLocationState: () => Promise<LocalContextState>;
       setLocation: (input: LocalContextUpdate) => Promise<LocalContextState>;
       clearLocation: () => Promise<LocalContextState>;

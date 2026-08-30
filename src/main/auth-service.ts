@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { AuthEvent, AuthMethod, AuthState, DelegationSelection, LoginPrompt } from '../shared/auth';
 import type { ModelRuntime as ModelRuntimeType } from '@earendil-works/pi-coding-agent';
 import type { AuthPrompt, Model } from '@earendil-works/pi-ai';
+import { vendorModuleUrl } from './vendor';
 
 export type AuthService = Awaited<ReturnType<typeof createAuthService>>;
 
@@ -22,11 +23,12 @@ export async function createAuthService(options: {
 }) {
   await mkdir(options.agentDir, { recursive: true, mode: 0o700 });
   // pi is ESM-only while Electron Forge emits this main process as CJS. Keep
-  // the import native instead of asking Vite to rewrite pi's import.meta.url.
+  // the import native instead of asking Vite to rewrite pi's import.meta.url,
+  // and resolve it from the vendored (asar-unpacked) node_modules at runtime.
   const importEsm = new Function('specifier', 'return import(specifier)') as (
     specifier: string,
   ) => Promise<{ ModelRuntime: typeof ModelRuntimeType }>;
-  const { ModelRuntime } = await importEsm('@earendil-works/pi-coding-agent');
+  const { ModelRuntime } = await importEsm(vendorModuleUrl('@earendil-works/pi-coding-agent'));
   const runtime = await ModelRuntime.create({
     authPath: path.join(options.agentDir, 'auth.json'),
     modelsPath: path.join(options.agentDir, 'models.json'),

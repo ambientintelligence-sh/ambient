@@ -1,8 +1,7 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, readlink, writeFile } from 'node:fs/promises';
-import { createServer as createHttpServer, request as httpRequest, type Server } from 'node:http';
-import { connect, createServer as createNetServer } from 'node:net';
+import { createServer as createNetServer } from 'node:net';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { BrowserMode, BrowserState } from '../shared/browser';
@@ -33,8 +32,6 @@ export async function createBrowserService(stateDir: string) {
   let chrome: ChildProcess | null = null;
   let debuggingPort: number | null = null;
   let existingChromePid: number | null = null;
-  let proxy: Server | null = null;
-  let proxyPort: number | null = null;
 
   try {
     const saved = JSON.parse(await readFile(statePath, 'utf8')) as { mode?: BrowserMode };
@@ -45,65 +42,6 @@ export async function createBrowserService(stateDir: string) {
 
   const available = process.platform === 'darwin' && existsSync(CHROME_PATH);
   const state = (): BrowserState => ({ mode, available });
-
-  async function startDebugProxy(chromePort: number) {
-    const publicPort = await freePort();
-    const server = createHttpServer((incoming, outgoing) => {
-      const forwarded = httpRequest({
-        host: '127.0.0.1',
-        port: chromePort,
-        method: incoming.method,
-        path: incoming.url,
-        headers: { ...incoming.headers, host: `127.0.0.1:${chromePort}` },
-      }, (response) => {
-        const chunks: Buffer[] = [];
-        response.on('data', (chunk: Buffer) => chunks.push(chunk));
-        response.on('end', () => {
-          const raw = Buffer.concat(chunks);
-          const contentType = String(response.headers['content-type'] ?? '');
-          const body = contentType.includes('json')
-            ? Buffer.from(raw.toString().replaceAll(
-                `ws://127.0.0.1:${chromePort}`,
-                `ws://host.docker.internal:${publicPort}`,
-              ).replaceAll(
-                `ws://localhost:${chromePort}`,
-                `ws://host.docker.internal:${publicPort}`,
-              ))
-            : raw;
-          outgoing.writeHead(response.statusCode ?? 502, {
-            ...response.headers,
-            'content-length': String(body.length),
-          });
-          outgoing.end(body);
-        });
-      });
-      forwarded.on('error', (error) => {
-        outgoing.writeHead(502).end(error.message);
-      });
-      incoming.pipe(forwarded);
-    });
-    server.on('upgrade', (request, socket, head) => {
-      const upstream = connect(chromePort, '127.0.0.1', () => {
-        const headers = Object.entries(request.headers)
-          .map(([name, value]) => `${name}: ${value}`)
-          .filter((line) => !line.toLowerCase().startsWith('host:'));
-        upstream.write(
-          `${request.method} ${request.url} HTTP/${request.httpVersion}\r\n` +
-          `Host: 127.0.0.1:${chromePort}\r\n${headers.join('\r\n')}\r\n\r\n`,
-        );
-        if (head.length) upstream.write(head);
-        socket.pipe(upstream).pipe(socket);
-      });
-      upstream.on('error', () => socket.destroy());
-    });
-    await new Promise<void>((resolve, reject) => {
-      server.once('error', reject);
-      server.listen(publicPort, '0.0.0.0', resolve);
-    });
-    proxy = server;
-    proxyPort = publicPort;
-    return `http://host.docker.internal:${publicPort}`;
-  }
 
   async function discoverExistingChrome(): Promise<{ pid: number; port: number } | null> {
     try {
@@ -123,16 +61,13 @@ export async function createBrowserService(stateDir: string) {
   }
 
   async function ensureVisible() {
-    if (debuggingPort && proxyPort) {
+    if (debuggingPort) {
       try {
         const response = await fetch(`http://127.0.0.1:${debuggingPort}/json/version`);
-        if (response.ok) return `http://host.docker.internal:${proxyPort}`;
+        if (response.ok) return `http://127.0.0.1:${debuggingPort}`;
       } catch {
         // Browser was closed outside Ambient; rebuild it below.
       }
-      proxy?.close();
-      proxy = null;
-      proxyPort = null;
       debuggingPort = null;
       existingChromePid = null;
       chrome = null;
@@ -143,7 +78,7 @@ export async function createBrowserService(stateDir: string) {
     if (existing) {
       existingChromePid = existing.pid;
       debuggingPort = existing.port;
-      return startDebugProxy(existing.port);
+      return `http://127.0.0.1:${existing.port}`;
     }
 
     debuggingPort = await freePort();
@@ -152,7 +87,6 @@ export async function createBrowserService(stateDir: string) {
       [
         `--user-data-dir=${profilePath}`,
         `--remote-debugging-port=${debuggingPort}`,
-        '--remote-debugging-address=0.0.0.0',
         '--no-first-run',
         '--no-default-browser-check',
         'about:blank',
@@ -160,9 +94,6 @@ export async function createBrowserService(stateDir: string) {
       { stdio: 'ignore' },
     );
     chrome.once('exit', () => {
-      proxy?.close();
-      proxy = null;
-      proxyPort = null;
       existingChromePid = null;
       chrome = null;
       debuggingPort = null;
@@ -172,7 +103,7 @@ export async function createBrowserService(stateDir: string) {
     while (Date.now() < deadline) {
       try {
         const response = await fetch(`http://127.0.0.1:${debuggingPort}/json/version`);
-        if (response.ok) return startDebugProxy(debuggingPort);
+        if (response.ok) return `http://127.0.0.1:${debuggingPort}`;
       } catch {
         // Chrome is still starting.
       }
@@ -209,9 +140,6 @@ export async function createBrowserService(stateDir: string) {
       return { mode, executablePath: CHROME_PATH };
     },
     shutdown() {
-      proxy?.close();
-      proxy = null;
-      proxyPort = null;
       if (chrome) chrome.kill('SIGTERM');
       else if (existingChromePid) {
         try {

@@ -1,18 +1,20 @@
 import { app, BrowserWindow, ipcMain, shell, systemPreferences } from 'electron';
+import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { config as loadEnv } from 'dotenv';
 import { createAuthService, type AuthService } from './auth-service';
 import { createBrowserService } from './browser';
-import { ensureWorkerImage } from './docker';
 import { createLocalContextService, type LocalContextService } from './local-context';
 import { createWorkRouter, type WorkRouter } from './router';
 import { startTokenServer } from './token-server';
 import { createWorkerFleet, type WorkerFleet } from './workers';
+import { vendorNodeModules } from './vendor';
 import { createWorkspaceService, type WorkspaceService } from './workspace';
 import type { AuthEvent, AuthMethod, DelegationSelection } from '../shared/auth';
 import type { BrowserMode } from '../shared/browser';
 import { WORKER_MODEL_ID } from '../shared/config';
 import type { LocalContextUpdate } from '../shared/local-context';
+import type { NetworkState } from '../shared/sandbox';
 
 loadEnv({ path: path.join(app.getAppPath(), '../../.env'), quiet: true });
 loadEnv({ quiet: true });
@@ -37,6 +39,10 @@ let workspace: WorkspaceService | null = null;
 let browser: Awaited<ReturnType<typeof createBrowserService>> | null = null;
 let localContext: LocalContextService | null = null;
 let router: WorkRouter | null = null;
+let tempRoot: string | null = null;
+// The next-job network toggle. Defaults OFF on every launch; captured by each
+// top-level job at dispatch time, so flipping it never alters running work.
+let networkEnabled = false;
 
 const emitAuth = (event: AuthEvent) => {
   for (const window of BrowserWindow.getAllWindows()) window.webContents.send('auth:event', event);
@@ -62,8 +68,9 @@ async function createWindow(setupUrl: string) {
     return { action: 'deny' };
   });
 
-  if (!auth || !workspace || !browser || !localContext) throw new Error('application services are not ready');
+  if (!auth || !workspace || !browser || !localContext || !tempRoot) throw new Error('application services are not ready');
 
+  const chromeMcpPath = path.join(vendorNodeModules(), 'chrome-devtools-mcp/build/src/bin/chrome-devtools-mcp.js');
   fleet ??= createWorkerFleet({
     getSelection: auth.currentSelection,
     onReport: (worker) => router?.handleWorkerReport(worker),
@@ -71,6 +78,9 @@ async function createWindow(setupUrl: string) {
     getBrowserConfig: browser.workerConfig,
     getLocalContext: localContext.state,
     agentDir: auth.agentDir,
+    tempRoot,
+    subagentEntryPath: path.join(__dirname, 'subagent.js'),
+    chromeMcpPath,
     emit: (event) => {
       for (const target of BrowserWindow.getAllWindows()) target.webContents.send('worker:event', event);
     },
@@ -80,11 +90,12 @@ async function createWindow(setupUrl: string) {
     getSelection: auth.currentSelection,
     getLocalContext: localContext.state,
     getWorkspace: workspace.getPath,
+    getNetworkEnabled: () => networkEnabled,
     getBrowserConfig: browser.routerConfig,
-    mcpAdapterPath: path.join(app.getAppPath(), 'node_modules/pi-mcp-adapter/index.ts'),
-    chromeMcpPath: path.join(app.getAppPath(), 'node_modules/chrome-devtools-mcp/build/src/bin/chrome-devtools-mcp.js'),
+    chromeMcpPath,
     fleet,
     agentDir: auth.agentDir,
+    tempRoot,
     emit: (event) => {
       for (const target of BrowserWindow.getAllWindows()) target.webContents.send('router:event', event);
     },
@@ -120,12 +131,23 @@ app.whenReady().then(async () => {
   workspace = await createWorkspaceService(app.getPath('userData'));
   browser = await createBrowserService(app.getPath('userData'));
   localContext = await createLocalContextService(app.getPath('userData'), countryCode);
+  // Private per-task temp dirs. Wipe leftovers from any previous run.
+  tempRoot = path.join(app.getPath('userData'), 'agent-tmp');
+  await rm(tempRoot, { recursive: true, force: true });
+  await mkdir(tempRoot, { recursive: true, mode: 0o700 });
 
   ipcMain.handle('work:dispatch', (_event, task: string) => router?.dispatch(task) ?? null);
   ipcMain.handle('work:list', () => router?.list() ?? []);
   ipcMain.handle('work:cancel', (_event, id: string) =>
     router?.cancel(id) ?? { ok: false, error: 'work router is not ready' },
   );
+  ipcMain.handle('network:state', (): NetworkState => ({ enabled: networkEnabled }));
+  ipcMain.handle('network:set', (_event, enabled: boolean): NetworkState => {
+    networkEnabled = enabled === true;
+    const state: NetworkState = { enabled: networkEnabled };
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.send('network:event', state);
+    return state;
+  });
   ipcMain.handle('workspace:state', () => workspace?.state());
   ipcMain.handle('workspace:select', async (event) => {
     const state = await workspace?.select(BrowserWindow.fromWebContents(event.sender) ?? undefined);
@@ -165,11 +187,6 @@ app.whenReady().then(async () => {
   await systemPreferences.askForMediaAccess('microphone');
   const { url } = await startTokenServer(process.env.OPENAI_API_KEY);
   await createWindow(url);
-
-  // Warm the image now so the first spawn is not an npm install mid-conversation.
-  void ensureWorkerImage().catch(() => {
-    /* surfaced on the panel when a worker is actually dispatched */
-  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(url);

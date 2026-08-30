@@ -245,7 +245,7 @@ export function useSession(): SessionView {
       setWorkers((current) => upsert(current, event.worker));
       if (event.kind === 'update') return;
       setLastReport(
-        event.worker.status === 'idle'
+        event.worker.status === 'complete'
           ? `${event.worker.name} — ONLINE: result returned to router`
           : event.worker.status === 'cancelled'
             ? `${event.worker.name} — STOPPED`

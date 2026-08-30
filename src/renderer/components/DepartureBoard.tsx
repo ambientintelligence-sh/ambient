@@ -4,7 +4,7 @@ import { isTerminal, type Worker, type WorkerStatus } from '@/shared/worker';
 const PALETTE = ['#ff8c1a', '#46e05a', '#35c8f0', '#a98bff'] as const;
 const STATUS: Readonly<Record<WorkerStatus, { label: string; color: string }>> = {
   queued: { label: 'DUE', color: '#ffa32b' }, running: { label: 'IN TRANSIT', color: '#46e05a' },
-  idle: { label: 'ARRIVED', color: '#46e05a' }, failed: { label: 'CANCELLED', color: '#ff5a4d' }, cancelled: { label: 'STOPPED', color: '#5d6672' },
+  complete: { label: 'ARRIVED', color: '#46e05a' }, failed: { label: 'CANCELLED', color: '#ff5a4d' }, cancelled: { label: 'STOPPED', color: '#5d6672' },
 };
 const colourOf = (name: string) => PALETTE[[...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % PALETTE.length];
 
@@ -16,7 +16,7 @@ function Row({ worker }: { worker: Worker }) {
   const current = worker.stops.at(-1);
   const activity = current?.detail || current?.tool || (worker.status === 'queued'
     ? 'Waiting for the agent runtime to begin work.'
-    : worker.status === 'idle'
+    : worker.status === 'complete'
       ? 'Work complete.'
       : 'Waiting for the next field report.');
   const hasProgress = worker.updates.length > 0 || worker.stops.length > 0;

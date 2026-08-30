@@ -12,8 +12,8 @@ echo "OPENAI_API_KEY=sk-..." >> .env
 pnpm dev
 ```
 
-macOS will ask for microphone access on first launch. Docker must be running —
-workers execute in containers, and the image is built on first launch.
+macOS will ask for microphone access on first launch. No other setup is needed:
+the router and its subagents run as native processes, sandboxed by the OS.
 
 Ambient opens the Pi delegation setup on launch. Sign in to any provider exposed
 by Pi using OAuth/account login or an API key, then choose a model. Reopen the
@@ -58,14 +58,15 @@ Whisper quota requirement.
 
 | Path | Role |
 | --- | --- |
-| `src/main/main.ts` | Window, mic permission, env loading |
+| `src/main/main.ts` | Window, mic permission, env loading, network toggle IPC |
 | `src/main/token-server.ts` | Loopback endpoint that mints ephemeral tokens |
 | `src/shared/config.ts` | Model id, voice, instructions, audio format |
 | `src/renderer/use-session.ts` | Realtime session, mic analysis, work dispatch, router reports |
 | `src/main/router.ts` | Durable router session, job mailbox, subagent and presentation tools |
-| `src/main/workers.ts` | Worker registry and container lifecycle |
-| `src/main/docker.ts` | Image build and Docker availability |
-| `docker/worker/` | Worker image: pi + the JSONL entry script |
+| `src/main/workers.ts` | Subagent registry and utility-process lifecycle |
+| `src/main/subagent.ts` | One-shot subagent entry: run task, report once, exit |
+| `src/main/sandbox-policy.ts` | Filesystem/network policy shared by router and subagents |
+| `src/main/sandbox-tools.ts` | Sandbox Runtime wiring and pi tool gating |
 | `src/renderer/App.tsx` | The cluster |
 
 ## Router and workers
@@ -83,56 +84,33 @@ such as “I’m checking the current pricing.” It never exposes job IDs or ro
 voice calls dispatch_work(task)
   → IPC → router mailbox, returns { jobId, status: "accepted" }
   → router answers quick reasoning itself or calls dispatch_subagent
-  → child containers stream JSONL telemetry to the board
-  → child results return only to the router
+  → subagent processes stream tool telemetry to the board
+  → subagent results return only to the router
   → router synthesizes, optionally calls show_widget, then publish_voice_message
   → renderer's response sequencer delivers the result when voice is free
 ```
 
 The router is a host-side Pi session with the same working tools as a child:
-`read`, `write`, `edit`, `bash`, `ls`, `grep`, `find`, Exa search, and the compact
+`read`, `write`, `edit`, `bash`, `ls`, Exa search, and the compact
 Chrome DevTools MCP proxy. It additionally owns `dispatch_subagent`, `show_widget`,
 and `publish_voice_message`. It can therefore do quick or sequential work itself
 and dispatch independent children when parallelism or a separate context helps.
 A serialized mailbox prevents concurrent prompts from corrupting router context.
 
-Internal steering sends a JSONL command over the selected container's stdin. During
-an active run it calls Pi's `session.steer()`; while ONLINE and idle it calls
-`session.prompt()` on the same retained session. Steering is cooperative, so a
-shell command already in flight may finish first. Instructions sent while a
-container is still starting are queued by the host and flushed as soon as stdin
-is available. Workers have no normal finished state: they remain ONLINE until
-explicitly stopped or Ambient exits. Cancelling a top-level job marks its children stopped,
-asks Pi to abort cleanly over the same channel, and force-kills the container after
-a short grace period if it has not exited.
-
-Each worker is one `pi` session in its own container, started from `docker/worker`.
-The user selects a host folder with **FILES**; Ambient persists that choice and
-mounts it read/write at `/work` for every worker. All workers therefore see the
-same files, and their output appears on the host immediately. Nothing else from
-the host filesystem is visible. Workers get `read`, `write`, `edit`, `bash`, `ls`,
-`grep`, and `find`, and tool calls become stops on the board. Workers also receive
-`exa_search` when `EXA_API_KEY` is configured. Chrome DevTools is integrated through
-`pi-mcp-adapter`: Pi sees one compact `mcp` proxy tool, discovers Chrome tools on
-demand, and starts the MCP server lazily instead of placing 29 schemas in every
-prompt. **BROWSER HEADLESS/VISIBLE** in the cockpit controls newly dispatched
-workers. Headless mode runs isolated Chromium in the container. Visible mode
-launches a dedicated host Chrome profile and connects to it through a temporary
-DevTools proxy, so browser actions are visible without exposing the user's normal
-Chrome profile. In visible mode, a worker records pre-existing tabs before browsing;
-at each checkpoint it selects the relevant result page and closes only intermediate
-tabs it opened. Other users' or workers' pre-existing tabs are preserved. MCP usage
-statistics, update checks, and CrUX lookups are disabled.
-
-Workers route web work by intent: factual lookups (pricing, docs, comparisons,
-current facts) use Exa first and avoid launching Chrome when primary-source search
-results are sufficient. Interaction requests (configure, enable, change, click,
-fill, navigate) use Chrome and perform the requested action. Dynamic pages and
-live verification can also escalate from Exa to Chrome.
-The selected provider and model are passed per dispatch. Ambient's app-specific Pi credential directory
-is mounted at `/home/node/.pi/agent`, allowing OAuth refreshes to persist.
-Each dispatch also receives freshly formatted local date/time and the saved
-location, and retained workers receive refreshed context when they are steered.
+Each subagent is a one-shot Electron utility process: it receives one launch
+payload, runs one Pi session, reports once, and exits. There is no steering or
+idle session to manage; cancellation asks Pi to abort and then terminates the
+process tree. Subagents get `read`, `write`, `edit`, `bash`, and `ls`, and tool
+calls become stops on the board. When the job's captured network policy allows
+it, they also receive `exa_search` (with `EXA_API_KEY` configured) and the
+Chrome DevTools MCP proxy through `pi-mcp-adapter`. **BROWSER HEADLESS/VISIBLE**
+in the cockpit controls newly dispatched subagents. Headless mode runs isolated
+Chromium; visible mode launches a dedicated host Chrome profile and connects to
+its DevTools endpoint over loopback, so browser actions are visible without
+exposing the user's normal Chrome profile. MCP usage statistics, update checks,
+and CrUX lookups are disabled. The selected provider and model are passed per
+dispatch, and each dispatch receives freshly formatted local date/time and the
+saved location.
 
 ### Timeline results
 
@@ -143,7 +121,7 @@ findings into one coherent timeline result. The tool supports three formats:
 - `markdown` is the default for compact reports, lists, comparisons, and tables.
 - `html` is reserved for simple responsive visuals that Markdown cannot express.
 - `image` accepts HTTPS/data URLs or PNG, JPEG, WebP, and GIF files saved inside
-  the mounted `/work` workspace, including useful Chrome DevTools screenshots.
+  the selected workspace, including useful Chrome DevTools screenshots.
 
 Every format can include up to four tappable HTTP(S) links. Image widgets can
 also include a short Markdown caption, making route results work as a map
@@ -155,39 +133,38 @@ that timeline item in place; omitting it appends a new item. Timeline items are
 ordered by arrival, external links open in the system browser, and the renderer
 sizes HTML previews to their content with a height cap suitable for narrow windows.
 
-The image includes a writable Python virtual environment at `/opt/pyenv` (already
-on `PATH`). It covers common HTTP, scraping, data-science, spreadsheet, document,
-image, plotting, web-service, database, cloud, typing, linting, and testing work:
-NumPy, pandas, Polars, SciPy, scikit-learn, OpenPyXL, XlsxWriter, python-docx,
-python-pptx, PyPDF2, Pillow, Matplotlib, Seaborn, Requests, HTTPX, aiohttp,
-Beautiful Soup, lxml, FastAPI, Flask, Uvicorn, SQLAlchemy, Pydantic, boto3,
-pytest, Ruff, mypy, Rich, and related utilities. Workers can install additional
-packages into the same venv with normal `pip install`. System utilities include
-zip/unzip, SQLite, a compiler toolchain, Git, ripgrep, curl, jq, and Chromium.
+Subagents run with the host's normal user toolchain (Git, Python, Node, and any
+other installed CLIs), constrained by the sandbox below rather than by a curated
+container image.
 
 ### Security posture
 
-pi ships no permission system. Child workers remain containerized, but the router
-currently runs in Electron's main process with unrestricted host tools. Its `cwd`
-is the selected workspace (or a private scratch folder before one is selected),
-but `bash` can access paths outside that directory. This is intentionally an
-experimental, unsandboxed router configuration; only use it with trusted requests
-and content.
+Router and subagent tool calls run inside Anthropic's Sandbox Runtime (macOS
+Seatbelt). `bash` commands are wrapped by the OS sandbox; the native `read`,
+`write`, `edit`, and `ls` tools are gated by an equivalent path policy before
+they execute. Agents see pi's normal tool names and errors — never sandbox
+configuration.
 
-For child workers, the container remains the boundary:
+- **Reads** are broad, except credential stores: Ambient's pi agent directory,
+  `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`, `~/.config/gcloud`,
+  macOS Keychains, browser profiles, and any `.env`, `.env.*`, `*.pem`, or
+  `*.key` file. Secret-named environment variables (API keys, tokens, passwords)
+  are stripped from command environments.
+- **Writes** are allowed only inside the selected workspace and a private
+  per-task temp directory. `.git` is read-only. Paths are canonicalized with
+  symlinks resolved before authorization, so traversal and symlink escapes fail.
+- **Network** is governed by the **NETWORK** toggle in the cockpit. It defaults
+  OFF on every launch and is captured by each top-level job at dispatch time —
+  running jobs and their subagents keep their original value. OFF blocks shell
+  egress (all outbound traffic is forced through a deny-all local proxy), Exa,
+  and browser MCP tools; ON permits them for that job. The model-provider
+  connection itself is made by the host runtime, outside the tool sandbox.
+  Loopback dev servers keep working in both states.
+- **Untracked workspace files remain writable — and therefore deletable — by
+  the agent.** Git plus the sandbox is the chosen protection model; the secret
+  deny list is defense-in-depth, not a guarantee that every personal file is
+  classified.
+- macOS Apple Events, `open`, and application launching stay disabled.
 
-- Only the explicitly selected workspace is mounted at `/work`, read/write.
-  Workers have full control inside it, including deletion. Other host paths are
-  invisible; Ambient deliberately does not mount the home directory read-only.
-- `--cap-drop=ALL`, `--security-opt=no-new-privileges`, non-root user.
-- Capped at 2 CPUs, 2 GB, 512 pids.
-- The task and provider selection are passed as environment variables rather
-  than command-line arguments. Docker container metadata can still expose
-  environment values to users who can access the Docker daemon.
-- Ambient's Pi credential directory is mounted read/write. Every worker can use
-  every provider credential saved through Ambient, and can persist token refreshes.
-
-**Network is not restricted**, because workers have to reach model-provider,
-Exa, and browser targets. Browser pages and search results are untrusted content.
-A worker can therefore fetch and send data. Treat worker output as untrusted, and
-do not hand a worker a task containing secrets.
+Subagent reports, web pages, and search results are untrusted content. Treat
+their output as data, and do not hand a task text containing secrets.

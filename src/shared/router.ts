@@ -7,6 +7,7 @@ export type WorkJob = Readonly<{
   request: string;
   status: WorkStatus;
   childWorkers: readonly string[];
+  networkEnabled: boolean;
   createdAt: number;
   result: string | null;
   error: string | null;

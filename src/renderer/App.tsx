@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AuthState } from '@/shared/auth';
 import type { BrowserState } from '@/shared/browser';
+import type { NetworkState } from '@/shared/sandbox';
 import type { WorkspaceState } from '@/shared/workspace';
 import { useSession } from './use-session';
 import { AuthPanel } from './components/AuthPanel';
@@ -19,6 +20,7 @@ export function App() {
   const [authState, setAuthState] = useState<AuthState | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceState>({ path: null, name: null });
   const [browser, setBrowser] = useState<BrowserState>({ mode: 'headless', available: false });
+  const [network, setNetwork] = useState<NetworkState>({ enabled: false });
   const [dismissedDisplayIds, setDismissedDisplayIds] = useState<ReadonlySet<string>>(() => new Set());
   const authInitialized = useRef(false);
   const timelineEndRef = useRef<HTMLDivElement>(null);
@@ -28,7 +30,13 @@ export function App() {
     if (!bridge) return;
     void bridge.getWorkspace().then(setWorkspace);
     void bridge.getBrowserState().then(setBrowser);
-    return bridge.onWorkspaceChanged(setWorkspace);
+    void bridge.getNetworkState().then(setNetwork);
+    const offNetwork = bridge.onNetworkChanged(setNetwork);
+    const offWorkspace = bridge.onWorkspaceChanged(setWorkspace);
+    return () => {
+      offNetwork();
+      offWorkspace();
+    };
   }, []);
 
   const handleAuthState = (next: AuthState) => {
@@ -94,6 +102,7 @@ export function App() {
               <MiniControl onClick={openSetup}>MODEL · {authState?.selection?.model ?? 'SELECT'}</MiniControl>
               <MiniControl onClick={() => void window.ambient?.selectWorkspace()}>FILES · {workspace.name ?? 'SELECT'}</MiniControl>
               <MiniControl disabled={!browser.available} onClick={() => void window.ambient?.setBrowserMode(browser.mode === 'headless' ? 'visible' : 'headless').then(setBrowser)}>BROWSER · {browser.mode.toUpperCase()}</MiniControl>
+              <MiniControl onClick={() => void window.ambient?.setNetworkEnabled(!network.enabled).then(setNetwork)}>NETWORK · {network.enabled ? 'ON' : 'OFF'}</MiniControl>
             </div>
             <DepartureBoard workers={session.workers} />
           </div>

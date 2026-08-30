@@ -3,6 +3,7 @@ import type { AuthEvent, AuthMethod, AuthState, DelegationSelection } from '../s
 import type { BrowserMode, BrowserState } from '../shared/browser';
 import type { LocalContextState, LocalContextUpdate } from '../shared/local-context';
 import type { CancelWorkResult, DispatchWorkResult, RouterEvent, WorkJob } from '../shared/router';
+import type { NetworkState } from '../shared/sandbox';
 import type { WorkerEvent } from '../shared/worker';
 import type { WorkspaceState } from '../shared/workspace';
 
@@ -19,6 +20,13 @@ contextBridge.exposeInMainWorld('ambient', {
   openWorkspace: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:open'),
   getBrowserState: (): Promise<BrowserState> => ipcRenderer.invoke('browser:state'),
   setBrowserMode: (mode: BrowserMode): Promise<BrowserState> => ipcRenderer.invoke('browser:set-mode', mode),
+  getNetworkState: (): Promise<NetworkState> => ipcRenderer.invoke('network:state'),
+  setNetworkEnabled: (enabled: boolean): Promise<NetworkState> => ipcRenderer.invoke('network:set', enabled),
+  onNetworkChanged: (listener: (state: NetworkState) => void) => {
+    const handler = (_: unknown, state: NetworkState) => listener(state);
+    ipcRenderer.on('network:event', handler);
+    return () => ipcRenderer.off('network:event', handler);
+  },
   getLocationState: (): Promise<LocalContextState> => ipcRenderer.invoke('location:state'),
   setLocation: (input: LocalContextUpdate): Promise<LocalContextState> => ipcRenderer.invoke('location:set', input),
   clearLocation: (): Promise<LocalContextState> => ipcRenderer.invoke('location:clear'),
