@@ -13,7 +13,8 @@ import {
   REALTIME_VOICE,
 } from '@/shared/config';
 import { formatCurrentContext, type LocalContextState } from '@/shared/local-context';
-import type { Worker } from '@/shared/worker';
+import type { RouterVoiceMessage, WorkJob } from '@/shared/router';
+import type { TimelineDisplay, Worker } from '@/shared/worker';
 
 const TRACE_LENGTH = 72;
 const PROGRESS_GAP_MS = 12_000;
@@ -23,6 +24,7 @@ const bridge = window.ambient;
 export type SessionView = {
   status: 'disconnected' | 'connecting' | 'connected' | 'error';
   workers: readonly Worker[];
+  timelineItems: readonly Readonly<{ job: WorkJob; display: TimelineDisplay }>[];
   inTrace: readonly number[];
   outTrace: readonly number[];
   listening: boolean;
@@ -37,9 +39,7 @@ export type SessionView = {
   toggleMute: () => void;
 };
 
-type Announcement =
-  | Readonly<{ kind: 'progress'; summary: string }>
-  | Readonly<{ kind: 'report'; worker: Worker }>;
+type Announcement = RouterVoiceMessage;
 
 const upsert = (workers: readonly Worker[], next: Worker): readonly Worker[] => {
   const index = workers.findIndex((worker) => worker.name === next.name);
@@ -48,19 +48,13 @@ const upsert = (workers: readonly Worker[], next: Worker): readonly Worker[] => 
 };
 
 const announcementInstruction = (announcement: Announcement) => {
-  if (announcement.kind === 'progress') {
-    return `Speak exactly this progress update and nothing else: “${announcement.summary}”`;
-  }
-  const { worker } = announcement;
-  if (worker.status === 'cancelled') return 'Tell the user exactly: “Stopped.”';
-  if (worker.status === 'idle') {
-    const latestDisplay = worker.displays.at(-1);
-    const visualContext = latestDisplay
-      ? ` A ${latestDisplay.format} timeline item titled “${latestDisplay.title}” is now visible. Tell the user it is on screen and speak only the key takeaway; do not read the whole item aloud.`
-      : '';
-    return `The requested background work finished.${visualContext} Give the user its definitive result naturally and concisely. Do not call it an update, checkpoint, or provisional result. Result: ${worker.summary ?? '(no summary)'}`;
-  }
-  return `Tell the user briefly that the task failed and give this reason: ${worker.error ?? 'unknown'}`;
+  const visualContext = announcement.displayTitle
+    ? ` A timeline item titled “${announcement.displayTitle}” is visible. Mention that it is on screen without reading it aloud.`
+    : '';
+  if (announcement.kind === 'progress') return `Speak exactly this brief progress update and nothing else: “${announcement.text}”`;
+  if (announcement.kind === 'clarification') return `Ask the user this clarification naturally and concisely: ${announcement.text}`;
+  if (announcement.kind === 'error') return `Give the user this work status plainly and briefly: ${announcement.text}`;
+  return `The requested work is complete.${visualContext} Give the definitive result naturally and concisely: ${announcement.text}`;
 };
 
 const stringify = (value: unknown) => JSON.stringify(value);
@@ -68,22 +62,6 @@ const stringify = (value: unknown) => JSON.stringify(value);
 function createVoiceTools() {
   if (!bridge) return [];
   return [
-    tool({
-      name: 'phone_a_friend',
-      description:
-        'Get an independent second opinion. Before calling, tell the user “I’m getting a second opinion.” Use for tradeoffs, difficult judgment, unfamiliar domains, ambiguous requests, and before a possibly unnecessary refusal. Ask broadly, share rich relevant context, and invite overlooked concerns or better approaches.',
-      parameters: z.object({
-        question: z.string().describe('Broad question about what to do, decide, check, or reconsider.'),
-        context: z.string().optional().describe('Relevant conversation, task history, constraints, attempted approach, and available evidence.'),
-      }),
-      execute: async ({ question, context }) => {
-        const answer = await bridge.askAdvisor(question.trim(), context?.trim());
-        return stringify({
-          answer,
-          instruction: 'Evaluate this independent advice against the user’s intent and your full context, then use the helpful parts. If it requests missing evidence, investigate rather than guess.',
-        });
-      },
-    }),
     tool({
       name: 'select_workspace',
       description:
@@ -103,53 +81,32 @@ function createVoiceTools() {
       execute: async () => stringify(await bridge.openWorkspace()),
     }),
     tool({
-      name: 'spawn_worker',
+      name: 'dispatch_work',
       description:
-        'Dispatch a Pi worker for code, files, search, or browser automation. Workers can add concise Markdown, HTML, or image results with tappable links to the Ambient timeline. For maps and places, request a useful screenshot, a short caption, and a direct map link. A worker can reuse a widgetId to update its existing widget, or omit it to append another. Always use Exa first for factual lookups; only use the browser when Exa is insufficient or interaction is required. Returns immediately.',
+        'Submit any request that needs reasoning or real work to the durable router. The router may answer quickly or dispatch isolated subagents, synthesize their results, and decide whether to show a widget. Returns immediately.',
       parameters: z.object({
-        task: z.string().describe('Complete self-contained task with all relevant context and expected result. If the user requested a widget, screenshot, table, or timeline item, explicitly require show_widget and state the desired format.'),
+        task: z.string().describe('Complete user request with all relevant conversational context, constraints, and desired outcome.'),
       }),
       execute: async ({ task }) => {
-        const workspace = await bridge.getWorkspace();
-        if (!workspace.path) {
-          return stringify({ error: 'No workspace selected. Call select_workspace, then retry.' });
-        }
-        const worker = await bridge.dispatchWorker(task);
+        const job = await bridge.dispatchWork(task);
         return stringify({
-          worker: worker.name,
-          status: 'dispatched',
+          ...job,
           instruction:
-            'Say only “I’m [short concrete present-progressive action].” Never say “I’m thinking,” “On it,” or the worker name.',
+            'Say only “I’m [short concrete present-progressive action].” Never mention routing, job IDs, workers, or subagents.',
         });
       },
     }),
     tool({
-      name: 'stop_worker',
-      description: 'Immediately stop a queued, running, or online worker when the user asks to stop or cancel it.',
-      parameters: z.object({ worker: z.string() }),
-      execute: async ({ worker }) => stringify(await bridge.stopWorker(worker)),
+      name: 'cancel_work',
+      description: 'Cancel a previously dispatched top-level work job when the user asks to stop it.',
+      parameters: z.object({ jobId: z.string() }),
+      execute: async ({ jobId }) => stringify(await bridge.cancelWork(jobId)),
     }),
     tool({
-      name: 'steer_worker',
-      description: 'Redirect a running or online worker while preserving its Pi session context.',
-      parameters: z.object({ worker: z.string(), instruction: z.string() }),
-      execute: async ({ worker, instruction }) => stringify(await bridge.steerWorker(worker, instruction)),
-    }),
-    tool({
-      name: 'list_workers',
-      description: 'Return every worker’s task, status, current activity, checkpoint, and error.',
+      name: 'list_work',
+      description: 'Return top-level work jobs and their status. Use when the user asks what is happening.',
       parameters: z.object({}),
-      execute: async () => {
-        const workers = (await bridge.listWorkers()).map((worker) => ({
-          name: worker.name,
-          task: worker.task,
-          status: worker.status,
-          currentActivity: worker.stops.at(-1) ?? null,
-          summary: worker.status === 'idle' ? worker.summary : null,
-          error: worker.status === 'failed' ? worker.error : null,
-        }));
-        return stringify({ workers });
-      },
+      execute: async () => stringify({ jobs: await bridge.listWork() }),
     }),
   ];
 }
@@ -173,6 +130,7 @@ function transcriptFromHistory(history: RealtimeItem[]): string {
 export function useSession(): SessionView {
   const [status, setStatus] = useState<SessionView['status']>('disconnected');
   const [workers, setWorkers] = useState<readonly Worker[]>([]);
+  const [timelineItems, setTimelineItems] = useState<readonly Readonly<{ job: WorkJob; display: TimelineDisplay }>[] >([]);
   const [inTrace, setInTrace] = useState<readonly number[]>(emptyTrace);
   const [outTrace, setOutTrace] = useState<readonly number[]>(emptyTrace);
   const [listening, setListening] = useState(false);
@@ -221,9 +179,7 @@ export function useSession(): SessionView {
       queuedAnnouncements.current.push(announcement);
       return;
     }
-    queuedAnnouncements.current = queuedAnnouncements.current.filter(
-      (queued) => queued.kind !== 'report' || queued.worker.name !== announcement.worker.name,
-    );
+    queuedAnnouncements.current = queuedAnnouncements.current.filter((queued) => queued.jobId !== announcement.jobId);
     queuedAnnouncements.current.unshift(announcement);
   }, []);
 
@@ -240,7 +196,10 @@ export function useSession(): SessionView {
 
   const deliverAnnouncement = useCallback((announcement: Announcement) => {
     const transport = transportRef.current;
-    if (!transport || !connectedRef.current) return;
+    if (!transport || !connectedRef.current) {
+      enqueueAnnouncement(announcement);
+      return;
+    }
     if (responseActiveRef.current || listeningRef.current || speakingRef.current) {
       enqueueAnnouncement(announcement);
       return;
@@ -283,26 +242,32 @@ export function useSession(): SessionView {
   useEffect(() => {
     if (!bridge) return;
     return bridge.onWorkerEvent((event) => {
-      if (event.kind === 'fleet-progress') {
-        setLastReport(`FLEET — ${event.summary}`);
-        if (connectedRef.current) {
-          deliverAnnouncementRef.current({ kind: 'progress', summary: event.summary });
-        }
-        return;
-      }
-
       setWorkers((current) => upsert(current, event.worker));
       if (event.kind === 'update') return;
       setLastReport(
         event.worker.status === 'idle'
-          ? `${event.worker.name} — ONLINE: ${event.worker.summary ?? 'checkpoint reached'}`
+          ? `${event.worker.name} — ONLINE: result returned to router`
           : event.worker.status === 'cancelled'
             ? `${event.worker.name} — STOPPED`
             : `${event.worker.name} — FAILED: ${event.worker.error ?? 'unknown'}`,
       );
-      if (connectedRef.current) {
-        deliverAnnouncementRef.current({ kind: 'report', worker: event.worker });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!bridge) return;
+    return bridge.onRouterEvent((event) => {
+      if (event.kind === 'display') {
+        setTimelineItems((current) => {
+          const index = current.findIndex((item) => item.display.id === event.display.id);
+          if (index === -1) return [...current, { job: event.job, display: event.display }];
+          return current.map((item, itemIndex) => itemIndex === index ? { job: event.job, display: event.display } : item);
+        });
+        return;
       }
+      if (event.kind === 'job') return;
+      setLastReport(`ROUTER — ${event.message.text}`);
+      deliverAnnouncementRef.current(event.message);
     });
   }, []);
 
@@ -424,6 +389,7 @@ export function useSession(): SessionView {
       await realtime.connect({ apiKey: tokenPayload.token, model: REALTIME_MODEL_ID });
       connectedRef.current = true;
       setStatus('connected');
+      drainAnnouncementsRef.current();
     })()
       .catch((cause: unknown) => {
         realtimeRef.current?.close();
@@ -443,7 +409,6 @@ export function useSession(): SessionView {
     connectingRef.current = false;
     connectedRef.current = false;
     responseActiveRef.current = false;
-    queuedAnnouncements.current = [];
     if (announcementTimer.current) clearTimeout(announcementTimer.current);
     announcementTimer.current = null;
     realtimeRef.current?.close();
@@ -483,6 +448,7 @@ export function useSession(): SessionView {
   return {
     status,
     workers,
+    timelineItems,
     inTrace,
     outTrace,
     listening,

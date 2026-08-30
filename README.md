@@ -61,59 +61,48 @@ Whisper quota requirement.
 | `src/main/main.ts` | Window, mic permission, env loading |
 | `src/main/token-server.ts` | Loopback endpoint that mints ephemeral tokens |
 | `src/shared/config.ts` | Model id, voice, instructions, audio format |
-| `src/renderer/use-session.ts` | Realtime session, mic analysis, tool calls, worker reports |
+| `src/renderer/use-session.ts` | Realtime session, mic analysis, work dispatch, router reports |
+| `src/main/router.ts` | Durable router session, job mailbox, subagent and presentation tools |
 | `src/main/workers.ts` | Worker registry and container lifecycle |
 | `src/main/docker.ts` | Image build and Docker availability |
 | `docker/worker/` | Worker image: pi + the JSONL entry script |
 | `src/renderer/App.tsx` | The cluster |
 
-## Workers
+## Router and workers
 
-The voice agent has seven tools: `phone_a_friend`, `spawn_worker`, `steer_worker`,
-`stop_worker`, `list_workers`, `select_workspace`, and `open_workspace`.
+The voice agent has five tools: `dispatch_work`, `cancel_work`, `list_work`,
+`select_workspace`, and `open_workspace`. It submits top-level intent
+instead of planning or addressing individual workers.
 
-`phone_a_friend` sends one focused question and concise factual context directly
-to the separately selectable **ADVISOR** model through Pi's `completeSimple()`.
-It is tool-free and does not spawn a coding session. The advisor returns a direct
-recommendation to the realtime orchestrator, which incorporates it into its reply.
-
-`spawn_worker` is deliberately **asynchronous**. It returns as soon as the worker
-has an internal callsign — it never waits for the work. The voice model calls the
-tool without a preamble, then gives one present-progressive acknowledgement such
-as “I’m checking the current pricing.” It does not speak the callsign or narrate
-that it is thinking.
+`dispatch_work` is deliberately **asynchronous**. The main process records a job,
+queues it in the router mailbox, and immediately returns `{ jobId, status:
+"accepted" }`. The voice model then gives one present-progressive acknowledgement
+such as “I’m checking the current pricing.” It never exposes job IDs or routing.
 
 ```
-model calls spawn_worker(task)
-  → renderer onToolCall → IPC → main dispatches, returns { worker: "KESTREL", status: "dispatched" }
-  → container starts behind it, streaming JSONL progress to the board
-  → on checkpoint, the report enters the realtime session as a new message;
-    the SDK's response sequencer lets the agent say it out loud
-  → the Pi session and container remain ONLINE for steering or follow-up work
+voice calls dispatch_work(task)
+  → IPC → router mailbox, returns { jobId, status: "accepted" }
+  → router answers quick reasoning itself or calls dispatch_subagent
+  → child containers stream JSONL telemetry to the board
+  → child results return only to the router
+  → router synthesizes, optionally calls show_widget, then publish_voice_message
+  → renderer's response sequencer delivers the result when voice is free
 ```
 
-That last step is the only way to speak after a tool call has already returned:
-the result is long gone, so the report enters as a fresh conversation item.
-Every five seconds, the host takes one snapshot of the entire active fleet—not
-one snapshot per worker. The separately selectable summary model receives every
-active task, its recent tools and current activity, plus the previous fleet
-digest. It combines them into at most two sentences and 40 words, or returns
-`SKIP` when nothing user-meaningful changed. One initial orientation is required;
-a 30-second maximum-silence heartbeat keeps long operations observable.
+The router is a host-side Pi session with the same working tools as a child:
+`read`, `write`, `edit`, `bash`, `ls`, `grep`, `find`, Exa search, and the compact
+Chrome DevTools MCP proxy. It additionally owns `dispatch_subagent`, `show_widget`,
+and `publish_voice_message`. It can therefore do quick or sequential work itself
+and dispatch independent children when parallelism or a separate context helps.
+A serialized mailbox prevents concurrent prompts from corrupting router context.
 
-The renderer therefore receives at most one provisional fleet digest per cycle,
-regardless of whether one worker or ten are active. Newer queued digests replace
-older ones, and the global five-second speech gap remains as a final guard.
-Authoritative checkpoints and failures still arrive as reports. Progress never
-announces provisional research facts, and reports supersede stale telemetry.
-
-`steer_worker` sends a JSONL command over the selected container's stdin. During
+Internal steering sends a JSONL command over the selected container's stdin. During
 an active run it calls Pi's `session.steer()`; while ONLINE and idle it calls
 `session.prompt()` on the same retained session. Steering is cooperative, so a
 shell command already in flight may finish first. Instructions sent while a
 container is still starting are queued by the host and flushed as soon as stdin
 is available. Workers have no normal finished state: they remain ONLINE until
-explicitly stopped or Ambient exits. `stop_worker` marks work stopped,
+explicitly stopped or Ambient exits. Cancelling a top-level job marks its children stopped,
 asks Pi to abort cleanly over the same channel, and force-kills the container after
 a short grace period if it has not exited.
 
@@ -147,8 +136,9 @@ location, and retained workers receive refreshed context when they are steered.
 
 ### Timeline results
 
-Workers use `show_widget` to add glanceable results to the scrolling timeline.
-The tool supports three formats:
+Only the router has `show_widget`. Subagents return findings, links, and useful
+artifact paths; the router decides whether a visual helps and combines parallel
+findings into one coherent timeline result. The tool supports three formats:
 
 - `markdown` is the default for compact reports, lists, comparisons, and tables.
 - `html` is reserved for simple responsive visuals that Markdown cannot express.
@@ -160,15 +150,10 @@ also include a short Markdown caption, making route results work as a map
 screenshot, a few essential directions, and an **Open in Google Maps** action
 without embedding another browser in Ambient.
 
-Workers may pass a stable `widgetId`. Calling `show_widget` again with the same
-ID replaces that agent's earlier widget in place; omitting the ID appends a new
-timeline item. This lets a retained agent revise a result after being steered
-while preserving older, distinct results.
-
-Legacy calls that provide only an `html` field remain supported. Timeline items
-are ordered by arrival, external links open in the system browser, and the
-renderer sizes HTML previews to their content with a height cap suitable for
-narrow windows.
+The router may pass a stable `widgetId`. Reusing it within the same job updates
+that timeline item in place; omitting it appends a new item. Timeline items are
+ordered by arrival, external links open in the system browser, and the renderer
+sizes HTML previews to their content with a height cap suitable for narrow windows.
 
 The image includes a writable Python virtual environment at `/opt/pyenv` (already
 on `PATH`). It covers common HTTP, scraping, data-science, spreadsheet, document,
@@ -182,8 +167,14 @@ zip/unzip, SQLite, a compiler toolchain, Git, ripgrep, curl, jq, and Chromium.
 
 ### Security posture
 
-pi ships no permission system — inside the container its bash tool is
-unrestricted. The container is the boundary:
+pi ships no permission system. Child workers remain containerized, but the router
+currently runs in Electron's main process with unrestricted host tools. Its `cwd`
+is the selected workspace (or a private scratch folder before one is selected),
+but `bash` can access paths outside that directory. This is intentionally an
+experimental, unsandboxed router configuration; only use it with trusted requests
+and content.
+
+For child workers, the container remains the boundary:
 
 - Only the explicitly selected workspace is mounted at `/work`, read/write.
   Workers have full control inside it, including deletion. Other host paths are

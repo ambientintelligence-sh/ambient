@@ -2,7 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { AuthEvent, AuthMethod, AuthState, DelegationSelection } from '../shared/auth';
 import type { BrowserMode, BrowserState } from '../shared/browser';
 import type { LocalContextState, LocalContextUpdate } from '../shared/local-context';
-import type { Worker, WorkerEvent, WorkerSteerResult, WorkerStopResult } from '../shared/worker';
+import type { CancelWorkResult, DispatchWorkResult, RouterEvent, WorkJob } from '../shared/router';
+import type { WorkerEvent } from '../shared/worker';
 import type { WorkspaceState } from '../shared/workspace';
 
 const flag = '--realtime-setup-url=';
@@ -10,11 +11,9 @@ const setupUrl = process.argv.find((arg) => arg.startsWith(flag))?.slice(flag.le
 
 contextBridge.exposeInMainWorld('ambient', {
   setupUrl,
-  dispatchWorker: (task: string): Promise<Worker> => ipcRenderer.invoke('worker:dispatch', task),
-  steerWorker: (name: string, instruction: string): Promise<WorkerSteerResult> =>
-    ipcRenderer.invoke('worker:steer', name, instruction),
-  stopWorker: (name: string): Promise<WorkerStopResult> => ipcRenderer.invoke('worker:stop', name),
-  listWorkers: (): Promise<Worker[]> => ipcRenderer.invoke('worker:list'),
+  dispatchWork: (task: string): Promise<DispatchWorkResult> => ipcRenderer.invoke('work:dispatch', task),
+  listWork: (): Promise<WorkJob[]> => ipcRenderer.invoke('work:list'),
+  cancelWork: (id: string): Promise<CancelWorkResult> => ipcRenderer.invoke('work:cancel', id),
   getWorkspace: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:state'),
   selectWorkspace: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:select'),
   openWorkspace: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:open'),
@@ -39,9 +38,6 @@ contextBridge.exposeInMainWorld('ambient', {
   cancelLogin: (): Promise<void> => ipcRenderer.invoke('auth:cancel'),
   logout: (providerId: string): Promise<AuthState> => ipcRenderer.invoke('auth:logout', providerId),
   selectDelegationModel: (selection: DelegationSelection): Promise<AuthState> => ipcRenderer.invoke('auth:select', selection),
-  selectSummaryModel: (selection: DelegationSelection): Promise<AuthState> => ipcRenderer.invoke('auth:select-summary', selection),
-  selectAdvisorModel: (selection: DelegationSelection): Promise<AuthState> => ipcRenderer.invoke('auth:select-advisor', selection),
-  askAdvisor: (question: string, context?: string): Promise<string> => ipcRenderer.invoke('advisor:ask', question, context),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('auth:open-url', url),
   onAuthEvent: (listener: (event: AuthEvent) => void) => {
     const handler = (_: unknown, event: AuthEvent) => listener(event);
@@ -52,5 +48,10 @@ contextBridge.exposeInMainWorld('ambient', {
     const handler = (_: unknown, event: WorkerEvent) => listener(event);
     ipcRenderer.on('worker:event', handler);
     return () => ipcRenderer.off('worker:event', handler);
+  },
+  onRouterEvent: (listener: (event: RouterEvent) => void) => {
+    const handler = (_: unknown, event: RouterEvent) => listener(event);
+    ipcRenderer.on('router:event', handler);
+    return () => ipcRenderer.off('router:event', handler);
   },
 });

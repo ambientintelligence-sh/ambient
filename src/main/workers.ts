@@ -4,17 +4,15 @@ import { nextWorkerName } from './worker-names';
 import type { DelegationSelection } from '../shared/auth';
 import type { BrowserMode } from '../shared/browser';
 import { formatCurrentContext, type LocalContextState } from '../shared/local-context';
-import { isTerminal, type Worker, type WorkerDisplay, type WorkerEvent, type WorkerStop } from '../shared/worker';
+import { isTerminal, type Worker, type WorkerEvent, type WorkerStop } from '../shared/worker';
 
 const MAX_STOPS = 8;
-const PROGRESS_INTERVAL_MS = 10_000;
 
 /** One line of the worker's stdout protocol (see docker/worker/entry.mjs). */
 type WorkerMessage =
   | { type: 'ready' }
   | { type: 'tool'; id: string; tool: string; detail?: string }
   | { type: 'tool_result'; id: string; tool: string; result?: string; isError: boolean }
-  | { type: 'display'; widgetId?: string | null; title: string; format?: 'html' | 'markdown' | 'image'; content?: string; html?: string; alt?: string | null; caption?: string | null; links?: { label: string; url: string }[] }
   | { type: 'done'; summary: string }
   | { type: 'error'; message: string };
 
@@ -25,15 +23,7 @@ export type WorkerFleet = ReturnType<typeof createWorkerFleet>;
 export function createWorkerFleet(options: {
   emit: (event: WorkerEvent) => void;
   getSelection: () => DelegationSelection;
-  summarizeProgress: (input: {
-    activities: readonly {
-      task: string;
-      activity: string;
-      recentSteps: string;
-    }[];
-    previousSummary: string | null;
-    mandatory: boolean;
-  }) => Promise<string | null>;
+  onReport: (worker: Worker) => void;
   getWorkspace: () => string | null;
   getBrowserConfig: () => Promise<{ mode: BrowserMode; browserUrl?: string }>;
   getLocalContext: () => LocalContextState;
@@ -44,63 +34,13 @@ export function createWorkerFleet(options: {
   const containerByWorker = new Map<string, string>();
   const readyWorkers = new Set<string>();
   const pendingSteers = new Map<string, string[]>();
-  let lastFleetKey = '';
-  let lastFleetSummary: string | null = null;
-  let fleetSummarizing = false;
-
-  const progressTimer = setInterval(() => {
-    const active = [...workers.values()].filter((worker) => worker.status === 'running');
-    if (active.length === 0) {
-      lastFleetKey = '';
-      lastFleetSummary = null;
-      return;
-    }
-    if (fleetSummarizing) return;
-
-    const activities = active.map((worker) => {
-      const step = worker.stops.at(-1);
-      return {
-        task: worker.task,
-        activity: step
-          ? `${step.tool}${step.detail ? ` — ${step.detail}` : ''}`
-          : 'Analyzing the task and deciding the first action.',
-        recentSteps: worker.stops
-          .slice(-3)
-          .map((item) => `${item.tool} [${item.status}]: ${item.detail}${item.result ? ` => ${item.result}` : ''}`)
-          .join('\n'),
-      };
-    });
-    const key = active.map((worker) => {
-      const step = worker.stops.at(-1);
-      return `${worker.name}:${worker.stops.length}:${step?.tool ?? 'starting'}:${step?.detail ?? ''}:${step?.status ?? ''}`;
-    }).join('|');
-    const changed = key !== lastFleetKey;
-    if (!changed) return;
-
-    fleetSummarizing = true;
-    lastFleetKey = key;
-    void options.summarizeProgress({ activities, previousSummary: lastFleetSummary, mandatory: false })
-      .then((summary) => {
-        if (!summary) return;
-        const current = [...workers.values()].filter((worker) => worker.status === 'running');
-        if (current.length === 0) return;
-        lastFleetSummary = summary;
-        options.emit({ kind: 'fleet-progress', workers: current, summary });
-      })
-      .catch(() => {
-        // Progress narration is best-effort and must never fail workers.
-      })
-      .finally(() => {
-        fleetSummarizing = false;
-      });
-  }, PROGRESS_INTERVAL_MS);
-
   const patch = (name: string, change: (worker: Worker) => Worker, report = false) => {
     const current = workers.get(name);
     if (!current) return;
     const next = change(current);
     workers.set(name, next);
     options.emit({ kind: report ? 'report' : 'update', worker: next });
+    if (report) options.onReport(next);
   };
 
   const fail = (name: string, error: string) =>
@@ -155,40 +95,9 @@ export function createWorkerFleet(options: {
           ),
         }));
         return;
-      case 'display':
-        {
-          const format = message.format ?? 'html';
-          const content = message.content ?? message.html ?? '';
-          if (!content) return;
-        patch(name, (worker) => {
-          const widgetId = message.widgetId?.trim().slice(0, 80) || null;
-          const existing = widgetId ? worker.displays.find((display) => display.widgetId === widgetId) : null;
-          const display: WorkerDisplay = {
-            id: existing?.id ?? `${name}-${Date.now()}-${worker.displays.length}`,
-            widgetId,
-            title: message.title.trim().slice(0, 120) || 'Result',
-            format,
-            content: content.slice(0, format === 'image' ? 7_000_000 : 120_000),
-            alt: message.alt?.trim().slice(0, 300) || null,
-            caption: message.caption?.trim().slice(0, 2_000) || null,
-            links: (message.links ?? []).filter(({ url }) => /^https?:\/\//i.test(url)).slice(0, 4).map(({ label, url }) => ({
-              label: label.trim().slice(0, 60) || 'Open link',
-              url: url.trim().slice(0, 2_000),
-            })),
-            createdAt: existing?.createdAt ?? Date.now(),
-          };
-          return {
-            ...worker,
-            displays: existing
-              ? worker.displays.map((item) => item.id === existing.id ? display : item)
-              : [...worker.displays, display],
-          };
-        });
-        return;
-        }
       case 'done':
-        // Progress is provisional telemetry. Once a checkpoint arrives, remove
-        // those lines so stale observations cannot contradict the final report.
+        // Tool telemetry remains on the board; the closing text returns to the
+        // router for synthesis rather than going directly to voice.
         patch(name, (worker) => ({
           ...worker,
           status: 'idle',
@@ -355,16 +264,16 @@ export function createWorkerFleet(options: {
     },
 
     /** Returns as soon as the worker has a name — the container starts behind it. */
-    dispatch(task: string): Worker {
+    dispatch(task: string, parentJobId: string): Worker {
       const name = nextWorkerName(new Set(workers.keys()));
       const worker: Worker = {
         name,
         task,
+        parentJobId,
         status: 'queued',
         startedAt: clock(),
         stops: [],
         updates: [],
-        displays: [],
         summary: null,
         error: null,
       };
@@ -376,7 +285,6 @@ export function createWorkerFleet(options: {
 
     /** Containers are --rm, but a hard quit would otherwise leave them running. */
     shutdown() {
-      clearInterval(progressTimer);
       for (const container of containers) {
         spawn('docker', ['kill', container], { stdio: 'ignore' }).unref();
       }

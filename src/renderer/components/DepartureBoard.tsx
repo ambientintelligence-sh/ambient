@@ -8,7 +8,7 @@ const STATUS: Readonly<Record<WorkerStatus, { label: string; color: string }>> =
 };
 const colourOf = (name: string) => PALETTE[[...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % PALETTE.length];
 
-function Row({ worker, onDisplay }: { worker: Worker; onDisplay: (worker: Worker) => void }) {
+function Row({ worker }: { worker: Worker }) {
   const [expanded, setExpanded] = useState(false);
   const status = STATUS[worker.status];
   const hex = colourOf(worker.name);
@@ -81,7 +81,6 @@ function Row({ worker, onDisplay }: { worker: Worker; onDisplay: (worker: Worker
           )}
 
           {worker.summary && <p className="mt-4 border-t border-white/[0.06] pt-3 text-live"><span className="mr-2">RESULT</span>{worker.summary}</p>}
-          {worker.displays.length > 0 && <button type="button" onClick={() => onDisplay(worker)} className="mt-4 w-fit rounded border border-warn/40 px-3 py-2 label-xs text-warn hover:bg-warn/10">VIEW LATEST WIDGET</button>}
           {worker.error && <p className="mt-4 text-alert">ERROR · {worker.error}</p>}
         </div>
       )}
@@ -89,13 +88,13 @@ function Row({ worker, onDisplay }: { worker: Worker; onDisplay: (worker: Worker
   );
 }
 
-export function DepartureBoard({ workers, onDisplay }: { workers: readonly Worker[]; onDisplay: (worker: Worker) => void }) {
+export function DepartureBoard({ workers }: { workers: readonly Worker[] }) {
   return (
     <section className="board-scan relative min-h-[300px] overflow-hidden rounded-xl border border-white/[0.09] bg-[#04060a]">
       <div className="grid grid-cols-[76px_minmax(0,1fr)_76px] gap-3 border-b border-white/[0.07] px-3 py-3">
         <span className="label-xs text-[#5d6672]">TIME / AGENT</span><span className="label-xs text-[#5d6672]">DESTINATION / ACTIVITY</span><span className="label-xs text-right text-[#5d6672]">STATUS</span>
       </div>
-      {workers.length === 0 ? <div className="grid min-h-[250px] place-items-center text-center"><div><p className="font-mono text-[20px] text-[#333a43]">— — —</p><p className="label-xs mt-3 text-[#4b535d]">NO SERVICES DEPARTED</p></div></div> : workers.map((worker) => <Row key={worker.name} worker={worker} onDisplay={onDisplay} />)}
+      {workers.length === 0 ? <div className="grid min-h-[250px] place-items-center text-center"><div><p className="font-mono text-[20px] text-[#333a43]">— — —</p><p className="label-xs mt-3 text-[#4b535d]">NO SERVICES DEPARTED</p></div></div> : workers.map((worker) => <Row key={worker.name} worker={worker} />)}
     </section>
   );
 }

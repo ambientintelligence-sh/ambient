@@ -11,7 +11,6 @@ import {
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
 import { createExaTools } from './exa-tool.mjs';
-import { createShowWidgetTool } from './show-widget-tool.mjs';
 
 const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
 
@@ -65,21 +64,13 @@ const visibleBrowserPolicy = process.env.PI_BROWSER_MODE === 'visible'
       'Do not leave a search page, blank page, login page, or unrelated tab selected when a better result page is available.',
     ].join(' ')
   : '';
-const presentationPolicy = [
-  'Timeline presentation policy:',
-  'When the user asks for a widget, timeline item, screenshot, or visual result, you must call show_widget once near completion.',
-  'Widgets are glanceable, not full reports. Show only the answer, the few details needed to act, and relevant links; keep deeper research in your closing summary.',
-  'Prefer Markdown for compact structured results, including options, comparisons, plans, schedules, and small tables. Avoid long prose and exhaustive step-by-step detail.',
-  'Use simple responsive HTML only when Markdown cannot express the visual; avoid dashboard layouts, large type, excessive padding, fixed dimensions, and decorative cards inside cards.',
-  'For routes, maps, and places, prefer one useful browser screenshot plus a short caption and a direct Google Maps or source link. Save the screenshot under /work and use image format.',
-  'Do not show screenshots of search pages, blank pages, login screens, or intermediate work.',
-  'Use a stable widgetId when the result may be refined. Reuse that widgetId after a steer to replace the existing widget; omit it when the new result deserves its own timeline item.',
-  'Do not use JavaScript, forms, iframes, or event handlers.',
-  'Use show_widget only for useful final information, never progress, raw logs, or decorative filler.',
-  'After adding the timeline item, still give a short spoken closing summary that says what is on screen and highlights the most important conclusion.',
-  'If no widget was requested and a visual adds no value, return the normal closing summary only.',
+const resultPolicy = [
+  'Result handoff policy:',
+  'Return complete findings, source links, and any useful artifact or screenshot paths to the router.',
+  'You cannot publish timeline widgets or speak to the user. The router decides how to synthesize and present your result.',
+  'If a visual artifact is useful, save it under /work and clearly identify its relative path and purpose in the closing result.',
 ].join(' ');
-const initialTask = `${task}\n\n${currentContext ? `${currentContext}\n\n` : ''}${webToolPolicy}${visibleBrowserPolicy ? `\n\n${visibleBrowserPolicy}` : ''}\n\n${presentationPolicy}`;
+const initialTask = `${task}\n\n${currentContext ? `${currentContext}\n\n` : ''}${webToolPolicy}${visibleBrowserPolicy ? `\n\n${visibleBrowserPolicy}` : ''}\n\n${resultPolicy}`;
 
 if (!task) {
   emit({ type: 'error', message: 'no task supplied' });
@@ -92,8 +83,7 @@ try {
   if (!model) throw new Error(`delegation model not found: ${providerId}/${modelId}`);
 
   const exaTools = createExaTools();
-  const showWidgetTool = createShowWidgetTool(emit);
-  const customTools = [...exaTools, showWidgetTool];
+  const customTools = [...exaTools];
   const resourceLoader = new DefaultResourceLoader({
     cwd: '/work',
     agentDir: '/home/node/.pi/agent',

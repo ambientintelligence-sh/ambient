@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AuthState } from '@/shared/auth';
 import type { BrowserState } from '@/shared/browser';
-import type { Worker } from '@/shared/worker';
 import type { WorkspaceState } from '@/shared/workspace';
 import { useSession } from './use-session';
 import { AuthPanel } from './components/AuthPanel';
@@ -17,7 +16,6 @@ export function App() {
   const session = useSession();
   const [page, setPage] = useState<Page>('timeline');
   const [setupOpen, setSetupOpen] = useState(false);
-  const [setupPurpose, setSetupPurpose] = useState<'delegation' | 'summary' | 'advisor'>('delegation');
   const [authState, setAuthState] = useState<AuthState | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceState>({ path: null, name: null });
   const [browser, setBrowser] = useState<BrowserState>({ mode: 'headless', available: false });
@@ -37,14 +35,13 @@ export function App() {
     setAuthState(next);
     if (!authInitialized.current) {
       authInitialized.current = true;
-      if (!next.selection) { setSetupPurpose('delegation'); setSetupOpen(true); }
+      if (!next.selection) setSetupOpen(true);
     }
   };
 
   const connected = session.status === 'connected';
   const statusTint = STATUS_TINT[session.status] ?? 'dim';
-  const timelineItems = session.workers
-    .flatMap((worker) => worker.displays.map((display) => ({ worker, display })))
+  const timelineItems = session.timelineItems
     .filter(({ display }) => !dismissedDisplayIds.has(display.id))
     .sort((a, b) => a.display.createdAt - b.display.createdAt);
 
@@ -52,14 +49,7 @@ export function App() {
     if (timelineItems.length > 0) timelineEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [timelineItems.length]);
 
-  const openSetup = (purpose: 'delegation' | 'advisor') => { setSetupPurpose(purpose); setSetupOpen(true); };
-  const showDisplay = (worker: Worker) => {
-    const display = worker.displays.at(-1);
-    if (!display) return;
-    setDismissedDisplayIds((current) => { const next = new Set(current); next.delete(display.id); return next; });
-    setPage('timeline');
-  };
-
+  const openSetup = () => setSetupOpen(true);
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-void text-ink">
       <div className="board-scan pointer-events-none absolute inset-0 opacity-40" />
@@ -70,7 +60,7 @@ export function App() {
             <div className="flex items-center gap-2"><span className="text-warn led">◆</span><h1 className="font-mono text-[15px] font-semibold tracking-[0.14em] text-led-pale">AMBIENT</h1></div>
             <p className="label-xs mt-2 text-[#5d6672]">VOICE OPERATIONS TERMINAL</p>
           </div>
-          <button type="button" onClick={() => openSetup('delegation')} className="rounded border border-white/10 px-2.5 py-2 label-xs text-[#8b95a2] hover:border-warn/40 hover:text-warn [-webkit-app-region:no-drag]">SET</button>
+          <button type="button" onClick={openSetup} className="rounded border border-white/10 px-2.5 py-2 label-xs text-[#8b95a2] hover:border-warn/40 hover:text-warn [-webkit-app-region:no-drag]">SET</button>
         </div>
         <nav className="grid grid-cols-2 [-webkit-app-region:no-drag]" aria-label="Main views">
           {(['timeline', 'agents'] as const).map((item) => (
@@ -101,12 +91,11 @@ export function App() {
         ) : (
           <div className="mx-auto grid w-full max-w-[760px] gap-3">
             <div className="flex flex-wrap items-center gap-2 rounded-lg border border-white/[0.07] bg-[#04060a] p-2">
-              <MiniControl onClick={() => openSetup('delegation')}>MODEL · {authState?.selection?.model ?? 'SELECT'}</MiniControl>
+              <MiniControl onClick={openSetup}>MODEL · {authState?.selection?.model ?? 'SELECT'}</MiniControl>
               <MiniControl onClick={() => void window.ambient?.selectWorkspace()}>FILES · {workspace.name ?? 'SELECT'}</MiniControl>
-              <MiniControl onClick={() => openSetup('advisor')}>ADVISOR · {authState?.advisorSelection ? 'ON' : 'OFF'}</MiniControl>
               <MiniControl disabled={!browser.available} onClick={() => void window.ambient?.setBrowserMode(browser.mode === 'headless' ? 'visible' : 'headless').then(setBrowser)}>BROWSER · {browser.mode.toUpperCase()}</MiniControl>
             </div>
-            <DepartureBoard workers={session.workers} onDisplay={showDisplay} />
+            <DepartureBoard workers={session.workers} />
           </div>
         )}
       </main>
@@ -121,7 +110,7 @@ export function App() {
         </div>
       </footer>
 
-      <AuthPanel open={setupOpen} initialPurpose={setupPurpose} onClose={() => setSetupOpen(false)} onState={handleAuthState} />
+      <AuthPanel open={setupOpen} onClose={() => setSetupOpen(false)} onState={handleAuthState} />
     </div>
   );
 }

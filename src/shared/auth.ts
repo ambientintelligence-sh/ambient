@@ -23,8 +23,6 @@ export type AuthState = Readonly<{
   providers: readonly AuthProvider[];
   models: readonly DelegationModel[];
   selection: DelegationSelection | null;
-  summarySelection: DelegationSelection | null;
-  advisorSelection: DelegationSelection | null;
 }>;
 
 export type LoginPrompt = Readonly<{

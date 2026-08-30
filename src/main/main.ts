@@ -5,6 +5,7 @@ import { createAuthService, type AuthService } from './auth-service';
 import { createBrowserService } from './browser';
 import { ensureWorkerImage } from './docker';
 import { createLocalContextService, type LocalContextService } from './local-context';
+import { createWorkRouter, type WorkRouter } from './router';
 import { startTokenServer } from './token-server';
 import { createWorkerFleet, type WorkerFleet } from './workers';
 import { createWorkspaceService, type WorkspaceService } from './workspace';
@@ -35,6 +36,7 @@ let auth: AuthService | null = null;
 let workspace: WorkspaceService | null = null;
 let browser: Awaited<ReturnType<typeof createBrowserService>> | null = null;
 let localContext: LocalContextService | null = null;
+let router: WorkRouter | null = null;
 
 const emitAuth = (event: AuthEvent) => {
   for (const window of BrowserWindow.getAllWindows()) window.webContents.send('auth:event', event);
@@ -64,13 +66,27 @@ async function createWindow(setupUrl: string) {
 
   fleet ??= createWorkerFleet({
     getSelection: auth.currentSelection,
-    summarizeProgress: auth.summarizeProgress,
+    onReport: (worker) => router?.handleWorkerReport(worker),
     getWorkspace: workspace.getPath,
     getBrowserConfig: browser.workerConfig,
     getLocalContext: localContext.state,
     agentDir: auth.agentDir,
     emit: (event) => {
-      if (!window.isDestroyed()) window.webContents.send('worker:event', event);
+      for (const target of BrowserWindow.getAllWindows()) target.webContents.send('worker:event', event);
+    },
+  });
+  router ??= await createWorkRouter({
+    runtime: auth.runtime,
+    getSelection: auth.currentSelection,
+    getLocalContext: localContext.state,
+    getWorkspace: workspace.getPath,
+    getBrowserConfig: browser.routerConfig,
+    mcpAdapterPath: path.join(app.getAppPath(), 'node_modules/pi-mcp-adapter/index.ts'),
+    chromeMcpPath: path.join(app.getAppPath(), 'node_modules/chrome-devtools-mcp/build/src/bin/chrome-devtools-mcp.js'),
+    fleet,
+    agentDir: auth.agentDir,
+    emit: (event) => {
+      for (const target of BrowserWindow.getAllWindows()) target.webContents.send('router:event', event);
     },
   });
 
@@ -105,14 +121,11 @@ app.whenReady().then(async () => {
   browser = await createBrowserService(app.getPath('userData'));
   localContext = await createLocalContextService(app.getPath('userData'), countryCode);
 
-  ipcMain.handle('worker:dispatch', (_event, task: string) => fleet?.dispatch(task) ?? null);
-  ipcMain.handle('worker:steer', (_event, name: string, instruction: string) =>
-    fleet?.steer(name, instruction) ?? { ok: false, error: 'worker fleet is not ready' },
+  ipcMain.handle('work:dispatch', (_event, task: string) => router?.dispatch(task) ?? null);
+  ipcMain.handle('work:list', () => router?.list() ?? []);
+  ipcMain.handle('work:cancel', (_event, id: string) =>
+    router?.cancel(id) ?? { ok: false, error: 'work router is not ready' },
   );
-  ipcMain.handle('worker:stop', (_event, name: string) =>
-    fleet?.stop(name) ?? { ok: false, error: 'worker fleet is not ready' },
-  );
-  ipcMain.handle('worker:list', () => fleet?.list() ?? []);
   ipcMain.handle('workspace:state', () => workspace?.state());
   ipcMain.handle('workspace:select', async (event) => {
     const state = await workspace?.select(BrowserWindow.fromWebContents(event.sender) ?? undefined);
@@ -145,9 +158,6 @@ app.whenReady().then(async () => {
   ipcMain.handle('auth:cancel', () => auth?.cancel());
   ipcMain.handle('auth:logout', (_event, providerId: string) => auth?.logout(providerId));
   ipcMain.handle('auth:select', (_event, selection: DelegationSelection) => auth?.select(selection));
-  ipcMain.handle('auth:select-summary', (_event, selection: DelegationSelection) => auth?.selectSummary(selection));
-  ipcMain.handle('auth:select-advisor', (_event, selection: DelegationSelection) => auth?.selectAdvisor(selection));
-  ipcMain.handle('advisor:ask', (_event, question: string, context?: string) => auth?.askAdvisor(question, context));
   ipcMain.handle('auth:open-url', (_event, url: string) => {
     if (url.startsWith('https://') || url.startsWith('http://')) return shell.openExternal(url);
   });
@@ -167,6 +177,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', () => {
+  router?.shutdown();
   fleet?.shutdown();
   browser?.shutdown();
 });

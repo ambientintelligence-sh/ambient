@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { Worker, WorkerDisplay } from '@/shared/worker';
+import type { WorkJob } from '@/shared/router';
+import type { TimelineDisplay as Display } from '@/shared/worker';
 
-export type TimelineDisplay = Readonly<{ worker: Worker; display: WorkerDisplay }>;
+export type TimelineDisplay = Readonly<{ job: WorkJob; display: Display }>;
 
 function openExternal(url: string) {
   if (!/^https?:\/\//i.test(url)) return;
@@ -47,7 +48,7 @@ const documentFor = (html: string) => `<!doctype html>
 <body>${html}</body>
 </html>`;
 
-function HtmlPreview({ display }: { display: WorkerDisplay }) {
+function HtmlPreview({ display }: { display: Display }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(180);
   return (
@@ -55,7 +56,7 @@ function HtmlPreview({ display }: { display: WorkerDisplay }) {
       ref={frame}
       title={display.title}
       sandbox="allow-same-origin"
-      srcDoc={documentFor(display.content || (display as WorkerDisplay & { html?: string }).html || '')}
+      srcDoc={documentFor(display.content || (display as Display & { html?: string }).html || '')}
       onLoad={() => {
         const measured = frame.current?.contentDocument?.documentElement.scrollHeight ?? 180;
         setHeight(Math.max(120, Math.min(420, measured)));
@@ -66,8 +67,8 @@ function HtmlPreview({ display }: { display: WorkerDisplay }) {
   );
 }
 
-function DisplayContent({ display }: { display: WorkerDisplay }) {
-  const legacy = display as WorkerDisplay & { html?: string };
+function DisplayContent({ display }: { display: Display }) {
+  const legacy = display as Display & { html?: string };
   const format = display.format ?? 'html';
   const content = display.content || legacy.html || '';
   if (format === 'image') {
@@ -99,13 +100,13 @@ export function WidgetDock(props: {
 
   return (
     <section className="divide-y divide-white/[0.07]">
-      {props.items.map(({ worker, display }) => {
+      {props.items.map(({ job, display }) => {
         return (
           <article key={display.id} className="py-4 first:pt-1">
             <header className="mb-2 flex items-start justify-between gap-3 px-1">
               <div className="min-w-0">
                 <h2 className="text-[14px] font-medium leading-5 text-ink">{display.title}</h2>
-                <p className="mt-1 font-mono text-[9px] tracking-[0.08em] text-[#5d6672]">{worker.startedAt} · {worker.name} · {(display.format ?? 'html').toUpperCase()}</p>
+                <p className="mt-1 font-mono text-[9px] tracking-[0.08em] text-[#5d6672]">{new Date(job.createdAt).toTimeString().slice(0, 5)} · ROUTER · {(display.format ?? 'html').toUpperCase()}</p>
               </div>
               <button type="button" aria-label={`Dismiss ${display.title}`} onClick={() => props.onDismiss(display.id)} className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-base text-[#5d6672] hover:bg-white/5 hover:text-ink">×</button>
             </header>

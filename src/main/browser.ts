@@ -199,6 +199,15 @@ export async function createBrowserService(stateDir: string) {
     async workerConfig(): Promise<{ mode: BrowserMode; browserUrl?: string }> {
       return mode === 'visible' ? { mode, browserUrl: await ensureVisible() } : { mode };
     },
+    async routerConfig(): Promise<{ mode: BrowserMode; browserUrl?: string; executablePath?: string }> {
+      if (mode === 'visible') {
+        await ensureVisible();
+        if (!debuggingPort) throw new Error('Visible Chrome debugging endpoint is unavailable');
+        return { mode, browserUrl: `http://127.0.0.1:${debuggingPort}` };
+      }
+      if (!available) throw new Error('Host router browser tools currently require Google Chrome on macOS');
+      return { mode, executablePath: CHROME_PATH };
+    },
     shutdown() {
       proxy?.close();
       proxy = null;

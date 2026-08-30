@@ -16,13 +16,11 @@ const compactNumber = (value: number) => (value >= 1_000_000 ? `${value / 1_000_
 
 export function AuthPanel(props: {
   open: boolean;
-  initialPurpose?: 'delegation' | 'summary' | 'advisor';
   onClose: () => void;
   onState: (state: AuthState) => void;
 }) {
   const [state, setState] = useState<AuthState | null>(null);
   const [providerId, setProviderId] = useState<string | null>(null);
-  const [modelPurpose, setModelPurpose] = useState<'delegation' | 'summary' | 'advisor'>('delegation');
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [prompt, setPrompt] = useState<LoginPrompt | null>(null);
@@ -42,12 +40,11 @@ export function AuthPanel(props: {
 
   useEffect(() => {
     if (!props.open) return;
-    setModelPurpose(props.initialPurpose ?? 'delegation');
     void bridge?.getLocationState().then((next) => {
       setLocationState(next);
       setLocationDraft(next.location ?? '');
     }).catch((cause) => setError(String(cause)));
-  }, [props.open, props.initialPurpose]);
+  }, [props.open]);
 
   useEffect(() => {
     void refresh();
@@ -108,11 +105,7 @@ export function AuthPanel(props: {
     if (!bridge) return;
     setBusy(true);
     const selection = { provider: model.provider, model: model.id };
-    const request = modelPurpose === 'summary'
-      ? bridge.selectSummaryModel(selection)
-      : modelPurpose === 'advisor'
-        ? bridge.selectAdvisorModel(selection)
-        : bridge.selectDelegationModel(selection);
+    const request = bridge.selectDelegationModel(selection);
     void request.then((next) => {
         publish(next);
         props.onClose();
@@ -248,24 +241,7 @@ export function AuthPanel(props: {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="min-w-0 flex-1">
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => setModelPurpose('delegation')}
-                    className={`rounded-lg px-3 py-2 label-xs ${modelPurpose === 'delegation' ? 'bg-link/15 text-link' : 'text-dimmer hover:text-ink'}`}
-                  >
-                    DELEGATION
-                  </button>
-                  <button
-                    onClick={() => setModelPurpose('summary')}
-                    className={`rounded-lg px-3 py-2 label-xs ${modelPurpose === 'summary' ? 'bg-deep/15 text-deep' : 'text-dimmer hover:text-ink'}`}
-                  >
-                    SUMMARY
-                  </button>
-                  <button
-                    onClick={() => setModelPurpose('advisor')}
-                    className={`rounded-lg px-3 py-2 label-xs ${modelPurpose === 'advisor' ? 'bg-warn/15 text-warn' : 'text-dimmer hover:text-ink'}`}
-                  >
-                    ADVISOR
-                  </button>
+                  <span className="rounded-lg bg-link/15 px-3 py-2 label-xs text-link">ROUTER + WORKERS</span>
                 </div>
                 <p className="mt-2 truncate text-sm text-dim">
                   {selectedProvider ? selectedProvider.name : 'All connected providers'}
@@ -334,11 +310,7 @@ export function AuthPanel(props: {
               ) : (
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {models.map((model) => {
-                    const chosen = modelPurpose === 'summary'
-                      ? state?.summarySelection
-                      : modelPurpose === 'advisor'
-                        ? state?.advisorSelection
-                        : state?.selection;
+                    const chosen = state?.selection;
                     const active = chosen?.provider === model.provider && chosen.model === model.id;
                     return (
                       <button
@@ -362,7 +334,7 @@ export function AuthPanel(props: {
         </div>
 
         <footer className="border-t border-white/10 px-7 py-3 label-xs text-dimmer">
-          ADVISOR PROVIDES AN INDEPENDENT SECOND OPINION · SUMMARY FILTERS UPDATES · VOICE USES OPENAI
+          THE SELECTED MODEL POWERS THE ROUTER AND ITS WORKERS · VOICE USES OPENAI
         </footer>
       </div>
     </div>

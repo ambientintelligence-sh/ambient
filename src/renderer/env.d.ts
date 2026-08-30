@@ -1,7 +1,8 @@
 import type { AuthEvent, AuthMethod, AuthState, DelegationSelection } from '@/shared/auth';
 import type { BrowserMode, BrowserState } from '@/shared/browser';
 import type { LocalContextState, LocalContextUpdate } from '@/shared/local-context';
-import type { Worker, WorkerEvent, WorkerSteerResult, WorkerStopResult } from '@/shared/worker';
+import type { CancelWorkResult, DispatchWorkResult, RouterEvent, WorkJob } from '@/shared/router';
+import type { WorkerEvent } from '@/shared/worker';
 import type { WorkspaceState } from '@/shared/workspace';
 
 declare global {
@@ -9,10 +10,9 @@ declare global {
     /** Absent when the renderer is opened in a plain browser for design work. */
     ambient?: {
       setupUrl: string;
-      dispatchWorker: (task: string) => Promise<Worker>;
-      steerWorker: (name: string, instruction: string) => Promise<WorkerSteerResult>;
-      stopWorker: (name: string) => Promise<WorkerStopResult>;
-      listWorkers: () => Promise<Worker[]>;
+      dispatchWork: (task: string) => Promise<DispatchWorkResult>;
+      listWork: () => Promise<WorkJob[]>;
+      cancelWork: (id: string) => Promise<CancelWorkResult>;
       getWorkspace: () => Promise<WorkspaceState>;
       selectWorkspace: () => Promise<WorkspaceState>;
       openWorkspace: () => Promise<WorkspaceState>;
@@ -29,12 +29,10 @@ declare global {
       cancelLogin: () => Promise<void>;
       logout: (providerId: string) => Promise<AuthState>;
       selectDelegationModel: (selection: DelegationSelection) => Promise<AuthState>;
-      selectSummaryModel: (selection: DelegationSelection) => Promise<AuthState>;
-      selectAdvisorModel: (selection: DelegationSelection) => Promise<AuthState>;
-      askAdvisor: (question: string, context?: string) => Promise<string>;
       openExternal: (url: string) => Promise<void>;
       onAuthEvent: (listener: (event: AuthEvent) => void) => () => void;
       onWorkerEvent: (listener: (event: WorkerEvent) => void) => () => void;
+      onRouterEvent: (listener: (event: RouterEvent) => void) => () => void;
     };
   }
 }

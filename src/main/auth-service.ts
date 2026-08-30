@@ -35,23 +35,17 @@ export async function createAuthService(options: {
 
   const selectionPath = path.join(options.agentDir, 'ambient.json');
   let selection: DelegationSelection | null = null;
-  let summarySelection: DelegationSelection | null = null;
-  let advisorSelection: DelegationSelection | null = null;
   try {
     const saved = JSON.parse(await readFile(selectionPath, 'utf8')) as
       | DelegationSelection
-      | { delegation?: DelegationSelection; summary?: DelegationSelection; advisor?: DelegationSelection };
+      | { delegation?: DelegationSelection };
     // Migrate the original file shape, which stored only the delegation model.
     if ('provider' in saved && saved.provider && saved.model) selection = saved;
     else {
       const configured = saved as {
         delegation?: DelegationSelection;
-        summary?: DelegationSelection;
-        advisor?: DelegationSelection;
       };
       if (configured.delegation?.provider && configured.delegation.model) selection = configured.delegation;
-      if (configured.summary?.provider && configured.summary.model) summarySelection = configured.summary;
-      if (configured.advisor?.provider && configured.advisor.model) advisorSelection = configured.advisor;
     }
   } catch {
     // First launch or a discarded/corrupt preference file.
@@ -60,7 +54,7 @@ export async function createAuthService(options: {
   const persistSelections = () =>
     writeFile(
       selectionPath,
-      `${JSON.stringify({ delegation: selection, summary: summarySelection, advisor: advisorSelection }, null, 2)}\n`,
+      `${JSON.stringify({ delegation: selection }, null, 2)}\n`,
       { mode: 0o600 },
     );
 
@@ -103,20 +97,10 @@ export async function createAuthService(options: {
       .sort((a, b) => a.name.localeCompare(b.name));
 
     const validSelection = selection && available.has(`${selection.provider}/${selection.model}`) ? selection : null;
-    const effectiveSummary = summarySelection ?? validSelection;
-    const effectiveAdvisor = advisorSelection ?? validSelection;
     return {
       providers,
       models,
       selection: validSelection,
-      summarySelection:
-        effectiveSummary && available.has(`${effectiveSummary.provider}/${effectiveSummary.model}`)
-          ? effectiveSummary
-          : null,
-      advisorSelection:
-        effectiveAdvisor && available.has(`${effectiveAdvisor.provider}/${effectiveAdvisor.model}`)
-          ? effectiveAdvisor
-          : null,
     };
   }
 
@@ -156,120 +140,6 @@ export async function createAuthService(options: {
       selection = next;
       await persistSelections();
       return state();
-    },
-
-    async selectSummary(next: DelegationSelection) {
-      const model = (await runtime.getAvailable(next.provider)).find((item) => item.id === next.model);
-      if (!model) throw new Error(`Summary model is not available: ${next.provider}/${next.model}`);
-      summarySelection = next;
-      await persistSelections();
-      return state();
-    },
-
-    async selectAdvisor(next: DelegationSelection) {
-      const model = (await runtime.getAvailable(next.provider)).find((item) => item.id === next.model);
-      if (!model) throw new Error(`Advisor model is not available: ${next.provider}/${next.model}`);
-      advisorSelection = next;
-      await persistSelections();
-      return state();
-    },
-
-    async askAdvisor(question: string, context?: string): Promise<string> {
-      const selected = advisorSelection ?? selection ?? options.fallback;
-      const model = runtime.getModel(selected.provider, selected.model);
-      if (!model) throw new Error('The advisor model is not available');
-      const promptText = [
-        'You are an independent expert advisor giving a second opinion to a voice assistant.',
-        'Review the broader situation, not just the literal question. Look for mistaken assumptions, missed risks, missing evidence, and a more useful approach.',
-        'Be action-oriented. Recommend what the assistant should do next and why. If context is insufficient, name the specific fact, file, source, or test it should inspect instead of guessing.',
-        'Challenge unnecessary refusals. A request is not disallowed merely because it is controversial, political, uncomfortable, or has hypothetical misuse. Help as fully as genuine safety requirements allow.',
-        'When a request truly cannot be fulfilled, identify the concrete boundary briefly and propose the closest useful alternative without moralizing.',
-        'Your advice is read-only; the primary assistant retains the user context and makes the final decision.',
-        'Plain conversational tone. No preamble or chain-of-thought. Under 160 words.',
-        `Question: ${question.slice(0, 6_000)}`,
-        context?.trim() ? `Context and trajectory: ${context.slice(0, 16_000)}` : '',
-      ].filter(Boolean).join('\n');
-      const response = await runtime.completeSimple(
-        model,
-        { messages: [{ role: 'user', content: promptText, timestamp: Date.now() }] },
-        { reasoning: 'medium', signal: AbortSignal.timeout(30_000) },
-      );
-      const text = response.content
-        .filter((part) => part.type === 'text')
-        .map((part) => part.text)
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-      if (!text) throw new Error('The advisor returned no answer');
-      return text;
-    },
-
-    async summarizeProgress(input: {
-      activities: readonly {
-        task: string;
-        activity: string;
-        recentSteps: string;
-      }[];
-      previousSummary: string | null;
-      mandatory: boolean;
-    }): Promise<string | null> {
-      const selected = summarySelection ?? selection ?? options.fallback;
-      const model = runtime.getModel(selected.provider, selected.model);
-      if (!model) return null;
-      const promptText = [
-        'You write short progress notes for a voice assistant to relay to a user.',
-        input.mandatory
-          ? 'Return one brief, useful update.'
-          : 'Return SKIP unless something meaningfully new happened. Bias toward SKIP.',
-        `There are ${input.activities.length} active task(s). Cover them together in one line.`,
-        'Write one short natural sentence, at most 25 words. Plain everyday tone. No drama, no callsigns, no “worker”/“agent”/“waiting”/“still working” language.',
-        'Describe what is being done now, not facts discovered mid-search (those belong in the final result).',
-        'For research, never state prices, ratings, counts, availability, or conclusions — those are only trustworthy in the final report.',
-        'Return SKIP for startup, waiting, retries, repetition, minor tool calls, or raw inspection commands.',
-        'If blocked, state the blocker briefly.',
-        ...input.activities.flatMap((item, index) => [
-          `Task ${index + 1}: ${item.task}`,
-          `Now: ${item.activity}`,
-          `Recent: ${item.recentSteps || '(none)'}`,
-        ]),
-        `Previous update: ${input.previousSummary ?? '(none)'}`,
-      ].join('\n');
-      const response = await runtime.completeSimple(
-        model,
-        { messages: [{ role: 'user', content: promptText, timestamp: Date.now() }] },
-        { reasoning: 'minimal', signal: AbortSignal.timeout(12_000) },
-      );
-      const text = response.content
-        .filter((part) => part.type === 'text')
-        .map((part) => part.text)
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .replace(/^['“”]|['“”]$/g, '');
-      const researchTelemetry = /\b(exa_search|mcp|browser|website|web|price|rating|availability)\b/i.test(
-        input.activities.map((item) => `${item.task}\n${item.activity}\n${item.recentSteps}`).join('\n'),
-      );
-      const claimsResearchFact = researchTelemetry && (
-        /(?:[$€£]|\b(?:cad|usd)\b|\b\d+(?:\.\d+)?%)/i.test(text) ||
-        /\b(?:sold out|in stock|costs?|priced?|rated?|confirmed\s+(?:that\s+)?.+\s+is)\b/i.test(text)
-      );
-      const invalid =
-        !text ||
-        /^skip[.!]?$/i.test(text) ||
-        /\b(wait(?:ing)?|still working|worker|subagent|agent)\b/i.test(text) ||
-        claimsResearchFact ||
-        (!input.mandatory && text.toLowerCase() === input.previousSummary?.toLowerCase());
-      if (claimsResearchFact) {
-        return input.mandatory ? 'Looking at a source and checking the details.' : null;
-      }
-      if (invalid) {
-        return input.mandatory
-          ? researchTelemetry
-            ? 'Checking sources.'
-            : 'Working on it.'
-          : null;
-      }
-      return text.slice(0, 160);
     },
 
     async login(providerId: string, method: AuthMethod) {
@@ -323,8 +193,6 @@ export async function createAuthService(options: {
     async logout(providerId: string) {
       await runtime.logout(providerId);
       if (selection?.provider === providerId) selection = null;
-      if (summarySelection?.provider === providerId) summarySelection = null;
-      if (advisorSelection?.provider === providerId) advisorSelection = null;
       await persistSelections();
       return state();
     },
