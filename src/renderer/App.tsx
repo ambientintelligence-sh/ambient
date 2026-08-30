@@ -1,44 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AuthState } from '@/shared/auth';
 import type { BrowserState } from '@/shared/browser';
-import { REALTIME_MODEL_ID, REALTIME_VOICE } from '@/shared/config';
-import { isActive, type Worker } from '@/shared/worker';
+import type { Worker } from '@/shared/worker';
 import type { WorkspaceState } from '@/shared/workspace';
 import { useSession } from './use-session';
 import { AuthPanel } from './components/AuthPanel';
-import { Chip } from './components/Chip';
-import { Clock } from './components/Clock';
 import { ControlButton } from './components/ControlButton';
 import { DepartureBoard } from './components/DepartureBoard';
-import { Sparkline } from './components/Sparkline';
 import { WidgetDock } from './components/WidgetDock';
 import type { TintKey } from './components/tints';
 
-
-const STATUS_TINT: Readonly<Record<string, TintKey>> = {
-  disconnected: 'dim',
-  connecting: 'warn',
-  connected: 'live',
-  error: 'alert',
-};
-
-function useElapsed(running: boolean) {
-  const [seconds, setSeconds] = useState(0);
-
-  useEffect(() => {
-    if (!running) {
-      setSeconds(0);
-      return;
-    }
-    const timer = setInterval(() => setSeconds((value) => value + 1), 1000);
-    return () => clearInterval(timer);
-  }, [running]);
-
-  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-}
+type Page = 'timeline' | 'agents';
+const STATUS_TINT: Readonly<Record<string, TintKey>> = { disconnected: 'dim', connecting: 'warn', connected: 'live', error: 'alert' };
 
 export function App() {
   const session = useSession();
+  const [page, setPage] = useState<Page>('timeline');
   const [setupOpen, setSetupOpen] = useState(false);
   const [setupPurpose, setSetupPurpose] = useState<'delegation' | 'summary' | 'advisor'>('delegation');
   const [authState, setAuthState] = useState<AuthState | null>(null);
@@ -46,6 +23,7 @@ export function App() {
   const [browser, setBrowser] = useState<BrowserState>({ mode: 'headless', available: false });
   const [dismissedDisplayIds, setDismissedDisplayIds] = useState<ReadonlySet<string>>(() => new Set());
   const authInitialized = useRef(false);
+  const timelineEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const bridge = window.ambient;
@@ -59,184 +37,95 @@ export function App() {
     setAuthState(next);
     if (!authInitialized.current) {
       authInitialized.current = true;
-      if (!next.selection) {
-        setSetupPurpose('delegation');
-        setSetupOpen(true);
-      }
+      if (!next.selection) { setSetupPurpose('delegation'); setSetupOpen(true); }
     }
   };
+
   const connected = session.status === 'connected';
-  const elapsed = useElapsed(connected);
-
   const statusTint = STATUS_TINT[session.status] ?? 'dim';
+  const timelineItems = session.workers
+    .flatMap((worker) => worker.displays.map((display) => ({ worker, display })))
+    .filter(({ display }) => !dismissedDisplayIds.has(display.id))
+    .sort((a, b) => a.display.createdAt - b.display.createdAt);
 
-  const inFlight = session.workers.filter((each) => isActive(each.status)).length;
-  const widgetWorkers = session.workers
-    .filter((worker) =>
-      worker.status === 'idle' &&
-      worker.display &&
-      !dismissedDisplayIds.has(worker.display.id),
-    )
-    .sort((a, b) => (b.display?.createdAt ?? 0) - (a.display?.createdAt ?? 0));
+  useEffect(() => {
+    if (timelineItems.length > 0) timelineEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [timelineItems.length]);
 
+  const openSetup = (purpose: 'delegation' | 'advisor') => { setSetupPurpose(purpose); setSetupOpen(true); };
   const showDisplay = (worker: Worker) => {
-    if (!worker.display) return;
-    setDismissedDisplayIds((current) => {
-      const next = new Set(current);
-      next.delete(worker.display!.id);
-      return next;
-    });
+    const display = worker.displays.at(-1);
+    if (!display) return;
+    setDismissedDisplayIds((current) => { const next = new Set(current); next.delete(display.id); return next; });
+    setPage('timeline');
   };
-
-  const dismissDisplay = (id: string) => {
-    setDismissedDisplayIds((current) => new Set(current).add(id));
-  };
-
-  const delegationModel = authState?.selection
-    ? `${authState.selection.provider}/${authState.selection.model}`
-    : 'SELECT MODEL';
-  const advisorModel = authState?.advisorSelection
-    ? `${authState.advisorSelection.provider}/${authState.advisorSelection.model}`
-    : 'SET ADVISOR';
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-void">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-white/[0.05] to-transparent" />
+    <div className="relative flex h-full flex-col overflow-hidden bg-void text-ink">
+      <div className="board-scan pointer-events-none absolute inset-0 opacity-40" />
 
-      <header className="relative flex items-start gap-10 px-9 pt-10 [-webkit-app-region:drag]">
-        <div className="flex w-[122px] shrink-0 flex-col items-start gap-3 pt-1">
-          <div className="flex items-center gap-2">
-            <span className="text-[15px] leading-none text-ink">◇</span>
-            <span className="label-xs text-ink">AMBIENT</span>
+      <header className="relative z-10 shrink-0 border-b border-white/[0.08] bg-[#030507]/95 px-4 pt-8 [-webkit-app-region:drag]">
+        <div className="flex items-end justify-between pb-4">
+          <div>
+            <div className="flex items-center gap-2"><span className="text-warn led">◆</span><h1 className="font-mono text-[15px] font-semibold tracking-[0.14em] text-led-pale">AMBIENT</h1></div>
+            <p className="label-xs mt-2 text-[#5d6672]">VOICE OPERATIONS TERMINAL</p>
           </div>
-          <Chip label="LINK" value={session.status.toUpperCase()} tint={statusTint} />
-          <div className="label-xs leading-[1.9] text-dimmer">
-            <div>{elapsed} ELAPSED</div>
-            <div>{session.turns} TURNS</div>
-            <div>{session.workers.length} DISPATCHED</div>
-          </div>
+          <button type="button" onClick={() => openSetup('delegation')} className="rounded border border-white/10 px-2.5 py-2 label-xs text-[#8b95a2] hover:border-warn/40 hover:text-warn [-webkit-app-region:no-drag]">SET</button>
         </div>
-
-        <div className="flex min-h-[154px] min-w-0 flex-1 flex-col">
-          <Chip
-            label="TRANSCRIPT"
-            value={session.speaking ? 'LIVE' : session.transcript ? 'LATEST' : 'READY'}
-            tint={session.speaking ? 'link' : session.transcript ? 'live' : 'dim'}
-          />
-          <p className="mt-4 line-clamp-4 text-[27px] font-light leading-[1.18] tracking-[-0.02em] text-ink">
-            {session.transcript || (connected ? 'Listening.' : 'Voice transcript will appear here.')}
-          </p>
-          <p className="label-xs mt-auto pt-3 text-dimmer">OUTPUT AUDIO TRANSCRIPT</p>
-        </div>
-
-        <div className="flex shrink-0 flex-col gap-6 pt-2">
-          <Sparkline trace={session.inTrace} unit="mic" tint="live" />
-          <Sparkline trace={session.outTrace} unit="voice" tint="link" />
-        </div>
-
-        <div className="flex shrink-0 items-start gap-6 pt-1">
-          <div className="text-right">
-            <p className="text-[21px] font-medium leading-none text-ink">{REALTIME_VOICE.toUpperCase()}</p>
-            <p className="label-xs mt-1.5 text-dim">VOICE</p>
-            <p className="mt-5 text-[21px] font-medium leading-none text-ink">
-              {inFlight}
-              <span className="text-dimmer">/{session.workers.length || 0}</span>
-            </p>
-            <p className="label-xs mt-1.5 text-dim">IN FLIGHT</p>
-            <p className="label-xs mt-5 text-dimmer">{REALTIME_MODEL_ID}</p>
-            <button
-              onClick={() => { setSetupPurpose('delegation'); setSetupOpen(true); }}
-              className="label-xs mt-2 block max-w-[170px] truncate text-link hover:text-ink"
-            >
-              {delegationModel}
+        <nav className="grid grid-cols-2 [-webkit-app-region:no-drag]" aria-label="Main views">
+          {(['timeline', 'agents'] as const).map((item) => (
+            <button key={item} type="button" onClick={() => setPage(item)} className={`relative h-11 font-mono text-[11px] tracking-[0.12em] ${page === item ? 'text-warn led' : 'text-[#5d6672] hover:text-[#8b95a2]'}`}>
+              {item.toUpperCase()}{item === 'agents' ? ` · ${session.workers.length}` : ''}
+              {page === item && <span className="absolute inset-x-[18%] bottom-0 h-px bg-warn shadow-[0_0_7px_#ffa32b]" />}
             </button>
-            <button
-              title={authState?.advisorSelection ? `Second opinion: ${advisorModel}` : 'Pick a model for independent second opinions'}
-              onClick={() => { setSetupPurpose('advisor'); setSetupOpen(true); }}
-              className={`label-xs mt-2 block max-w-[170px] truncate hover:text-ink ${authState?.advisorSelection ? 'text-warn' : 'text-dimmer'}`}
-            >
-              SECOND OPINION {authState?.advisorSelection ? '· ON' : '· OFF'}
-            </button>
-            <button
-              title={workspace.path ?? 'Choose workspace'}
-              onClick={() => void window.ambient?.selectWorkspace()}
-              className={`label-xs mt-2 block max-w-[170px] truncate hover:text-ink ${workspace.path ? 'text-live' : 'text-warn'}`}
-            >
-              {workspace.name ?? 'NO WORKSPACE'}
-            </button>
-            <button
-              title="Applies to newly dispatched workers"
-              disabled={!browser.available}
-              onClick={() => void window.ambient
-                ?.setBrowserMode(browser.mode === 'headless' ? 'visible' : 'headless')
-                .then(setBrowser)}
-              className="label-xs mt-2 block max-w-[170px] truncate text-dim hover:text-ink disabled:opacity-30"
-            >
-              BROWSER {browser.mode.toUpperCase()}
-            </button>
-          </div>
-          <Clock />
-        </div>
+          ))}
+        </nav>
       </header>
 
-      <section className="relative mt-9 flex items-center justify-center gap-3 px-9">
-        <ControlButton active={!session.muted && connected} tint="live" onClick={session.toggleMute} disabled={!connected}>
-          MIC
-        </ControlButton>
-        <ControlButton active={session.listening} tint="live" disabled>
-          VAD
-        </ControlButton>
-        <ControlButton
-          size="lg"
-          active={connected || session.status === 'connecting'}
-          tint={statusTint}
-          onClick={connected ? session.disconnect : session.connect}
-          disabled={session.status === 'connecting'}
-        >
-          <span className="text-[17px] leading-none">{session.status === 'connecting' ? '···' : '⏻'}</span>
-        </ControlButton>
-        <ControlButton active={session.muted} tint="alert" onClick={session.toggleMute} disabled={!connected}>
-          MUTE
-        </ControlButton>
-        <ControlButton active={session.speaking} tint="link" disabled>
-          OUT
-        </ControlButton>
-
-        <div className="absolute right-9 flex gap-2">
-          <ControlButton
-            tint={workspace.path ? 'live' : 'warn'}
-            onClick={() => void (workspace.path ? window.ambient?.openWorkspace() : window.ambient?.selectWorkspace())}
-          >
-            FILES
-          </ControlButton>
-          <ControlButton tint="warn" onClick={() => { setSetupPurpose('advisor'); setSetupOpen(true); }}>
-            ADVISOR
-          </ControlButton>
-          <ControlButton tint="dim" onClick={() => { setSetupPurpose('delegation'); setSetupOpen(true); }}>
-            MODEL
-          </ControlButton>
-          <ControlButton tint="dim" onClick={session.disconnect} disabled={!connected}>
-            END
-          </ControlButton>
-        </div>
-      </section>
-      <p className={`label-xs relative mt-3 text-center ${session.error ? 'text-alert' : 'text-dimmer'}`}>
-        {session.error ?? 'REALTIME SESSION'}
-      </p>
-
-      <main className="relative mt-6 flex min-h-0 flex-1 flex-col gap-3 px-9 pb-7">
-        {widgetWorkers.length > 0 && (
-          <WidgetDock workers={widgetWorkers} onDismiss={dismissDisplay} />
+      <main className="app-scroll relative z-10 min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        {page === 'timeline' ? (
+          <div className="mx-auto grid w-full max-w-[620px] gap-3">
+            <section className="flex items-start gap-3 border-b border-white/[0.07] px-1 pb-3">
+              <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${connected ? 'bg-live shadow-[0_0_7px_#46e05a]' : 'bg-[#333a43]'}`} />
+              <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3">
+                <span className="label-xs text-[#5d6672]">VOICE</span>
+                <span className={`font-mono text-[9px] tracking-[0.1em] ${connected ? 'text-live led' : 'text-[#5d6672]'}`}>{session.status.toUpperCase()}</span>
+              </div>
+              <p className="mt-2 line-clamp-2 font-mono text-[11px] leading-5 text-[#8b95a2]">{session.error ?? (session.transcript || (connected ? 'Listening for instructions…' : 'Service offline.'))}</p>
+              </div>
+            </section>
+            <WidgetDock items={timelineItems} hasWorkers={session.workers.length > 0} onDismiss={(id) => setDismissedDisplayIds((current) => new Set(current).add(id))} onViewAgents={() => setPage('agents')} />
+            <div ref={timelineEndRef} />
+          </div>
+        ) : (
+          <div className="mx-auto grid w-full max-w-[760px] gap-3">
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-white/[0.07] bg-[#04060a] p-2">
+              <MiniControl onClick={() => openSetup('delegation')}>MODEL · {authState?.selection?.model ?? 'SELECT'}</MiniControl>
+              <MiniControl onClick={() => void window.ambient?.selectWorkspace()}>FILES · {workspace.name ?? 'SELECT'}</MiniControl>
+              <MiniControl onClick={() => openSetup('advisor')}>ADVISOR · {authState?.advisorSelection ? 'ON' : 'OFF'}</MiniControl>
+              <MiniControl disabled={!browser.available} onClick={() => void window.ambient?.setBrowserMode(browser.mode === 'headless' ? 'visible' : 'headless').then(setBrowser)}>BROWSER · {browser.mode.toUpperCase()}</MiniControl>
+            </div>
+            <DepartureBoard workers={session.workers} onDisplay={showDisplay} />
+          </div>
         )}
-        <DepartureBoard workers={session.workers} onDisplay={showDisplay} />
       </main>
 
-      <AuthPanel
-        open={setupOpen}
-        initialPurpose={setupPurpose}
-        onClose={() => setSetupOpen(false)}
-        onState={handleAuthState}
-      />
+      <footer className="relative z-20 shrink-0 border-t border-white/[0.08] bg-[#030507]/95 px-3 py-3">
+        <div className="mx-auto flex max-w-[420px] items-center justify-center gap-3">
+          <ControlButton active={!session.muted && connected} tint="live" onClick={session.toggleMute} disabled={!connected}>MIC</ControlButton>
+          <ControlButton active={session.listening} tint="live" disabled>VAD</ControlButton>
+          <ControlButton size="lg" active={connected || session.status === 'connecting'} tint={statusTint} onClick={connected ? session.disconnect : session.connect} disabled={session.status === 'connecting'}><span className="text-[17px] leading-none">{session.status === 'connecting' ? '···' : '⏻'}</span></ControlButton>
+          <ControlButton active={session.muted} tint="alert" onClick={session.toggleMute} disabled={!connected}>MUTE</ControlButton>
+          <ControlButton active={session.speaking} tint="link" disabled>OUT</ControlButton>
+        </div>
+      </footer>
+
+      <AuthPanel open={setupOpen} initialPurpose={setupPurpose} onClose={() => setSetupOpen(false)} onState={handleAuthState} />
     </div>
   );
+}
+
+function MiniControl({ children, onClick, disabled = false }: { children: ReactNode; onClick: () => void; disabled?: boolean }) {
+  return <button type="button" disabled={disabled} onClick={onClick} className="min-w-0 max-w-full truncate rounded border border-white/10 px-2.5 py-2 font-mono text-[9px] tracking-[0.08em] text-[#8b95a2] hover:border-warn/40 hover:text-warn disabled:opacity-30">{children}</button>;
 }

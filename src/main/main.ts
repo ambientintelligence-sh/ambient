@@ -4,12 +4,14 @@ import { config as loadEnv } from 'dotenv';
 import { createAuthService, type AuthService } from './auth-service';
 import { createBrowserService } from './browser';
 import { ensureWorkerImage } from './docker';
+import { createLocalContextService, type LocalContextService } from './local-context';
 import { startTokenServer } from './token-server';
 import { createWorkerFleet, type WorkerFleet } from './workers';
 import { createWorkspaceService, type WorkspaceService } from './workspace';
 import type { AuthEvent, AuthMethod, DelegationSelection } from '../shared/auth';
 import type { BrowserMode } from '../shared/browser';
 import { WORKER_MODEL_ID } from '../shared/config';
+import type { LocalContextUpdate } from '../shared/local-context';
 
 loadEnv({ path: path.join(app.getAppPath(), '../../.env'), quiet: true });
 loadEnv({ quiet: true });
@@ -32,6 +34,7 @@ let fleet: WorkerFleet | null = null;
 let auth: AuthService | null = null;
 let workspace: WorkspaceService | null = null;
 let browser: Awaited<ReturnType<typeof createBrowserService>> | null = null;
+let localContext: LocalContextService | null = null;
 
 const emitAuth = (event: AuthEvent) => {
   for (const window of BrowserWindow.getAllWindows()) window.webContents.send('auth:event', event);
@@ -39,10 +42,10 @@ const emitAuth = (event: AuthEvent) => {
 
 async function createWindow(setupUrl: string) {
   const window = new BrowserWindow({
-    width: 1180,
-    height: 760,
-    minWidth: 940,
-    minHeight: 620,
+    width: 430,
+    height: 820,
+    minWidth: 360,
+    minHeight: 560,
     backgroundColor: '#000000',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 18 },
@@ -52,21 +55,19 @@ async function createWindow(setupUrl: string) {
     },
   });
 
-  if (!auth || !workspace || !browser) throw new Error('application services are not ready');
-  const configuredLocation = process.env.EXA_USER_LOCATION?.trim().toUpperCase();
-  const localeLocation = app.getLocaleCountryCode().trim().toUpperCase();
-  const exaUserLocation = /^[A-Z]{2}$/.test(configuredLocation ?? '')
-    ? configuredLocation!
-    : /^[A-Z]{2}$/.test(localeLocation)
-      ? localeLocation
-      : null;
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  if (!auth || !workspace || !browser || !localContext) throw new Error('application services are not ready');
 
   fleet ??= createWorkerFleet({
     getSelection: auth.currentSelection,
     summarizeProgress: auth.summarizeProgress,
     getWorkspace: workspace.getPath,
     getBrowserConfig: browser.workerConfig,
-    exaUserLocation,
+    getLocalContext: localContext.state,
     agentDir: auth.agentDir,
     emit: (event) => {
       if (!window.isDestroyed()) window.webContents.send('worker:event', event);
@@ -82,6 +83,13 @@ async function createWindow(setupUrl: string) {
 
 app.whenReady().then(async () => {
   const agentDir = path.join(app.getPath('userData'), 'pi-agent');
+  const configuredLocation = process.env.EXA_USER_LOCATION?.trim().toUpperCase();
+  const localeLocation = app.getLocaleCountryCode().trim().toUpperCase();
+  const countryCode = /^[A-Z]{2}$/.test(configuredLocation ?? '')
+    ? configuredLocation!
+    : /^[A-Z]{2}$/.test(localeLocation)
+      ? localeLocation
+      : null;
   auth = await createAuthService({
     agentDir,
     fallback: {
@@ -95,6 +103,7 @@ app.whenReady().then(async () => {
   });
   workspace = await createWorkspaceService(app.getPath('userData'));
   browser = await createBrowserService(app.getPath('userData'));
+  localContext = await createLocalContextService(app.getPath('userData'), countryCode);
 
   ipcMain.handle('worker:dispatch', (_event, task: string) => fleet?.dispatch(task) ?? null);
   ipcMain.handle('worker:steer', (_event, name: string, instruction: string) =>
@@ -115,6 +124,21 @@ app.whenReady().then(async () => {
   ipcMain.handle('workspace:open', () => workspace?.open());
   ipcMain.handle('browser:state', () => browser?.state());
   ipcMain.handle('browser:set-mode', (_event, mode: BrowserMode) => browser?.setMode(mode));
+  ipcMain.handle('location:state', () => localContext?.state());
+  ipcMain.handle('location:set', async (_event, input: LocalContextUpdate) => {
+    const state = await localContext?.set(input);
+    if (state) {
+      for (const window of BrowserWindow.getAllWindows()) window.webContents.send('location:event', state);
+    }
+    return state;
+  });
+  ipcMain.handle('location:clear', async () => {
+    const state = await localContext?.clear();
+    if (state) {
+      for (const window of BrowserWindow.getAllWindows()) window.webContents.send('location:event', state);
+    }
+    return state;
+  });
   ipcMain.handle('auth:state', () => auth?.state());
   ipcMain.handle('auth:login', (_event, providerId: string, method: AuthMethod) => auth?.login(providerId, method));
   ipcMain.handle('auth:answer', (_event, promptId: string, value: string) => auth?.answer(promptId, value));

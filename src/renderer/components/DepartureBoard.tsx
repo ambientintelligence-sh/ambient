@@ -1,148 +1,101 @@
 import { useState } from 'react';
 import { isTerminal, type Worker, type WorkerStatus } from '@/shared/worker';
 
-/** Service colours, in the saturated register an LED board actually shows. */
 const PALETTE = ['#ff8c1a', '#46e05a', '#35c8f0', '#a98bff'] as const;
-
-const STATUS: Readonly<Record<WorkerStatus, { label: string; tone: 'green' | 'amber' | 'red' | 'dim' }>> = {
-  queued: { label: 'DISPATCHED', tone: 'amber' },
-  running: { label: 'IN TRANSIT', tone: 'green' },
-  idle: { label: 'ONLINE', tone: 'green' },
-  failed: { label: 'FAILED', tone: 'red' },
-  cancelled: { label: 'STOPPED', tone: 'dim' },
+const STATUS: Readonly<Record<WorkerStatus, { label: string; color: string }>> = {
+  queued: { label: 'DUE', color: '#ffa32b' }, running: { label: 'IN TRANSIT', color: '#46e05a' },
+  idle: { label: 'ARRIVED', color: '#46e05a' }, failed: { label: 'CANCELLED', color: '#ff5a4d' }, cancelled: { label: 'STOPPED', color: '#5d6672' },
 };
-
-const TONE_HEX = { green: '#46e05a', amber: '#ffa32b', red: '#ff5a4d', dim: '#5d6672' } as const;
-
-const GRID = 'grid grid-cols-[142px_64px_minmax(0,1fr)_minmax(0,1.5fr)_104px] items-center gap-x-5';
-
-/** Stable per-worker colour without threading an index through the model. */
-const colourOf = (name: string) =>
-  PALETTE[[...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % PALETTE.length];
+const colourOf = (name: string) => PALETTE[[...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % PALETTE.length];
 
 function Row({ worker, onDisplay }: { worker: Worker; onDisplay: (worker: Worker) => void }) {
   const [expanded, setExpanded] = useState(false);
   const status = STATUS[worker.status];
   const hex = colourOf(worker.name);
   const settled = isTerminal(worker.status);
-  const amber = settled ? '#8b7a52' : '#ffa32b';
   const current = worker.stops.at(-1);
+  const activity = current?.detail || current?.tool || (worker.status === 'queued'
+    ? 'Waiting for the agent runtime to begin work.'
+    : worker.status === 'idle'
+      ? 'Work complete.'
+      : 'Waiting for the next field report.');
+  const hasProgress = worker.updates.length > 0 || worker.stops.length > 0;
 
   return (
-    <div className="border-b border-white/[0.06]">
+    <div className="border-b border-white/[0.06] last:border-b-0">
       <button
         type="button"
         aria-expanded={expanded}
+        aria-label={`${expanded ? 'Hide' : 'Show'} details for ${worker.name}`}
         onClick={() => setExpanded((value) => !value)}
-        className={`${GRID} w-full py-3 text-left hover:bg-white/[0.025]`}
+        className={`w-full cursor-pointer px-3 py-3 text-left transition-colors hover:bg-white/[0.035] ${expanded ? 'bg-white/[0.025]' : ''}`}
       >
-        <div className="flex w-fit rounded-[3px] border px-2 py-1" style={{ borderColor: hex, color: hex }}>
-          <span className="label-xs led">{worker.name}</span>
-        </div>
-
-        <div className="font-mono text-[15px] leading-none tracking-tight" style={{ color: amber }}>
-          <span className="led">{worker.startedAt}</span>
-        </div>
-
-        <div className="min-w-0">
-          <div className="truncate font-mono text-[15px] leading-none" style={{ color: amber }}>
-            <span className="led">{current?.detail || current?.tool || worker.task}</span>
+        <div className="grid grid-cols-[76px_minmax(0,1fr)_76px] items-start gap-3">
+          <div>
+            <p className="font-mono text-[13px] text-warn led">{worker.startedAt}</p>
+            <span className="mt-2 inline-block rounded-[2px] border px-1.5 py-1 label-xs led" style={{ borderColor: hex, color: hex }}>{worker.name}</span>
           </div>
-          <div className="label-xs mt-1.5 truncate text-[#5d6672]">{worker.task}</div>
-        </div>
-
-        <div className="flex min-w-0 flex-wrap items-center gap-1">
-          {worker.stops.length === 0 && <span className="label-xs text-[#4b535d]">no steps yet</span>}
-          {worker.stops.map((stop, index) => {
-            const live = !settled && index === worker.stops.length - 1;
-            return (
-              <span
-                key={`${stop.tool}-${index}`}
-                className={`rounded-[2px] px-1.5 py-[3px] font-mono text-[10px] leading-none ${live ? 'text-black' : 'border'}`}
-                style={
-                  live
-                    ? { background: hex }
-                    : { borderColor: `${hex}55`, color: settled ? '#5d6672' : hex }
-                }
-              >
-                {stop.tool}
-              </span>
-            );
-          })}
-        </div>
-
-        <div
-          className="led text-right font-mono text-[11px] leading-none tracking-[0.12em]"
-          style={{ color: TONE_HEX[status.tone] }}
-        >
-          {status.label} <span className="text-[#5d6672]">{expanded ? '−' : '+'}</span>
+          <div className="min-w-0">
+            <p className="truncate font-mono text-[13px] text-led-pale">{current?.detail || current?.tool || worker.task}</p>
+            <p className="mt-2 line-clamp-2 font-mono text-[10px] leading-4 text-[#5d6672]">{worker.task}</p>
+            {worker.stops.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{worker.stops.slice(-4).map((stop, index) => { const live = !settled && index === Math.min(3, worker.stops.length - 1); return <span key={`${stop.tool}-${index}`} className={`rounded-[2px] border px-1.5 py-0.5 font-mono text-[8px] ${live ? 'led' : ''}`} style={{ borderColor: `${hex}55`, color: live ? hex : '#5d6672' }}>{stop.tool}</span>; })}</div>}
+          </div>
+          <p className="text-right font-mono text-[9px] leading-4 tracking-[0.08em] led" style={{ color: status.color }}>{status.label}<br /><span className={expanded ? 'text-warn' : 'text-[#5d6672]'}>{expanded ? '− CLOSE' : '+ DETAILS'}</span></p>
         </div>
       </button>
 
       {expanded && (
-        <div className="grid gap-3 border-t border-white/[0.04] bg-black/40 px-4 py-4 font-mono text-[11px] text-[#8b95a2]">
-          <p><span className="label-xs mr-3 text-[#5d6672]">TASK</span>{worker.task}</p>
+        <div className="border-t border-white/[0.08] bg-[#07090c] px-4 py-4 font-mono text-[10px] leading-5 text-[#8b95a2]" style={{ borderLeft: `2px solid ${hex}` }}>
+          <div className="grid grid-cols-[82px_minmax(0,1fr)] gap-x-3 gap-y-3">
+            <span className="label-xs pt-1 text-[#5d6672]">ASSIGNMENT</span>
+            <p className="break-words text-led-pale">{worker.task}</p>
+            <span className="label-xs pt-1 text-[#5d6672]">CURRENT</span>
+            <p className="break-words" style={{ color: worker.status === 'queued' ? '#ffa32b' : '#8b95a2' }}>{activity}</p>
+            <span className="label-xs pt-1 text-[#5d6672]">STATE</span>
+            <p className="led" style={{ color: status.color }}>{status.label} · {worker.stops.length} TOOL CALL{worker.stops.length === 1 ? '' : 'S'} · {worker.updates.length} REPORT{worker.updates.length === 1 ? '' : 'S'}</p>
+          </div>
+
+          {!hasProgress && (
+            <div className="mt-4 rounded border border-dashed border-white/10 px-3 py-3 text-center text-[#5d6672]">
+              <span className="mr-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-warn" />
+              AWAITING FIRST FIELD REPORT
+            </div>
+          )}
+
           {worker.updates.length > 0 && (
-            <div className="grid gap-2 border-y border-white/[0.05] py-3">
-              {worker.updates.map((update, index) => (
-                <p key={`${update.at}-${index}`} className="text-led-pale">
-                  <span className="mr-3 text-[#5d6672]">{update.at}</span>{update.text}
-                </p>
-              ))}
-            </div>
+            <section className="mt-4 border-t border-white/[0.06] pt-3">
+              <p className="label-xs mb-2 text-[#5d6672]">FIELD REPORTS</p>
+              <div className="grid gap-2">
+                {worker.updates.map((update, index) => <p key={`${update.at}-${index}`}><span className="mr-2 text-warn">{update.at}</span>{update.text}</p>)}
+              </div>
+            </section>
           )}
-          {worker.stops.map((stop, index) => (
-            <div key={`${stop.tool}-detail-${index}`} className="grid grid-cols-[72px_1fr] gap-x-3">
-              <span style={{ color: stop.status === 'error' ? '#ff5a4d' : hex }}>{stop.tool}</span>
-              <span className="break-all text-[#8b95a2]">{stop.detail || '—'}</span>
-              {stop.result && <span className="col-start-2 mt-1 break-all text-[#5d6672]">↳ {stop.result}</span>}
-            </div>
-          ))}
-          {worker.summary && <p className="text-led-green"><span className="label-xs mr-3">RESULT</span>{worker.summary}</p>}
-          {worker.display && (
-            <button
-              type="button"
-              onClick={() => onDisplay(worker)}
-              className="w-fit rounded-md border border-warn/40 px-3 py-2 label-xs text-warn hover:bg-warn/10"
-            >
-              VIEW {worker.display.title}
-            </button>
+
+          {worker.stops.length > 0 && (
+            <section className="mt-4 border-t border-white/[0.06] pt-3">
+              <p className="label-xs mb-2 text-[#5d6672]">TOOL TRACE</p>
+              <div className="grid gap-2">
+                {worker.stops.map((stop, index) => <div key={`${stop.tool}-${index}`} className="grid grid-cols-[64px_1fr] gap-2"><span style={{ color: stop.status === 'error' ? '#ff5a4d' : hex }}>{stop.tool}</span><span className="break-all">{stop.detail || '—'}{stop.result ? ` · ${stop.result}` : ''}</span></div>)}
+              </div>
+            </section>
           )}
-          {worker.error && <p className="text-alert"><span className="label-xs mr-3">ERROR</span>{worker.error}</p>}
+
+          {worker.summary && <p className="mt-4 border-t border-white/[0.06] pt-3 text-live"><span className="mr-2">RESULT</span>{worker.summary}</p>}
+          {worker.displays.length > 0 && <button type="button" onClick={() => onDisplay(worker)} className="mt-4 w-fit rounded border border-warn/40 px-3 py-2 label-xs text-warn hover:bg-warn/10">VIEW LATEST WIDGET</button>}
+          {worker.error && <p className="mt-4 text-alert">ERROR · {worker.error}</p>}
         </div>
       )}
     </div>
   );
 }
 
-export function DepartureBoard({
-  workers,
-  onDisplay,
-}: {
-  workers: readonly Worker[];
-  onDisplay: (worker: Worker) => void;
-}) {
+export function DepartureBoard({ workers, onDisplay }: { workers: readonly Worker[]; onDisplay: (worker: Worker) => void }) {
   return (
-    <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-hairline bg-[#04060a]">
-      <div className="board-scan pointer-events-none absolute inset-0 z-10" />
-
-      <div className={`${GRID} relative border-b border-white/[0.07] px-6 pt-4 pb-3`}>
-        <span className="label-xs text-[#8b95a2]">WORKER</span>
-        <span className="label-xs text-[#5d6672]">TIME</span>
-        <span className="label-xs text-[#5d6672]">DOING</span>
-        <span className="label-xs text-[#5d6672]">STEPS</span>
-        <span className="label-xs text-right text-[#5d6672]">STATUS</span>
+    <section className="board-scan relative min-h-[300px] overflow-hidden rounded-xl border border-white/[0.09] bg-[#04060a]">
+      <div className="grid grid-cols-[76px_minmax(0,1fr)_76px] gap-3 border-b border-white/[0.07] px-3 py-3">
+        <span className="label-xs text-[#5d6672]">TIME / AGENT</span><span className="label-xs text-[#5d6672]">DESTINATION / ACTIVITY</span><span className="label-xs text-right text-[#5d6672]">STATUS</span>
       </div>
-
-      <div className="app-scroll relative min-h-0 flex-1 overflow-y-auto px-6 pb-3">
-        {workers.length === 0 ? (
-          <div className="grid h-full place-items-center">
-            <span className="label-xs text-[#4b535d]">no workers dispatched</span>
-          </div>
-        ) : (
-          workers.map((worker) => <Row key={worker.name} worker={worker} onDisplay={onDisplay} />)
-        )}
-      </div>
+      {workers.length === 0 ? <div className="grid min-h-[250px] place-items-center text-center"><div><p className="font-mono text-[20px] text-[#333a43]">— — —</p><p className="label-xs mt-3 text-[#4b535d]">NO SERVICES DEPARTED</p></div></div> : workers.map((worker) => <Row key={worker.name} worker={worker} onDisplay={onDisplay} />)}
     </section>
   );
 }

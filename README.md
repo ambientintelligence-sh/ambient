@@ -18,6 +18,9 @@ workers execute in containers, and the image is built on first launch.
 Ambient opens the Pi delegation setup on launch. Sign in to any provider exposed
 by Pi using OAuth/account login or an API key, then choose a model. Reopen the
 picker with **MODEL**. The choice is saved in Ambient's user-data directory.
+The same Settings panel has an optional **YOUR LOCATION** field. A value such as
+`Vancouver, BC, Canada` is saved locally and supplied as the default place for
+location-sensitive voice requests and delegated searches.
 The realtime voice connection still requires `OPENAI_API_KEY`; Pi account login
 only authenticates delegated workers.
 
@@ -139,6 +142,33 @@ fill, navigate) use Chrome and perform the requested action. Dynamic pages and
 live verification can also escalate from Exa to Chrome.
 The selected provider and model are passed per dispatch. Ambient's app-specific Pi credential directory
 is mounted at `/home/node/.pi/agent`, allowing OAuth refreshes to persist.
+Each dispatch also receives freshly formatted local date/time and the saved
+location, and retained workers receive refreshed context when they are steered.
+
+### Timeline results
+
+Workers use `show_widget` to add glanceable results to the scrolling timeline.
+The tool supports three formats:
+
+- `markdown` is the default for compact reports, lists, comparisons, and tables.
+- `html` is reserved for simple responsive visuals that Markdown cannot express.
+- `image` accepts HTTPS/data URLs or PNG, JPEG, WebP, and GIF files saved inside
+  the mounted `/work` workspace, including useful Chrome DevTools screenshots.
+
+Every format can include up to four tappable HTTP(S) links. Image widgets can
+also include a short Markdown caption, making route results work as a map
+screenshot, a few essential directions, and an **Open in Google Maps** action
+without embedding another browser in Ambient.
+
+Workers may pass a stable `widgetId`. Calling `show_widget` again with the same
+ID replaces that agent's earlier widget in place; omitting the ID appends a new
+timeline item. This lets a retained agent revise a result after being steered
+while preserving older, distinct results.
+
+Legacy calls that provide only an `html` field remain supported. Timeline items
+are ordered by arrival, external links open in the system browser, and the
+renderer sizes HTML previews to their content with a height cap suitable for
+narrow windows.
 
 The image includes a writable Python virtual environment at `/opt/pyenv` (already
 on `PATH`). It covers common HTTP, scraping, data-science, spreadsheet, document,

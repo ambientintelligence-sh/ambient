@@ -3,7 +3,8 @@ import { ensureWorkerImage, WORKER_IMAGE } from './docker';
 import { nextWorkerName } from './worker-names';
 import type { DelegationSelection } from '../shared/auth';
 import type { BrowserMode } from '../shared/browser';
-import { isTerminal, type Worker, type WorkerEvent, type WorkerStop } from '../shared/worker';
+import { formatCurrentContext, type LocalContextState } from '../shared/local-context';
+import { isTerminal, type Worker, type WorkerDisplay, type WorkerEvent, type WorkerStop } from '../shared/worker';
 
 const MAX_STOPS = 8;
 const PROGRESS_INTERVAL_MS = 10_000;
@@ -13,7 +14,7 @@ type WorkerMessage =
   | { type: 'ready' }
   | { type: 'tool'; id: string; tool: string; detail?: string }
   | { type: 'tool_result'; id: string; tool: string; result?: string; isError: boolean }
-  | { type: 'display'; title: string; html: string }
+  | { type: 'display'; widgetId?: string | null; title: string; format?: 'html' | 'markdown' | 'image'; content?: string; html?: string; alt?: string | null; caption?: string | null; links?: { label: string; url: string }[] }
   | { type: 'done'; summary: string }
   | { type: 'error'; message: string };
 
@@ -35,7 +36,7 @@ export function createWorkerFleet(options: {
   }) => Promise<string | null>;
   getWorkspace: () => string | null;
   getBrowserConfig: () => Promise<{ mode: BrowserMode; browserUrl?: string }>;
-  exaUserLocation: string | null;
+  getLocalContext: () => LocalContextState;
   agentDir: string;
 }) {
   const workers = new Map<string, Worker>();
@@ -155,16 +156,36 @@ export function createWorkerFleet(options: {
         }));
         return;
       case 'display':
-        patch(name, (worker) => ({
-          ...worker,
-          display: {
-            id: `${name}-${Date.now()}`,
+        {
+          const format = message.format ?? 'html';
+          const content = message.content ?? message.html ?? '';
+          if (!content) return;
+        patch(name, (worker) => {
+          const widgetId = message.widgetId?.trim().slice(0, 80) || null;
+          const existing = widgetId ? worker.displays.find((display) => display.widgetId === widgetId) : null;
+          const display: WorkerDisplay = {
+            id: existing?.id ?? `${name}-${Date.now()}-${worker.displays.length}`,
+            widgetId,
             title: message.title.trim().slice(0, 120) || 'Result',
-            html: message.html.slice(0, 120_000),
-            createdAt: Date.now(),
-          },
-        }));
+            format,
+            content: content.slice(0, format === 'image' ? 7_000_000 : 120_000),
+            alt: message.alt?.trim().slice(0, 300) || null,
+            caption: message.caption?.trim().slice(0, 2_000) || null,
+            links: (message.links ?? []).filter(({ url }) => /^https?:\/\//i.test(url)).slice(0, 4).map(({ label, url }) => ({
+              label: label.trim().slice(0, 60) || 'Open link',
+              url: url.trim().slice(0, 2_000),
+            })),
+            createdAt: existing?.createdAt ?? Date.now(),
+          };
+          return {
+            ...worker,
+            displays: existing
+              ? worker.displays.map((item) => item.id === existing.id ? display : item)
+              : [...worker.displays, display],
+          };
+        });
         return;
+        }
       case 'done':
         // Progress is provisional telemetry. Once a checkpoint arrives, remove
         // those lines so stale observations cannot contradict the final report.
@@ -205,6 +226,8 @@ export function createWorkerFleet(options: {
     containerByWorker.set(name, container);
 
     const selection = options.getSelection();
+    const localContext = options.getLocalContext();
+    const currentContext = formatCurrentContext(localContext);
 
     // The app-owned Pi credential directory is shared so OAuth refreshes remain
     // durable. Workers can read provider credentials, but still cannot see host files.
@@ -219,7 +242,7 @@ export function createWorkerFleet(options: {
         '--volume', `${options.agentDir}:/home/node/.pi/agent`,
         '-e', 'OPENAI_API_KEY', '-e', 'EXA_API_KEY', '-e', 'EXA_USER_LOCATION',
         '-e', 'PI_TASK', '-e', 'PI_PROVIDER', '-e', 'PI_MODEL',
-        '-e', 'PI_BROWSER_MODE', '-e', 'PI_BROWSER_URL',
+        '-e', 'PI_BROWSER_MODE', '-e', 'PI_BROWSER_URL', '-e', 'PI_CURRENT_CONTEXT',
         WORKER_IMAGE,
       ],
       {
@@ -229,7 +252,8 @@ export function createWorkerFleet(options: {
           PI_TASK: task,
           PI_PROVIDER: selection.provider,
           PI_MODEL: selection.model,
-          EXA_USER_LOCATION: options.exaUserLocation ?? '',
+          EXA_USER_LOCATION: localContext.countryCode ?? '',
+          PI_CURRENT_CONTEXT: currentContext,
           PI_BROWSER_MODE: browserConfig.mode,
           PI_BROWSER_URL: browserConfig.browserUrl ?? '',
         },
@@ -311,8 +335,9 @@ export function createWorkerFleet(options: {
       if (worker.status !== 'queued' && worker.status !== 'running' && worker.status !== 'idle') {
         return { ok: false as const, error: `${callsign} is ${worker.status}` };
       }
-      if (readyWorkers.has(callsign)) sendControl(callsign, { type: 'steer', instruction });
-      else pendingSteers.set(callsign, [...(pendingSteers.get(callsign) ?? []), instruction]);
+      const contextualInstruction = `${instruction}\n\n${formatCurrentContext(options.getLocalContext())}`;
+      if (readyWorkers.has(callsign)) sendControl(callsign, { type: 'steer', instruction: contextualInstruction });
+      else pendingSteers.set(callsign, [...(pendingSteers.get(callsign) ?? []), contextualInstruction]);
       const stop: WorkerStop = {
         id: `steer-${Date.now()}`,
         tool: 'steer',
@@ -324,7 +349,6 @@ export function createWorkerFleet(options: {
         ...current,
         status: current.status === 'idle' ? 'running' : current.status,
         summary: current.status === 'idle' ? null : current.summary,
-        display: current.status === 'idle' ? null : current.display,
         stops: [...current.stops, stop].slice(-MAX_STOPS),
       }));
       return { ok: true as const, worker: callsign, status: 'steering queued' as const };
@@ -340,7 +364,7 @@ export function createWorkerFleet(options: {
         startedAt: clock(),
         stops: [],
         updates: [],
-        display: null,
+        displays: [],
         summary: null,
         error: null,
       };

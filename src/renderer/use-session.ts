@@ -12,6 +12,7 @@ import {
   REALTIME_MODEL_ID,
   REALTIME_VOICE,
 } from '@/shared/config';
+import { formatCurrentContext, type LocalContextState } from '@/shared/local-context';
 import type { Worker } from '@/shared/worker';
 
 const TRACE_LENGTH = 72;
@@ -53,8 +54,9 @@ const announcementInstruction = (announcement: Announcement) => {
   const { worker } = announcement;
   if (worker.status === 'cancelled') return 'Tell the user exactly: “Stopped.”';
   if (worker.status === 'idle') {
-    const visualContext = worker.display
-      ? ` A dashboard widget titled “${worker.display.title}” is now visible. Tell the user it is on screen and speak only the key takeaway; do not read the whole widget aloud.`
+    const latestDisplay = worker.displays.at(-1);
+    const visualContext = latestDisplay
+      ? ` A ${latestDisplay.format} timeline item titled “${latestDisplay.title}” is now visible. Tell the user it is on screen and speak only the key takeaway; do not read the whole item aloud.`
       : '';
     return `The requested background work finished.${visualContext} Give the user its definitive result naturally and concisely. Do not call it an update, checkpoint, or provisional result. Result: ${worker.summary ?? '(no summary)'}`;
   }
@@ -103,9 +105,9 @@ function createVoiceTools() {
     tool({
       name: 'spawn_worker',
       description:
-        'Dispatch a Pi worker for code, files, search, or browser automation. Workers have a show_widget tool for HTML widgets inside Ambient. If the user says “widget” or asks to put something on the dashboard, explicitly tell the worker to call show_widget. Also request it when structured visual results would be clearer on screen. Always use Exa first for factual lookups; only use the browser when Exa is insufficient or interaction is required. Returns immediately.',
+        'Dispatch a Pi worker for code, files, search, or browser automation. Workers can add concise Markdown, HTML, or image results with tappable links to the Ambient timeline. For maps and places, request a useful screenshot, a short caption, and a direct map link. A worker can reuse a widgetId to update its existing widget, or omit it to append another. Always use Exa first for factual lookups; only use the browser when Exa is insufficient or interaction is required. Returns immediately.',
       parameters: z.object({
-        task: z.string().describe('Complete self-contained task with all relevant context and expected result. If the user requested a widget, explicitly require the show_widget tool.'),
+        task: z.string().describe('Complete self-contained task with all relevant context and expected result. If the user requested a widget, screenshot, table, or timeline item, explicitly require show_widget and state the desired format.'),
       }),
       execute: async ({ task }) => {
         const workspace = await bridge.getWorkspace();
@@ -151,6 +153,13 @@ function createVoiceTools() {
     }),
   ];
 }
+
+const createAmbientAgent = (localContext: LocalContextState) => new RealtimeAgent({
+  name: 'Ambient',
+  instructions: `${REALTIME_INSTRUCTIONS}\n\n${formatCurrentContext(localContext)}`,
+  voice: REALTIME_VOICE,
+  tools: createVoiceTools(),
+});
 
 function transcriptFromHistory(history: RealtimeItem[]): string {
   const message = [...history].reverse().find((item) => item.type === 'message' && item.role === 'assistant');
@@ -297,6 +306,17 @@ export function useSession(): SessionView {
     });
   }, []);
 
+  useEffect(() => {
+    if (!bridge) return;
+    return bridge.onLocationChanged((localContext) => {
+      const realtime = realtimeRef.current;
+      if (!realtime || !connectedRef.current) return;
+      void realtime.updateAgent(createAmbientAgent(localContext)).catch((cause: unknown) => {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      });
+    });
+  }, []);
+
   const connect = useCallback(() => {
     if (connectingRef.current || connectedRef.current) return;
     connectingRef.current = true;
@@ -305,6 +325,7 @@ export function useSession(): SessionView {
 
     void (async () => {
       if (!bridge?.setupUrl) throw new Error('Realtime setup endpoint is unavailable');
+      const localContext = await bridge.getLocationState();
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
       });
@@ -325,12 +346,7 @@ export function useSession(): SessionView {
 
       const transport = new OpenAIRealtimeWebRTC({ mediaStream: stream });
       transportRef.current = transport;
-      const agent = new RealtimeAgent({
-        name: 'Ambient',
-        instructions: REALTIME_INSTRUCTIONS,
-        voice: REALTIME_VOICE,
-        tools: createVoiceTools(),
-      });
+      const agent = createAmbientAgent(localContext);
       const realtime = new RealtimeSession(agent, {
         transport,
         model: REALTIME_MODEL_ID,

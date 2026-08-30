@@ -45,6 +45,7 @@ function textOf(message) {
 }
 
 const task = process.env.PI_TASK ?? '';
+const currentContext = process.env.PI_CURRENT_CONTEXT?.trim() ?? '';
 const providerId = process.env.PI_PROVIDER ?? 'openai';
 const modelId = process.env.PI_MODEL ?? 'gpt-5.3-codex';
 const webToolPolicy = [
@@ -65,15 +66,20 @@ const visibleBrowserPolicy = process.env.PI_BROWSER_MODE === 'visible'
     ].join(' ')
   : '';
 const presentationPolicy = [
-  'Dashboard presentation policy:',
-  'When the user asks for a widget, says to show something as a widget, or asks to put a result on the dashboard, you must call show_widget once near completion.',
-  'You may also call show_widget when the final result benefits from visual structure—such as options, comparisons, plans, schedules, tables, or a compact report.',
-  'Provide a polished, readable, responsive HTML fragment with semantic markup and inline CSS. Do not use JavaScript, forms, iframes, or event handlers.',
+  'Timeline presentation policy:',
+  'When the user asks for a widget, timeline item, screenshot, or visual result, you must call show_widget once near completion.',
+  'Widgets are glanceable, not full reports. Show only the answer, the few details needed to act, and relevant links; keep deeper research in your closing summary.',
+  'Prefer Markdown for compact structured results, including options, comparisons, plans, schedules, and small tables. Avoid long prose and exhaustive step-by-step detail.',
+  'Use simple responsive HTML only when Markdown cannot express the visual; avoid dashboard layouts, large type, excessive padding, fixed dimensions, and decorative cards inside cards.',
+  'For routes, maps, and places, prefer one useful browser screenshot plus a short caption and a direct Google Maps or source link. Save the screenshot under /work and use image format.',
+  'Do not show screenshots of search pages, blank pages, login screens, or intermediate work.',
+  'Use a stable widgetId when the result may be refined. Reuse that widgetId after a steer to replace the existing widget; omit it when the new result deserves its own timeline item.',
+  'Do not use JavaScript, forms, iframes, or event handlers.',
   'Use show_widget only for useful final information, never progress, raw logs, or decorative filler.',
-  'After showing a widget, still give a short spoken closing summary that says what is on screen and highlights the most important conclusion.',
+  'After adding the timeline item, still give a short spoken closing summary that says what is on screen and highlights the most important conclusion.',
   'If no widget was requested and a visual adds no value, return the normal closing summary only.',
 ].join(' ');
-const initialTask = `${task}\n\n${webToolPolicy}${visibleBrowserPolicy ? `\n\n${visibleBrowserPolicy}` : ''}\n\n${presentationPolicy}`;
+const initialTask = `${task}\n\n${currentContext ? `${currentContext}\n\n` : ''}${webToolPolicy}${visibleBrowserPolicy ? `\n\n${visibleBrowserPolicy}` : ''}\n\n${presentationPolicy}`;
 
 if (!task) {
   emit({ type: 'error', message: 'no task supplied' });

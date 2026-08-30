@@ -1,5 +1,6 @@
 import type { AuthEvent, AuthMethod, AuthState, DelegationSelection } from '@/shared/auth';
 import type { BrowserMode, BrowserState } from '@/shared/browser';
+import type { LocalContextState, LocalContextUpdate } from '@/shared/local-context';
 import type { Worker, WorkerEvent, WorkerSteerResult, WorkerStopResult } from '@/shared/worker';
 import type { WorkspaceState } from '@/shared/workspace';
 
@@ -18,6 +19,10 @@ declare global {
       onWorkspaceChanged: (listener: (state: WorkspaceState) => void) => () => void;
       getBrowserState: () => Promise<BrowserState>;
       setBrowserMode: (mode: BrowserMode) => Promise<BrowserState>;
+      getLocationState: () => Promise<LocalContextState>;
+      setLocation: (input: LocalContextUpdate) => Promise<LocalContextState>;
+      clearLocation: () => Promise<LocalContextState>;
+      onLocationChanged: (listener: (state: LocalContextState) => void) => () => void;
       getAuthState: () => Promise<AuthState>;
       login: (providerId: string, method: AuthMethod) => Promise<AuthState>;
       answerLogin: (promptId: string, value: string) => Promise<void>;

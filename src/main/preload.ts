@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { AuthEvent, AuthMethod, AuthState, DelegationSelection } from '../shared/auth';
 import type { BrowserMode, BrowserState } from '../shared/browser';
+import type { LocalContextState, LocalContextUpdate } from '../shared/local-context';
 import type { Worker, WorkerEvent, WorkerSteerResult, WorkerStopResult } from '../shared/worker';
 import type { WorkspaceState } from '../shared/workspace';
 
@@ -19,6 +20,14 @@ contextBridge.exposeInMainWorld('ambient', {
   openWorkspace: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:open'),
   getBrowserState: (): Promise<BrowserState> => ipcRenderer.invoke('browser:state'),
   setBrowserMode: (mode: BrowserMode): Promise<BrowserState> => ipcRenderer.invoke('browser:set-mode', mode),
+  getLocationState: (): Promise<LocalContextState> => ipcRenderer.invoke('location:state'),
+  setLocation: (input: LocalContextUpdate): Promise<LocalContextState> => ipcRenderer.invoke('location:set', input),
+  clearLocation: (): Promise<LocalContextState> => ipcRenderer.invoke('location:clear'),
+  onLocationChanged: (listener: (state: LocalContextState) => void) => {
+    const handler = (_: unknown, state: LocalContextState) => listener(state);
+    ipcRenderer.on('location:event', handler);
+    return () => ipcRenderer.off('location:event', handler);
+  },
   onWorkspaceChanged: (listener: (state: WorkspaceState) => void) => {
     const handler = (_: unknown, state: WorkspaceState) => listener(state);
     ipcRenderer.on('workspace:event', handler);

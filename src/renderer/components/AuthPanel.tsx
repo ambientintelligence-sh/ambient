@@ -8,6 +8,7 @@ import type {
   LoginNotice,
   LoginPrompt,
 } from '@/shared/auth';
+import type { LocalContextState } from '@/shared/local-context';
 
 const bridge = window.ambient;
 
@@ -28,6 +29,9 @@ export function AuthPanel(props: {
   const [notice, setNotice] = useState<LoginNotice | null>(null);
   const [answer, setAnswer] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [locationState, setLocationState] = useState<LocalContextState | null>(null);
+  const [locationDraft, setLocationDraft] = useState('');
+  const [locationBusy, setLocationBusy] = useState(false);
 
   const publish = (next: AuthState) => {
     setState(next);
@@ -37,7 +41,12 @@ export function AuthPanel(props: {
   const refresh = () => bridge?.getAuthState().then(publish).catch((cause) => setError(String(cause)));
 
   useEffect(() => {
-    if (props.open) setModelPurpose(props.initialPurpose ?? 'delegation');
+    if (!props.open) return;
+    setModelPurpose(props.initialPurpose ?? 'delegation');
+    void bridge?.getLocationState().then((next) => {
+      setLocationState(next);
+      setLocationDraft(next.location ?? '');
+    }).catch((cause) => setError(String(cause)));
   }, [props.open, props.initialPurpose]);
 
   useEffect(() => {
@@ -112,23 +121,56 @@ export function AuthPanel(props: {
       .finally(() => setBusy(false));
   };
 
+  const saveLocation = () => {
+    if (!bridge) return;
+    const location = locationDraft.trim();
+    setLocationBusy(true);
+    setError(null);
+    const request = location
+      ? bridge.setLocation({
+          location,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        })
+      : bridge.clearLocation();
+    void request
+      .then((next) => {
+        setLocationState(next);
+        setLocationDraft(next.location ?? '');
+      })
+      .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)))
+      .finally(() => setLocationBusy(false));
+  };
+
+  const clearLocation = () => {
+    if (!bridge) return;
+    setLocationBusy(true);
+    setError(null);
+    void bridge.clearLocation()
+      .then((next) => {
+        setLocationState(next);
+        setLocationDraft('');
+      })
+      .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)))
+      .finally(() => setLocationBusy(false));
+  };
+
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-8 [-webkit-app-region:no-drag]">
-      <div className="flex h-[min(680px,88vh)] w-[min(980px,94vw)] flex-col overflow-hidden rounded-3xl border border-white/10 bg-panel shadow-2xl">
-        <header className="flex items-center justify-between border-b border-white/10 px-7 py-5">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-0 sm:p-8 [-webkit-app-region:no-drag]">
+      <div className="flex h-full w-full flex-col overflow-hidden bg-panel shadow-2xl sm:h-[min(680px,88vh)] sm:w-[min(980px,94vw)] sm:rounded-3xl sm:border sm:border-white/10">
+        <header className="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4 sm:items-center sm:px-7 sm:py-5">
           <div>
-            <p className="label-xs text-link">MODELS & SECOND OPINION</p>
-            <h2 className="mt-2 text-2xl font-light text-ink">Choose how Ambient works and reviews.</h2>
+            <p className="label-xs text-link">SETTINGS</p>
+            <h2 className="mt-2 text-lg font-light text-ink sm:text-2xl">Personalize how Ambient works.</h2>
           </div>
           <button className="rounded-full border border-white/10 px-4 py-2 label-xs text-dim hover:text-ink" onClick={props.onClose}>
             CLOSE
           </button>
         </header>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[300px_1fr]">
-          <aside className="overflow-y-auto border-r border-white/10 p-4">
+        <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] sm:grid-cols-[300px_1fr] sm:grid-rows-1">
+          <aside className="max-h-48 overflow-y-auto border-b border-white/10 p-3 sm:max-h-none sm:border-r sm:border-b-0 sm:p-4">
             <p className="label-xs px-2 py-3 text-dimmer">PROVIDERS</p>
             {providers.map((provider) => (
               <div
@@ -166,8 +208,44 @@ export function AuthPanel(props: {
             ))}
           </aside>
 
-          <main className="flex min-h-0 flex-col p-6">
-            <div className="flex items-center gap-3">
+          <main className="flex min-h-0 flex-col p-4 sm:p-6">
+            <form
+              className="mb-4 rounded-xl border border-white/[0.08] bg-black/30 p-3"
+              onSubmit={(event) => { event.preventDefault(); saveLocation(); }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <label htmlFor="ambient-location" className="label-xs text-warn">YOUR LOCATION</label>
+                <span className={`label-xs ${locationState?.enabled ? 'text-live' : 'text-dimmer'}`}>
+                  {locationState?.enabled ? 'SAVED' : 'OPTIONAL'}
+                </span>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-dim">Used as the default city or region for local recommendations and searches.</p>
+              <div className="mt-3 flex gap-2">
+                <input
+                  id="ambient-location"
+                  value={locationDraft}
+                  onChange={(event) => setLocationDraft(event.target.value)}
+                  placeholder="Vancouver, BC, Canada"
+                  maxLength={160}
+                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black px-3 py-2 text-sm text-ink outline-none placeholder:text-dimmer focus:border-warn/50"
+                />
+                <button disabled={locationBusy} className="rounded-lg border border-warn/30 px-3 py-2 label-xs text-warn hover:bg-warn/10 disabled:opacity-40">
+                  SAVE
+                </button>
+                {locationState?.enabled && (
+                  <button
+                    type="button"
+                    disabled={locationBusy}
+                    onClick={clearLocation}
+                    className="px-2 label-xs text-dimmer hover:text-alert disabled:opacity-40"
+                  >
+                    CLEAR
+                  </button>
+                )}
+              </div>
+            </form>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="min-w-0 flex-1">
                 <div className="flex gap-2">
                   <button
@@ -197,7 +275,7 @@ export function AuthPanel(props: {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Filter models"
-                className="w-56 rounded-xl border border-white/10 bg-black px-4 py-2.5 text-sm text-ink outline-none placeholder:text-dimmer focus:border-link/50"
+                className="w-full rounded-xl border border-white/10 bg-black px-4 py-2.5 text-sm text-ink outline-none placeholder:text-dimmer focus:border-link/50 sm:w-56"
               />
             </div>
 
@@ -254,7 +332,7 @@ export function AuthPanel(props: {
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {models.map((model) => {
                     const chosen = modelPurpose === 'summary'
                       ? state?.summarySelection

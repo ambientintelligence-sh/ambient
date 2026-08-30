@@ -52,7 +52,7 @@
 
 .app-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgb(255 255 255 / 0.18) transparent;
+    scrollbar-color: rgb(255 255 255 / 0.18) transparent;
 }
 
 .app-scroll::-webkit-scrollbar {
@@ -68,6 +68,152 @@
   border-radius: 999px;
   background: rgb(255 255 255 / 0.18);
   background-clip: padding-box;
+}
+
+.widget-markdown {
+  padding: 14px;
+  color: #d8e2ec;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.widget-caption {
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+  padding: 10px 14px;
+  color: #aeb6bf;
+  font-size: 12px;
+  line-height: 1.5;
+  user-select: text;
+}
+
+.widget-caption p,
+.widget-caption ul,
+.widget-caption ol {
+  margin: 0;
+}
+
+.widget-caption a {
+  color: #3e9bff;
+  text-decoration: underline;
+}
+
+.widget-markdown > :first-child {
+  margin-top: 0;
+}
+
+.widget-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.widget-markdown h1,
+.widget-markdown h2,
+.widget-markdown h3 {
+  margin: 16px 0 8px;
+  color: #f4f5f6;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.widget-markdown p,
+.widget-markdown ul,
+.widget-markdown ol,
+.widget-markdown blockquote,
+.widget-markdown pre,
+.widget-markdown table {
+  margin: 0 0 12px;
+}
+
+.widget-markdown ul,
+.widget-markdown ol {
+  padding-left: 20px;
+}
+
+.widget-markdown a {
+  color: #3e9bff;
+  text-decoration: underline;
+}
+
+.widget-markdown code {
+  border-radius: 3px;
+  background: rgb(255 255 255 / 0.07);
+  padding: 1px 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.widget-markdown pre {
+  overflow-x: auto;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.widget-markdown pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.widget-markdown table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.widget-markdown th,
+.widget-markdown td {
+  min-width: 88px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  padding: 8px 7px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.widget-markdown th {
+  color: #ffc93c;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.widget-markdown blockquote {
+  border-left: 2px solid #565c63;
+  padding-left: 10px;
+  color: #838a91;
+}
+
+.message-bubble {
+  position: relative;
+  border-radius: 18px;
+}
+
+.message-bubble-left::before {
+  position: absolute;
+  bottom: 0;
+  left: -5px;
+  width: 12px;
+  height: 14px;
+  background: #e9e9eb;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  content: '';
+}
+
+@utility led {
+  text-shadow: 0 0 7px currentColor;
+}
+
+@utility board-scan {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgb(255 255 255 / 0.035) 0px,
+    rgb(255 255 255 / 0.035) 1px,
+    transparent 1px,
+    transparent 3px
+  );
 }
 
 @utility label-xs {
@@ -98,19 +244,4 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-}
-
-/* Departure board: LED glow and dot-matrix banding. */
-@utility led {
-  text-shadow: 0 0 7px currentColor;
-}
-
-@utility board-scan {
-  background-image: repeating-linear-gradient(
-    to bottom,
-    rgb(255 255 255 / 0.035) 0px,
-    rgb(255 255 255 / 0.035) 1px,
-    transparent 1px,
-    transparent 3px
-  );
 }
