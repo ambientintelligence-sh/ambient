@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { AuthEvent, AuthMethod, AuthState, DelegationSelection } from '../shared/auth';
 import type { BrowserMode, BrowserState } from '../shared/browser';
 import type { LocalContextState, LocalContextUpdate } from '../shared/local-context';
-import type { CancelWorkResult, DispatchWorkResult, RouterEvent, WorkJob } from '../shared/router';
+import type { SendMessageResult, WorkEvent } from '../shared/router';
 import type { NetworkState } from '../shared/sandbox';
 import type { WorkerEvent } from '../shared/worker';
 import type { WorkspaceState } from '../shared/workspace';
@@ -12,9 +12,7 @@ const setupUrl = process.argv.find((arg) => arg.startsWith(flag))?.slice(flag.le
 
 contextBridge.exposeInMainWorld('ambient', {
   setupUrl,
-  dispatchWork: (task: string): Promise<DispatchWorkResult> => ipcRenderer.invoke('work:dispatch', task),
-  listWork: (): Promise<WorkJob[]> => ipcRenderer.invoke('work:list'),
-  cancelWork: (id: string): Promise<CancelWorkResult> => ipcRenderer.invoke('work:cancel', id),
+  sendMessage: (message: string): Promise<SendMessageResult> => ipcRenderer.invoke('worker:message', message),
   getWorkspace: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:state'),
   selectWorkspace: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:select'),
   openWorkspace: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:open'),
@@ -57,9 +55,9 @@ contextBridge.exposeInMainWorld('ambient', {
     ipcRenderer.on('worker:event', handler);
     return () => ipcRenderer.off('worker:event', handler);
   },
-  onRouterEvent: (listener: (event: RouterEvent) => void) => {
-    const handler = (_: unknown, event: RouterEvent) => listener(event);
-    ipcRenderer.on('router:event', handler);
-    return () => ipcRenderer.off('router:event', handler);
+  onWorkEvent: (listener: (event: WorkEvent) => void) => {
+    const handler = (_: unknown, event: WorkEvent) => listener(event);
+    ipcRenderer.on('work:event', handler);
+    return () => ipcRenderer.off('work:event', handler);
   },
 });

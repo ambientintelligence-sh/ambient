@@ -13,20 +13,20 @@ export type WorkJob = Readonly<{
   error: string | null;
 }>;
 
-export type RouterVoiceMessage = Readonly<{
+export type WorkerReply = Readonly<{
   id: string;
   jobId: string;
-  kind: 'progress' | 'result' | 'error' | 'clarification';
+  kind: 'progress' | 'result' | 'error' | 'clarification' | 'widget';
   text: string;
   displayTitle: string | null;
 }>;
 
-export type RouterEvent =
+export type WorkEvent =
   | Readonly<{ kind: 'job'; job: WorkJob }>
-  | Readonly<{ kind: 'voice-message'; message: RouterVoiceMessage }>
+  | Readonly<{ kind: 'voice-message'; message: WorkerReply }>
   | Readonly<{ kind: 'display'; job: WorkJob; display: TimelineDisplay }>;
 
-export type DispatchWorkResult = Readonly<{ jobId: string; status: 'accepted' }>;
+export type SendMessageResult = Readonly<{ messageId: string; status: 'sent' }>;
 
 export type CancelWorkResult =
   | Readonly<{ ok: true; jobId: string; status: 'cancelled' }>

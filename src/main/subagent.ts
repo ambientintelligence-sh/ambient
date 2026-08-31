@@ -106,6 +106,8 @@ async function run(input: SubagentLaunch) {
         .map((part) => part.text)
         .join('')
         .trim();
+      const note = summary.replace(/\s+/g, ' ');
+      if (note) emit({ type: 'progress', text: note.length > 600 ? `${note.slice(0, 599)}…` : note });
     }
   });
   emit({ type: 'ready' });

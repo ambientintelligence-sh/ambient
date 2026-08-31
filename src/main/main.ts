@@ -22,16 +22,18 @@ loadEnv({ quiet: true });
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
-const hasSingleInstanceLock = app.requestSingleInstanceLock();
-if (!hasSingleInstanceLock) app.quit();
+if (app.isPackaged) {
+  const hasSingleInstanceLock = app.requestSingleInstanceLock();
+  if (!hasSingleInstanceLock) app.quit();
 
-app.on('second-instance', () => {
-  const window = BrowserWindow.getAllWindows()[0];
-  if (!window) return;
-  if (window.isMinimized()) window.restore();
-  window.show();
-  window.focus();
-});
+  app.on('second-instance', () => {
+    const window = BrowserWindow.getAllWindows()[0];
+    if (!window) return;
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+  });
+}
 
 let fleet: WorkerFleet | null = null;
 let auth: AuthService | null = null;
@@ -97,7 +99,7 @@ async function createWindow(setupUrl: string) {
     agentDir: auth.agentDir,
     tempRoot,
     emit: (event) => {
-      for (const target of BrowserWindow.getAllWindows()) target.webContents.send('router:event', event);
+      for (const target of BrowserWindow.getAllWindows()) target.webContents.send('work:event', event);
     },
   });
 
@@ -136,11 +138,7 @@ app.whenReady().then(async () => {
   await rm(tempRoot, { recursive: true, force: true });
   await mkdir(tempRoot, { recursive: true, mode: 0o700 });
 
-  ipcMain.handle('work:dispatch', (_event, task: string) => router?.dispatch(task) ?? null);
-  ipcMain.handle('work:list', () => router?.list() ?? []);
-  ipcMain.handle('work:cancel', (_event, id: string) =>
-    router?.cancel(id) ?? { ok: false, error: 'work router is not ready' },
-  );
+  ipcMain.handle('worker:message', (_event, message: string) => router?.sendMessage(message) ?? null);
   ipcMain.handle('network:state', (): NetworkState => ({ enabled: networkEnabled }));
   ipcMain.handle('network:set', (_event, enabled: boolean): NetworkState => {
     networkEnabled = enabled === true;

@@ -106,7 +106,7 @@ export function WidgetDock(props: {
             <header className="mb-2 flex items-start justify-between gap-3 px-1">
               <div className="min-w-0">
                 <h2 className="text-[14px] font-medium leading-5 text-ink">{display.title}</h2>
-                <p className="mt-1 font-mono text-[9px] tracking-[0.08em] text-[#5d6672]">{new Date(job.createdAt).toTimeString().slice(0, 5)} · ROUTER · {(display.format ?? 'html').toUpperCase()}</p>
+                <p className="mt-1 font-mono text-[9px] tracking-[0.08em] text-[#5d6672]">{new Date(job.createdAt).toTimeString().slice(0, 5)} · WORKER · {(display.format ?? 'html').toUpperCase()}</p>
               </div>
               <button type="button" aria-label={`Dismiss ${display.title}`} onClick={() => props.onDismiss(display.id)} className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-base text-[#5d6672] hover:bg-white/5 hover:text-ink">×</button>
             </header>

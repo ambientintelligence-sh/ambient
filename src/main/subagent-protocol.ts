@@ -21,6 +21,7 @@ export type SubagentMessage =
   | Readonly<{ type: 'ready' }>
   | Readonly<{ type: 'tool'; id: string; tool: string; detail?: string }>
   | Readonly<{ type: 'tool_result'; id: string; tool: string; result?: string; isError: boolean }>
+  | Readonly<{ type: 'progress'; text: string }>
   | Readonly<{ type: 'done'; summary: string }>
   | Readonly<{ type: 'error'; message: string }>;
 

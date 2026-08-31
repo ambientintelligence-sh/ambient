@@ -13,7 +13,7 @@ import {
   REALTIME_VOICE,
 } from '@/shared/config';
 import { formatCurrentContext, type LocalContextState } from '@/shared/local-context';
-import type { RouterVoiceMessage, WorkJob } from '@/shared/router';
+import type { WorkerReply, WorkJob } from '@/shared/router';
 import type { TimelineDisplay, Worker } from '@/shared/worker';
 
 const TRACE_LENGTH = 72;
@@ -39,7 +39,7 @@ export type SessionView = {
   toggleMute: () => void;
 };
 
-type Announcement = RouterVoiceMessage;
+type Announcement = WorkerReply;
 
 const upsert = (workers: readonly Worker[], next: Worker): readonly Worker[] => {
   const index = workers.findIndex((worker) => worker.name === next.name);
@@ -48,13 +48,11 @@ const upsert = (workers: readonly Worker[], next: Worker): readonly Worker[] => 
 };
 
 const announcementInstruction = (announcement: Announcement) => {
-  const visualContext = announcement.displayTitle
-    ? ` A timeline item titled “${announcement.displayTitle}” is visible. Mention that it is on screen without reading it aloud.`
-    : '';
-  if (announcement.kind === 'progress') return `Speak exactly this brief progress update and nothing else: “${announcement.text}”`;
-  if (announcement.kind === 'clarification') return `Ask the user this clarification naturally and concisely: ${announcement.text}`;
-  if (announcement.kind === 'error') return `Give the user this work status plainly and briefly: ${announcement.text}`;
-  return `The requested work is complete.${visualContext} Give the definitive result naturally and concisely: ${announcement.text}`;
+  if (announcement.kind === 'widget') return `Say only: “${announcement.text}”`;
+  if (announcement.kind === 'progress') return `Say only: “${announcement.text}”`;
+  if (announcement.kind === 'clarification') return `Ask the user: ${announcement.text}`;
+  if (announcement.kind === 'error') return `Say only: “${announcement.text}”`;
+  return announcement.text;
 };
 
 const stringify = (value: unknown) => JSON.stringify(value);
@@ -81,32 +79,13 @@ function createVoiceTools() {
       execute: async () => stringify(await bridge.openWorkspace()),
     }),
     tool({
-      name: 'dispatch_work',
+      name: 'send_message',
       description:
-        'Submit any request that needs reasoning or real work to the durable router. The router may answer quickly or dispatch isolated subagents, synthesize their results, and decide whether to show a widget. Returns immediately.',
+        'Send the user’s message to the primary worker. Use this for every request for information, judgment, research, action, files, browsing, code, status, changes, or cancellation. The worker owns the request and will send a reply back asynchronously. Returns immediately.',
       parameters: z.object({
-        task: z.string().describe('Complete user request with all relevant conversational context, constraints, and desired outcome.'),
+        message: z.string().describe('The user’s complete message plus relevant conversational context. Preserve exactly what they want, including corrections, follow-ups, and constraints.'),
       }),
-      execute: async ({ task }) => {
-        const job = await bridge.dispatchWork(task);
-        return stringify({
-          ...job,
-          instruction:
-            'Say only “I’m [short concrete present-progressive action].” Never mention routing, job IDs, workers, or subagents.',
-        });
-      },
-    }),
-    tool({
-      name: 'cancel_work',
-      description: 'Cancel a previously dispatched top-level work job when the user asks to stop it.',
-      parameters: z.object({ jobId: z.string() }),
-      execute: async ({ jobId }) => stringify(await bridge.cancelWork(jobId)),
-    }),
-    tool({
-      name: 'list_work',
-      description: 'Return top-level work jobs and their status. Use when the user asks what is happening.',
-      parameters: z.object({}),
-      execute: async () => stringify({ jobs: await bridge.listWork() }),
+      execute: async ({ message }) => stringify(await bridge.sendMessage(message)),
     }),
   ];
 }
@@ -179,6 +158,11 @@ export function useSession(): SessionView {
       queuedAnnouncements.current.push(announcement);
       return;
     }
+    if (announcement.kind === 'widget') {
+      // Widget announcements queue like progress but never replace a pending final result.
+      queuedAnnouncements.current.push(announcement);
+      return;
+    }
     queuedAnnouncements.current = queuedAnnouncements.current.filter((queued) => queued.jobId !== announcement.jobId);
     queuedAnnouncements.current.unshift(announcement);
   }, []);
@@ -204,7 +188,7 @@ export function useSession(): SessionView {
       enqueueAnnouncement(announcement);
       return;
     }
-    if (announcement.kind === 'progress') {
+    if (announcement.kind === 'progress' || announcement.kind === 'widget') {
       const delay = Math.max(0, PROGRESS_GAP_MS - (Date.now() - lastProgressDeliveredAt.current));
       if (delay > 0) {
         enqueueAnnouncement(announcement);
@@ -246,7 +230,7 @@ export function useSession(): SessionView {
       if (event.kind === 'update') return;
       setLastReport(
         event.worker.status === 'complete'
-          ? `${event.worker.name} — ONLINE: result returned to router`
+          ? `${event.worker.name} — ONLINE: result returned to primary worker`
           : event.worker.status === 'cancelled'
             ? `${event.worker.name} — STOPPED`
             : `${event.worker.name} — FAILED: ${event.worker.error ?? 'unknown'}`,
@@ -256,7 +240,7 @@ export function useSession(): SessionView {
 
   useEffect(() => {
     if (!bridge) return;
-    return bridge.onRouterEvent((event) => {
+    return bridge.onWorkEvent((event) => {
       if (event.kind === 'display') {
         setTimelineItems((current) => {
           const index = current.findIndex((item) => item.display.id === event.display.id);
@@ -266,7 +250,7 @@ export function useSession(): SessionView {
         return;
       }
       if (event.kind === 'job') return;
-      setLastReport(`ROUTER — ${event.message.text}`);
+      setLastReport(`WORKER — ${event.message.text}`);
       deliverAnnouncementRef.current(event.message);
     });
   }, []);

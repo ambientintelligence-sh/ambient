@@ -85,6 +85,12 @@ export function createWorkerFleet(options: {
       case 'done':
         patch(name, (worker) => ({ ...worker, status: 'complete', summary: message.summary }), true);
         return;
+      case 'progress':
+        patch(name, (worker) => ({
+          ...worker,
+          updates: [...worker.updates, { at: clock(), text: message.text }].slice(-MAX_STOPS),
+        }));
+        return;
       case 'error':
         fail(name, message.message);
     }

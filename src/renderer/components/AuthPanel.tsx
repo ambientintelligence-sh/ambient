@@ -241,7 +241,7 @@ export function AuthPanel(props: {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="min-w-0 flex-1">
                 <div className="flex gap-2">
-                  <span className="rounded-lg bg-link/15 px-3 py-2 label-xs text-link">ROUTER + WORKERS</span>
+                  <span className="rounded-lg bg-link/15 px-3 py-2 label-xs text-link">PRIMARY WORKER</span>
                 </div>
                 <p className="mt-2 truncate text-sm text-dim">
                   {selectedProvider ? selectedProvider.name : 'All connected providers'}
@@ -334,7 +334,7 @@ export function AuthPanel(props: {
         </div>
 
         <footer className="border-t border-white/10 px-7 py-3 label-xs text-dimmer">
-          THE SELECTED MODEL POWERS THE ROUTER AND ITS WORKERS · VOICE USES OPENAI
+          THE SELECTED MODEL POWERS THE PRIMARY WORKER AND ITS HELPERS · VOICE USES OPENAI
         </footer>
       </div>
     </div>
