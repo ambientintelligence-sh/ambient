@@ -77,6 +77,10 @@ worker. `select_workspace` and `open_workspace` remain direct interface controls
 The voice agent does not decide whether a request is large enough to delegate and
 does not plan helper topology itself.
 
+Both agents communicate through a `send_message({ message })` tool. For the voice
+agent it sends to the primary worker; for the primary worker it sends back to the
+voice agent. Primary-worker prose is never forwarded implicitly.
+
 `send_message` is deliberately **asynchronous**. The main process records an
 internal work item, queues the message in the primary worker's mailbox, and
 immediately returns `{ messageId, status: "sent" }`. The voice model may give one
@@ -91,15 +95,15 @@ voice calls send_message(message)
   → primary worker polls helpers at its own interval via poll_subagents and may
     update one compact progress widget after a meaningful milestone
   → helper results return only to the primary worker
-  → primary worker synthesizes, optionally calls show_widget, then publish_voice_message
-  → each newly shown widget tells the voice agent the exact short line to say
+  → primary worker synthesizes, optionally calls show_widget, then uses send_message
+    whenever it needs to communicate with the voice agent
   → renderer's response sequencer picks up the worker reply when voice is free
 ```
 
 The primary worker is a host-side Pi session with the same working tools as a helper:
 `read`, `write`, `edit`, `bash`, `ls`, Exa search, and the compact
 Chrome DevTools MCP proxy. It additionally owns `dispatch_subagent`, `poll_subagents`,
-`show_widget`, and `publish_voice_message`. It prioritizes dispatching helpers so
+`show_widget`, and `send_message`. It prioritizes dispatching helpers so
 its turns end fast and the voice assistant is not kept waiting, answering directly
 only when the result is trivially quick. While children run, the primary worker calls
 `poll_subagents` with an interval it chooses — short for simple tasks, longer for

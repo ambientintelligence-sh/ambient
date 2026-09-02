@@ -33,16 +33,16 @@ const documentFor = (html: string) => `<!doctype html>
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src https: data:;">
   <base target="_blank">
   <style>
-    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
     * { box-sizing: border-box; }
-    body { margin: 0; padding: 14px; background: #0c0d0f; color: #e8eaed; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
-    h1, h2, h3 { margin: 0 0 10px; font-size: 1.1em; }
+    body { margin: 0; padding: 14px; background: transparent; color: #3a3a44; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+    h1, h2, h3 { margin: 0 0 10px; font-size: 1.1em; color: #1c1c22; }
     p { margin: 0 0 10px; }
     p:last-child { margin-bottom: 0; }
-    a { color: #55a8ff; }
-    img { display: block; max-width: 100%; height: auto; border-radius: 8px; }
+    a { color: #0a6cff; }
+    img { display: block; max-width: 100%; height: auto; border-radius: 10px; }
     table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 7px 6px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; }
+    th, td { padding: 7px 6px; border-bottom: 1px solid rgba(20,22,30,.08); text-align: left; }
   </style>
 </head>
 <body>${html}</body>
@@ -62,7 +62,7 @@ function HtmlPreview({ display }: { display: Display }) {
         setHeight(Math.max(120, Math.min(420, measured)));
       }}
       style={{ height }}
-      className="block w-full border-0 bg-panel"
+      className="block w-full border-0 bg-transparent"
     />
   );
 }
@@ -88,35 +88,49 @@ export function WidgetDock(props: {
 }) {
   if (props.items.length === 0) {
     return (
-      <section className="grid min-h-[220px] place-items-center px-6 text-center">
-        <div>
-          <h2 className="label-xs text-[#5d6672]">TIMELINE EMPTY</h2>
-          <p className="mt-3 font-mono text-[11px] leading-5 text-[#4b535d]">MARKDOWN · HTML · IMAGES<br />APPEAR HERE AS THEY ARRIVE</p>
-          {props.hasWorkers && <button type="button" onClick={props.onViewAgents} className="mt-5 text-[11px] text-warn hover:text-ink">View active agents →</button>}
-        </div>
+      <section aria-hidden="true">
+        {props.hasWorkers && (
+          <div className="grid place-items-center pt-6">
+            <button type="button" onClick={props.onViewAgents} className="text-[12px] font-medium text-link hover:underline">
+              View active agents →
+            </button>
+          </div>
+        )}
       </section>
     );
   }
 
   return (
-    <section className="divide-y divide-white/[0.07]">
+    <section className="grid gap-3">
       {props.items.map(({ job, display }) => {
         return (
-          <article key={display.id} className="py-4 first:pt-1">
-            <header className="mb-2 flex items-start justify-between gap-3 px-1">
+          <article key={display.id} className="glass-card widget-enter overflow-hidden">
+            <header className="flex items-start justify-between gap-3 px-4 pb-2.5 pt-3.5">
               <div className="min-w-0">
-                <h2 className="text-[14px] font-medium leading-5 text-ink">{display.title}</h2>
-                <p className="mt-1 font-mono text-[9px] tracking-[0.08em] text-[#5d6672]">{new Date(job.createdAt).toTimeString().slice(0, 5)} · WORKER · {(display.format ?? 'html').toUpperCase()}</p>
+                <h2 className="truncate text-[13px] font-semibold leading-5 text-ink">{display.title}</h2>
+                <p className="mt-0.5 text-[11px] text-dimmer">{new Date(job.createdAt).toTimeString().slice(0, 5)}</p>
               </div>
-              <button type="button" aria-label={`Dismiss ${display.title}`} onClick={() => props.onDismiss(display.id)} className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-base text-[#5d6672] hover:bg-white/5 hover:text-ink">×</button>
+              <button
+                type="button"
+                aria-label={`Dismiss ${display.title}`}
+                onClick={() => props.onDismiss(display.id)}
+                className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[13px] text-dimmer transition-colors duration-150 hover:bg-black/[0.05] hover:text-ink"
+              >
+                ×
+              </button>
             </header>
-            <div className="overflow-hidden rounded-lg border border-white/[0.08] bg-panel">
+            <div className="border-t border-black/[0.05]">
               <DisplayContent display={display} />
               {display.caption && <div className="widget-caption"><Markdown>{display.caption}</Markdown></div>}
               {display.links.length > 0 && (
-                <div className="flex flex-wrap gap-2 border-t border-white/[0.08] p-3">
+                <div className="flex flex-wrap gap-2 border-t border-black/[0.05] p-3">
                   {display.links.map((link, index) => (
-                    <button key={`${link.url}-${index}`} type="button" onClick={() => openExternal(link.url)} className="min-h-10 rounded-md border border-link/40 bg-link/10 px-3 py-2 text-left text-[12px] font-medium text-link hover:bg-link/20">
+                    <button
+                      key={`${link.url}-${index}`}
+                      type="button"
+                      onClick={() => openExternal(link.url)}
+                      className="min-h-9 rounded-full bg-link/10 px-3.5 py-1.5 text-left text-[12px] font-medium text-link transition-colors duration-150 hover:bg-link/15"
+                    >
                       {link.label} <span aria-hidden="true">↗</span>
                     </button>
                   ))}

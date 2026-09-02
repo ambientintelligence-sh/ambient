@@ -16,7 +16,7 @@ export type WorkJob = Readonly<{
 export type WorkerReply = Readonly<{
   id: string;
   jobId: string;
-  kind: 'progress' | 'result' | 'error' | 'clarification' | 'widget';
+  kind: 'progress' | 'result' | 'error' | 'clarification';
   text: string;
   displayTitle: string | null;
 }>;

@@ -6,24 +6,24 @@
   --font-sans: 'Inter Variable', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
 
-  --color-void: #000000;
-  --color-panel: #0c0d0f;
-  --color-panel-2: #141619;
-  --color-hairline: rgb(255 255 255 / 0.09);
+  --color-void: #fafafc;
+  --color-panel: #ffffff;
+  --color-panel-2: #f4f4f7;
+  --color-hairline: rgb(20 22 30 / 0.08);
 
-  --color-ink: #f4f5f6;
-  --color-dim: #838a91;
-  --color-dimmer: #565c63;
+  --color-ink: #1c1c22;
+  --color-dim: #71717c;
+  --color-dimmer: #abacb6;
 
-  --color-led-amber: #ffa32b;
-  --color-led-green: #46e05a;
-  --color-led-pale: #d8e2ec;
+  --color-led-amber: #e08300;
+  --color-led-green: #16a34a;
+  --color-led-pale: #2b2b33;
 
-  --color-live: #5ee87a;
-  --color-warn: #ffc93c;
-  --color-alert: #ff4d4d;
-  --color-link: #3e9bff;
-  --color-deep: #a77bff;
+  --color-live: #16a34a;
+  --color-warn: #e08300;
+  --color-alert: #e0263c;
+  --color-link: #0a6cff;
+  --color-deep: #7c5af5;
 }
 
 @layer base {
@@ -52,7 +52,7 @@
 
 .app-scroll {
   scrollbar-width: thin;
-    scrollbar-color: rgb(255 255 255 / 0.18) transparent;
+  scrollbar-color: rgb(20 22 30 / 0.14) transparent;
 }
 
 .app-scroll::-webkit-scrollbar {
@@ -66,23 +66,268 @@
 .app-scroll::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   border-radius: 999px;
-  background: rgb(255 255 255 / 0.18);
+  background: rgb(20 22 30 / 0.14);
   background-clip: padding-box;
 }
 
-.widget-markdown {
-  padding: 14px;
-  color: #d8e2ec;
+/* ------------------------------------------------------------------ */
+/* Glass                                                               */
+/* ------------------------------------------------------------------ */
+
+@utility glass {
+  background: rgb(255 255 255 / 0.66);
+  backdrop-filter: blur(28px) saturate(1.8);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+}
+
+@utility glass-card {
+  background: rgb(255 255 255 / 0.72);
+  backdrop-filter: blur(24px) saturate(1.7);
+  -webkit-backdrop-filter: blur(24px) saturate(1.7);
+  border: 1px solid rgb(255 255 255 / 0.75);
+  box-shadow:
+    0 1px 2px rgb(20 22 30 / 0.04),
+    0 8px 28px rgb(20 22 30 / 0.07),
+    inset 0 0 0 0.5px rgb(20 22 30 / 0.03);
+  border-radius: 22px;
+}
+
+@utility label-xs {
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+/* ------------------------------------------------------------------ */
+/* Ambient grain-gradient backdrop (paper.design grain gradient, kept  */
+/* very subtle: soft drifting mesh blobs + static fractal grain)       */
+/* ------------------------------------------------------------------ */
+
+.app-bg {
+  background: #fafafc;
+}
+
+.blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(70px);
+  will-change: transform;
+}
+
+.blob-a {
+  width: 430px;
+  height: 430px;
+  top: -130px;
+  left: -140px;
+  background: #c7d9ff;
+  opacity: 0.55;
+  animation: drift-a 26s ease-in-out infinite alternate;
+}
+
+.blob-b {
+  width: 380px;
+  height: 380px;
+  right: -120px;
+  bottom: -110px;
+  background: #ffd9c4;
+  opacity: 0.5;
+  animation: drift-b 32s ease-in-out infinite alternate;
+}
+
+.blob-c {
+  width: 340px;
+  height: 340px;
+  top: 38%;
+  left: -110px;
+  background: #ddd3ff;
+  opacity: 0.45;
+  animation: drift-c 29s ease-in-out infinite alternate;
+}
+
+@keyframes drift-a {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(38px, 26px) scale(1.07); }
+}
+
+@keyframes drift-b {
+  from { transform: translate(0, 0) scale(1.05); }
+  to { transform: translate(-32px, -24px) scale(1); }
+}
+
+@keyframes drift-c {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(28px, -30px) scale(1.08); }
+}
+
+.grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.4;
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Voice pill — a single persistent capsule. No shape morphing: only   */
+/* opacity / translateY / scaleX animate, so it always stays smooth.   */
+/* ------------------------------------------------------------------ */
+
+.orb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 148px;
+  height: 44px;
+  border-radius: 22px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 0.82);
+  backdrop-filter: blur(18px) saturate(1.6);
+  -webkit-backdrop-filter: blur(18px) saturate(1.6);
+  box-shadow:
+    0 1px 3px rgb(20 22 30 / 0.08),
+    0 8px 24px rgb(20 22 30 / 0.10),
+    inset 0 0 0 0.5px rgb(20 22 30 / 0.04);
+  transition: opacity 250ms ease, transform 250ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.orb[data-state='off'] {
+  opacity: 0.4;
+  transform: scaleX(0.86);
+}
+
+.orb[data-state='idle'] {
+  animation: orb-float 4.6s ease-in-out infinite;
+}
+
+.orb[data-state='listening'] {
+  box-shadow:
+    0 1px 3px rgb(20 22 30 / 0.10),
+    0 8px 24px rgb(20 22 30 / 0.12),
+    inset 0 0 0 0.5px rgb(10 108 255 / 0.22);
+}
+
+.orb[data-state='speaking'] {
+  box-shadow:
+    0 1px 3px rgb(20 22 30 / 0.08),
+    0 8px 24px rgb(20 22 30 / 0.10),
+    inset 0 0 0 0.5px rgb(20 22 30 / 0.04),
+    0 0 24px rgb(10 108 255 / 0.10);
+}
+
+.wave {
+  display: block;
+}
+
+/* Bars animate with pure CSS transforms — compositor-only, 60fps, no
+ * re-renders. Amplitude is modulated via scaleY inside .wave-bar-a/b/c. */
+.wave-bar {
+  animation: wave-bob 1.4s ease-in-out infinite alternate;
+  transform-origin: 50% 50%;
+  transform-box: fill-box;
+  transition: fill 250ms ease, opacity 250ms ease;
+}
+
+.orb[data-state='off'] .wave-bar {
+  animation-play-state: paused;
+  transform: scaleY(0.12);
+  opacity: 0.35;
+}
+
+.orb[data-state='idle'] .wave-bar {
+  animation-name: wave-bob;
+  animation-duration: 2.6s !important;
+  opacity: 0.35;
+}
+
+/* Live states: bar amplitude follows the real mic/speaker level via the
+ * --amp custom property (updated ~20Hz by the session trace). */
+.orb[data-state='listening'] .wave-bar,
+.orb[data-state='speaking'] .wave-bar {
+  animation-name: wave-live;
+  opacity: 0.9;
+}
+
+.orb[data-state='speaking'] .wave-bar {
+  animation-duration: 1s !important;
+}
+
+@keyframes wave-bob {
+  from { transform: scaleY(0.2); }
+  to { transform: scaleY(1); }
+}
+
+@keyframes wave-live {
+  from { transform: scaleY(max(0.08, var(--amp, 0) * 0.45)); }
+  to { transform: scaleY(max(0.1, var(--amp, 0))); }
+}
+
+@keyframes orb-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+/* ------------------------------------------------------------------ */
+/* Floating subtitles                                                  */
+/* ------------------------------------------------------------------ */
+
+.subtitle {
+  max-width: 420px;
+  border-radius: 18px;
+  padding: 10px 16px;
   font-size: 13px;
   line-height: 1.5;
+  color: rgb(28 28 34 / 0.92);
+  transition:
+    opacity 280ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform 280ms cubic-bezier(0.23, 1, 0.32, 1),
+    filter 280ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.subtitle[data-show='false'] {
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+  filter: blur(5px);
+}
+
+/* ------------------------------------------------------------------ */
+/* Widget entrance                                                     */
+/* ------------------------------------------------------------------ */
+
+.widget-enter {
+  animation: widget-in 420ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+@keyframes widget-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Markdown content (light)                                            */
+/* ------------------------------------------------------------------ */
+
+.widget-markdown {
+  padding: 14px;
+  color: #3a3a44;
+  font-size: 13px;
+  line-height: 1.55;
   overflow-wrap: anywhere;
   user-select: text;
 }
 
 .widget-caption {
-  border-top: 1px solid rgb(255 255 255 / 0.08);
+  border-top: 1px solid rgb(20 22 30 / 0.07);
   padding: 10px 14px;
-  color: #aeb6bf;
+  color: #5d5d68;
   font-size: 12px;
   line-height: 1.5;
   user-select: text;
@@ -95,7 +340,7 @@
 }
 
 .widget-caption a {
-  color: #3e9bff;
+  color: var(--color-link);
   text-decoration: underline;
 }
 
@@ -111,7 +356,7 @@
 .widget-markdown h2,
 .widget-markdown h3 {
   margin: 16px 0 8px;
-  color: #f4f5f6;
+  color: #1c1c22;
   font-size: 14px;
   font-weight: 600;
 }
@@ -131,13 +376,13 @@
 }
 
 .widget-markdown a {
-  color: #3e9bff;
+  color: var(--color-link);
   text-decoration: underline;
 }
 
 .widget-markdown code {
-  border-radius: 3px;
-  background: rgb(255 255 255 / 0.07);
+  border-radius: 4px;
+  background: rgb(20 22 30 / 0.05);
   padding: 1px 4px;
   font-family: var(--font-mono);
   font-size: 11px;
@@ -145,8 +390,8 @@
 
 .widget-markdown pre {
   overflow-x: auto;
-  border: 1px solid rgb(255 255 255 / 0.08);
-  border-radius: 6px;
+  border: 1px solid rgb(20 22 30 / 0.07);
+  border-radius: 10px;
   padding: 10px;
 }
 
@@ -167,74 +412,28 @@
 .widget-markdown th,
 .widget-markdown td {
   min-width: 88px;
-  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  border-bottom: 1px solid rgb(20 22 30 / 0.07);
   padding: 8px 7px;
   text-align: left;
   vertical-align: top;
 }
 
 .widget-markdown th {
-  color: #ffc93c;
+  color: var(--color-warn);
   font-size: 9px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .widget-markdown blockquote {
-  border-left: 2px solid #565c63;
+  border-left: 2px solid rgb(20 22 30 / 0.14);
   padding-left: 10px;
-  color: #838a91;
+  color: var(--color-dim);
 }
 
-.message-bubble {
-  position: relative;
-  border-radius: 18px;
-}
-
-.message-bubble-left::before {
-  position: absolute;
-  bottom: 0;
-  left: -5px;
-  width: 12px;
-  height: 14px;
-  background: #e9e9eb;
-  clip-path: polygon(100% 0, 100% 100%, 0 100%);
-  content: '';
-}
-
-@utility led {
-  text-shadow: 0 0 7px currentColor;
-}
-
-@utility board-scan {
-  background-image: repeating-linear-gradient(
-    to bottom,
-    rgb(255 255 255 / 0.035) 0px,
-    rgb(255 255 255 / 0.035) 1px,
-    transparent 1px,
-    transparent 3px
-  );
-}
-
-@utility label-xs {
-  font-size: 9px;
-  line-height: 1;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  font-weight: 500;
-}
-
-@keyframes breathe {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.45;
-    transform: scale(0.78);
-  }
-}
+/* ------------------------------------------------------------------ */
+/* Motion safety                                                       */
+/* ------------------------------------------------------------------ */
 
 @media (prefers-reduced-motion: reduce) {
   *,

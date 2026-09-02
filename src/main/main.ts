@@ -42,9 +42,9 @@ let browser: Awaited<ReturnType<typeof createBrowserService>> | null = null;
 let localContext: LocalContextService | null = null;
 let router: WorkRouter | null = null;
 let tempRoot: string | null = null;
-// The next-job network toggle. Defaults OFF on every launch; captured by each
+// The next-job network toggle. Defaults ON on every launch; captured by each
 // top-level job at dispatch time, so flipping it never alters running work.
-let networkEnabled = false;
+let networkEnabled = true;
 
 const emitAuth = (event: AuthEvent) => {
   for (const window of BrowserWindow.getAllWindows()) window.webContents.send('auth:event', event);
@@ -56,7 +56,7 @@ async function createWindow(setupUrl: string) {
     height: 820,
     minWidth: 360,
     minHeight: 560,
-    backgroundColor: '#000000',
+    backgroundColor: '#e9e9ec',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 18 },
     webPreferences: {

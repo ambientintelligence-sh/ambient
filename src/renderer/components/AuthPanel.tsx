@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type {
   AuthEvent,
   AuthMethod,
@@ -8,21 +8,80 @@ import type {
   LoginNotice,
   LoginPrompt,
 } from '@/shared/auth';
+import type { BrowserState } from '@/shared/browser';
 import type { LocalContextState } from '@/shared/local-context';
+import type { NetworkState } from '@/shared/sandbox';
+import type { WorkspaceState } from '@/shared/workspace';
 
 const bridge = window.ambient;
 
 const compactNumber = (value: number) => (value >= 1_000_000 ? `${value / 1_000_000}M` : `${Math.round(value / 1000)}K`);
 
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="mt-6 first:mt-0">
+      <p className="label-xs px-1 pb-2 text-dimmer">{title}</p>
+      <div className="overflow-hidden rounded-2xl bg-white/70 shadow-[0_1px_3px_rgb(20_22_30/0.06),inset_0_0_0_0.5px_rgb(20_22_30/0.04)]">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function Row({ label, value, control, first = false }: { label: string; value?: string; control?: ReactNode; first?: boolean }) {
+  return (
+    <div className={`flex min-h-[44px] items-center gap-3 px-4 py-2.5 ${first ? '' : 'border-t border-black/[0.05]'}`}>
+      <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{label}</span>
+      {value && <span className="truncate text-[12px] text-dim">{value}</span>}
+      {control}
+    </div>
+  );
+}
+
+function Chevron() {
+  return <span className="text-dimmer">›</span>;
+}
+
+function Toggle({ on, onChange, disabled = false }: { on: boolean; onChange: (next: boolean) => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      disabled={disabled}
+      onClick={() => onChange(!on)}
+      className={`relative h-[24px] w-[54px] shrink-0 overflow-hidden rounded-full transition-[background-color,box-shadow] duration-200 disabled:opacity-30 ${
+        on
+          ? 'bg-ink shadow-[0_2px_8px_rgb(20_22_30/0.22)]'
+          : 'bg-black/[0.06] shadow-[inset_0_0_0_0.5px_rgb(20_22_30/0.08)]'
+      }`}
+    >
+      <span
+        className={`absolute top-[3px] grid h-[18px] w-[26px] place-items-center rounded-full bg-white text-[8px] font-semibold uppercase tracking-[0.06em] transition-transform duration-200 ${
+          on
+            ? 'translate-x-[25px] text-ink shadow-none'
+            : 'translate-x-[3px] text-dim shadow-[0_1px_3px_rgb(20_22_30/0.18)]'
+        }`}
+      >
+        {on ? 'On' : 'Off'}
+      </span>
+    </button>
+  );
+}
+
 export function AuthPanel(props: {
   open: boolean;
   onClose: () => void;
   onState: (state: AuthState) => void;
+  workspace: WorkspaceState;
+  browser: BrowserState;
+  network: NetworkState;
+  onBrowser: (state: BrowserState) => void;
+  onNetwork: (state: NetworkState) => void;
 }) {
   const [state, setState] = useState<AuthState | null>(null);
-  const [providerId, setProviderId] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
+  const [busyProvider, setBusyProvider] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<LoginPrompt | null>(null);
   const [notice, setNotice] = useState<LoginNotice | null>(null);
   const [answer, setAnswer] = useState('');
@@ -30,6 +89,8 @@ export function AuthPanel(props: {
   const [locationState, setLocationState] = useState<LocalContextState | null>(null);
   const [locationDraft, setLocationDraft] = useState('');
   const [locationBusy, setLocationBusy] = useState(false);
+  const [modelsOpen, setModelsOpen] = useState(false);
+  const [query, setQuery] = useState('');
 
   const publish = (next: AuthState) => {
     setState(next);
@@ -40,6 +101,7 @@ export function AuthPanel(props: {
 
   useEffect(() => {
     if (!props.open) return;
+    setModelsOpen(false);
     void bridge?.getLocationState().then((next) => {
       setLocationState(next);
       setLocationDraft(next.location ?? '');
@@ -57,15 +119,18 @@ export function AuthPanel(props: {
         setNotice(event.notice);
       } else if (event.type === 'complete') {
         setBusy(false);
+        setBusyProvider(null);
         setPrompt(null);
-        setNotice({ type: 'progress', message: 'Authenticated. Loading models…' });
+        setNotice({ type: 'progress', message: 'Connected.' });
         void refresh();
       } else if (event.type === 'cancelled') {
         setBusy(false);
+        setBusyProvider(null);
         setPrompt(null);
         setNotice(null);
       } else {
         setBusy(false);
+        setBusyProvider(null);
         setPrompt(null);
         setError(event.message);
       }
@@ -73,22 +138,25 @@ export function AuthPanel(props: {
   }, []);
 
   const providers = state?.providers ?? [];
-  const selectedProvider = providers.find((provider) => provider.id === providerId) ?? null;
+  const connectedProviders = providers.filter((provider) => provider.configured);
+  // Once anything is connected, show only those; the full picker only appears
+  // when nothing is set up yet.
+  const visibleProviders = connectedProviders.length > 0 ? connectedProviders : providers;
   const models = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return (state?.models ?? []).filter(
-      (model) =>
-        (!providerId || model.provider === providerId) &&
-        (!normalized || `${model.providerName} ${model.name} ${model.id}`.toLowerCase().includes(normalized)),
+      (model) => !normalized || `${model.providerName} ${model.name} ${model.id}`.toLowerCase().includes(normalized),
     );
-  }, [providerId, query, state]);
+  }, [query, state]);
 
-  const startLogin = (provider: AuthProvider, method: AuthMethod) => {
+  // One-tap connect: prefer OAuth (browser sign-in), fall back to API key.
+  const connect = (provider: AuthProvider) => {
     if (!bridge) return;
-    setProviderId(provider.id);
+    const method: AuthMethod = provider.methods.includes('oauth') ? 'oauth' : 'api_key';
+    setBusyProvider(provider.id);
     setBusy(true);
     setError(null);
-    setNotice({ type: 'progress', message: `Starting ${method === 'oauth' ? 'account' : 'API key'} login…` });
+    setNotice({ type: 'progress', message: method === 'oauth' ? 'Opening sign-in…' : 'Enter your API key…' });
     void bridge.login(provider.id, method).then(publish).catch(() => {
       // The main process emits the useful provider error as an auth event.
     });
@@ -97,18 +165,17 @@ export function AuthPanel(props: {
   const submitPrompt = (value: string) => {
     if (!bridge || !prompt) return;
     setPrompt(null);
-    setNotice({ type: 'progress', message: 'Continuing authentication…' });
+    setNotice({ type: 'progress', message: 'Continuing…' });
     void bridge.answerLogin(prompt.id, value).catch((cause) => setError(String(cause)));
   };
 
   const selectModel = (model: DelegationModel) => {
     if (!bridge) return;
     setBusy(true);
-    const selection = { provider: model.provider, model: model.id };
-    const request = bridge.selectDelegationModel(selection);
-    void request.then((next) => {
+    void bridge.selectDelegationModel({ provider: model.provider, model: model.id })
+      .then((next) => {
         publish(next);
-        props.onClose();
+        setModelsOpen(false);
       })
       .catch((cause) => setError(String(cause)))
       .finally(() => setBusy(false));
@@ -147,168 +214,221 @@ export function AuthPanel(props: {
       .finally(() => setLocationBusy(false));
   };
 
+  const chooseWorkspace = () => {
+    void bridge?.selectWorkspace();
+  };
+
+  const toggleBrowser = (visible: boolean) => {
+    if (!bridge) return;
+    void bridge.setBrowserMode(visible ? 'visible' : 'headless').then(props.onBrowser);
+  };
+
+  const toggleNetwork = (enabled: boolean) => {
+    if (!bridge) return;
+    void bridge.setNetworkEnabled(enabled).then(props.onNetwork);
+  };
+
   if (!props.open) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-0 sm:p-8 [-webkit-app-region:no-drag]">
-      <div className="flex h-full w-full flex-col overflow-hidden bg-panel shadow-2xl sm:h-[min(680px,88vh)] sm:w-[min(980px,94vw)] sm:rounded-3xl sm:border sm:border-white/10">
-        <header className="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4 sm:items-center sm:px-7 sm:py-5">
-          <div>
-            <p className="label-xs text-link">SETTINGS</p>
-            <h2 className="mt-2 text-lg font-light text-ink sm:text-2xl">Personalize how Ambient works.</h2>
-          </div>
-          <button className="rounded-full border border-white/10 px-4 py-2 label-xs text-dim hover:text-ink" onClick={props.onClose}>
-            CLOSE
-          </button>
-        </header>
+  const selectedModel = state?.selection
+    ? (state?.models ?? []).find((m) => m.provider === state.selection?.provider && m.id === state.selection?.model)
+    : null;
 
-        <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] sm:grid-cols-[300px_1fr] sm:grid-rows-1">
-          <aside className="max-h-48 overflow-y-auto border-b border-white/10 p-3 sm:max-h-none sm:border-r sm:border-b-0 sm:p-4">
-            <p className="label-xs px-2 py-3 text-dimmer">PROVIDERS</p>
-            {providers.map((provider) => (
+  return (
+    <div className="absolute inset-0 z-40 flex flex-col bg-void/95 backdrop-blur-xl [-webkit-app-region:no-drag]">
+      <header className="flex items-center justify-between px-5 pb-3 pt-14">
+        <h2 className="text-[17px] font-semibold tracking-tight text-ink">Settings</h2>
+        <button
+          type="button"
+          onClick={props.onClose}
+          className="grid h-7 w-7 place-items-center rounded-full bg-black/[0.05] text-[13px] text-dim transition-colors duration-150 hover:bg-black/[0.08] hover:text-ink"
+          aria-label="Close settings"
+        >
+          ✕
+        </button>
+      </header>
+
+      <div className="app-scroll min-h-0 flex-1 overflow-y-auto px-4 pb-10">
+        <Section title="Agent environment">
+          <Row
+            first
+            label="Files"
+            value={props.workspace.name ?? 'Select folder'}
+            control={<button type="button" onClick={chooseWorkspace} className="flex items-center gap-1 text-[12px] font-medium text-link">Change <Chevron /></button>}
+          />
+          <Row
+            label="Visible browser"
+            control={
+              <Toggle
+                on={props.browser.mode === 'visible'}
+                disabled={!props.browser.available}
+                onChange={(visible) => toggleBrowser(visible)}
+              />
+            }
+          />
+          <Row
+            label="Internet access"
+            control={<Toggle on={props.network.enabled} onChange={toggleNetwork} />}
+          />
+          <p className="border-t border-black/[0.05] px-4 py-2.5 text-[10.5px] leading-4 text-dimmer">
+            Applies to the next task you delegate. Running agents keep their current access.
+          </p>
+        </Section>
+
+        <Section title="Location">
+          <form
+            className="px-4 py-3"
+            onSubmit={(event) => { event.preventDefault(); saveLocation(); }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className={`label-xs ${locationState?.enabled ? 'text-live' : 'text-dimmer'}`}>
+                {locationState?.enabled ? 'Saved' : 'Optional'}
+              </span>
+            </div>
+            <p className="mt-1.5 text-[11.5px] leading-4 text-dim">Default city or region for local recommendations and searches.</p>
+            <div className="mt-2.5 flex gap-2">
+              <input
+                id="ambient-location"
+                value={locationDraft}
+                onChange={(event) => setLocationDraft(event.target.value)}
+                placeholder="Vancouver, BC, Canada"
+                maxLength={160}
+                className="min-w-0 flex-1 rounded-full border border-black/[0.09] bg-white px-3 py-1.5 text-[13px] text-ink outline-none placeholder:text-dimmer focus:border-link/50"
+              />
+              <button disabled={locationBusy} className="rounded-full bg-ink px-3.5 py-1.5 text-[11px] font-medium text-white transition-opacity duration-150 disabled:opacity-40">
+                Save
+              </button>
+              {locationState?.enabled && (
+                <button
+                  type="button"
+                  disabled={locationBusy}
+                  onClick={clearLocation}
+                  className="px-2 text-[11px] font-medium text-dimmer transition-colors duration-150 hover:text-alert disabled:opacity-40"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </form>
+        </Section>
+
+        <Section title={connectedProviders.length > 0 ? 'Account' : 'Accounts'}>
+          {visibleProviders.length === 0 ? (
+            <p className="px-4 py-4 text-[12px] text-dim">Loading…</p>
+          ) : (
+            visibleProviders.map((provider, index) => (
               <div
                 key={provider.id}
-                className={`mb-2 rounded-xl border p-3 ${providerId === provider.id ? 'border-link/50 bg-link/10' : 'border-white/[0.07] bg-white/[0.025]'}`}
+                className={`flex min-h-[52px] items-center gap-3 px-4 py-3 ${index === 0 ? '' : 'border-t border-black/[0.05]'}`}
               >
-                <button className="w-full text-left" onClick={() => setProviderId(provider.id)}>
-                  <span className="block text-sm text-ink">{provider.name}</span>
-                  <span className={`label-xs mt-1.5 block ${provider.configured ? 'text-live' : 'text-dimmer'}`}>
-                    {provider.configured ? `CONNECTED · ${provider.configuredType}` : provider.id}
-                  </span>
-                </button>
-                <div className="mt-3 flex gap-2">
-                  {provider.methods.map((method) => (
-                    <button
-                      key={method}
-                      disabled={busy}
-                      onClick={() => startLogin(provider, method)}
-                      className="rounded-lg border border-white/10 px-2.5 py-2 label-xs text-dim hover:border-link/40 hover:text-ink disabled:opacity-40"
-                    >
-                      {method === 'oauth' ? 'ACCOUNT' : 'API KEY'}
-                    </button>
-                  ))}
-                  {provider.configured && (
-                    <button
-                      disabled={busy}
-                      onClick={() => bridge?.logout(provider.id).then(publish)}
-                      className="ml-auto px-2 label-xs text-dimmer hover:text-alert"
-                    >
-                      LOG OUT
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </aside>
-
-          <main className="flex min-h-0 flex-col p-4 sm:p-6">
-            <form
-              className="mb-4 rounded-xl border border-white/[0.08] bg-black/30 p-3"
-              onSubmit={(event) => { event.preventDefault(); saveLocation(); }}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <label htmlFor="ambient-location" className="label-xs text-warn">YOUR LOCATION</label>
-                <span className={`label-xs ${locationState?.enabled ? 'text-live' : 'text-dimmer'}`}>
-                  {locationState?.enabled ? 'SAVED' : 'OPTIONAL'}
-                </span>
-              </div>
-              <p className="mt-2 text-xs leading-5 text-dim">Used as the default city or region for local recommendations and searches.</p>
-              <div className="mt-3 flex gap-2">
-                <input
-                  id="ambient-location"
-                  value={locationDraft}
-                  onChange={(event) => setLocationDraft(event.target.value)}
-                  placeholder="Vancouver, BC, Canada"
-                  maxLength={160}
-                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black px-3 py-2 text-sm text-ink outline-none placeholder:text-dimmer focus:border-warn/50"
+                <span
+                  className={`h-2 w-2 shrink-0 rounded-full ${provider.configured ? 'bg-live' : 'bg-black/[0.15]'}`}
+                  aria-hidden="true"
                 />
-                <button disabled={locationBusy} className="rounded-lg border border-warn/30 px-3 py-2 label-xs text-warn hover:bg-warn/10 disabled:opacity-40">
-                  SAVE
-                </button>
-                {locationState?.enabled && (
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] text-ink">{provider.name}</p>
+                  <p className="label-xs mt-0.5 text-dimmer">
+                    {provider.configured ? (provider.configuredType === 'oauth' ? 'Signed in' : 'API key') : 'Not connected'}
+                  </p>
+                </div>
+                {provider.configured ? (
                   <button
                     type="button"
-                    disabled={locationBusy}
-                    onClick={clearLocation}
-                    className="px-2 label-xs text-dimmer hover:text-alert disabled:opacity-40"
+                    disabled={busy}
+                    onClick={() => bridge?.logout(provider.id).then(publish)}
+                    className="shrink-0 text-[11px] font-medium text-dimmer transition-colors duration-150 hover:text-alert disabled:opacity-40"
                   >
-                    CLEAR
+                    Disconnect
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => connect(provider)}
+                    className="shrink-0 rounded-full bg-ink px-3.5 py-1.5 text-[11px] font-medium text-white transition-opacity duration-150 hover:opacity-85 disabled:opacity-40"
+                  >
+                    {busyProvider === provider.id ? 'Connecting…' : 'Connect'}
                   </button>
                 )}
               </div>
-            </form>
+            ))
+          )}
+        </Section>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="min-w-0 flex-1">
-                <div className="flex gap-2">
-                  <span className="rounded-lg bg-link/15 px-3 py-2 label-xs text-link">PRIMARY WORKER</span>
-                </div>
-                <p className="mt-2 truncate text-sm text-dim">
-                  {selectedProvider ? selectedProvider.name : 'All connected providers'}
-                </p>
+        {(notice || error) && !prompt && (
+          <div className={`mt-4 rounded-2xl px-4 py-3 text-[12.5px] ${error ? 'bg-alert/[0.08] text-alert' : 'bg-link/[0.08] text-ink'}`}>
+            {error ?? (notice?.type === 'device_code'
+              ? `Enter code ${notice.userCode} at ${notice.verificationUri}`
+              : notice?.type === 'auth_url'
+                ? notice.instructions ?? 'Continue sign-in in your browser.'
+                : notice?.message)}
+            {(notice?.type === 'auth_url' || notice?.type === 'device_code') && (
+              <button
+                className="ml-2 font-medium text-link underline"
+                onClick={() => bridge?.openExternal(notice.type === 'device_code' ? notice.verificationUri : notice.url)}
+              >
+                Open browser
+              </button>
+            )}
+          </div>
+        )}
+
+        {prompt && (
+          <div className="mt-4 rounded-2xl bg-white/70 p-4 shadow-[0_1px_3px_rgb(20_22_30/0.06),inset_0_0_0_0.5px_rgb(20_22_30/0.04)]">
+            <p className="text-[13px] text-ink">{prompt.message}</p>
+            {prompt.type === 'select' ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {prompt.options?.map((option) => (
+                  <button key={option.id} onClick={() => submitPrompt(option.id)} className="rounded-full border border-black/[0.09] bg-white px-3 py-1.5 text-[12px] text-dim transition-colors duration-150 hover:text-ink">
+                    {option.label}
+                  </button>
+                ))}
               </div>
+            ) : (
+              <form className="mt-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); submitPrompt(answer); }}>
+                <input
+                  autoFocus
+                  type={prompt.type === 'secret' ? 'password' : 'text'}
+                  value={answer}
+                  onChange={(event) => setAnswer(event.target.value)}
+                  placeholder={prompt.placeholder}
+                  className="min-w-0 flex-1 rounded-full border border-black/[0.09] bg-white px-3 py-1.5 text-[13px] text-ink outline-none focus:border-link/50"
+                />
+                <button className="rounded-full bg-ink px-4 py-1.5 text-[11px] font-medium text-white">Continue</button>
+              </form>
+            )}
+            <button onClick={() => bridge?.cancelLogin()} className="mt-3 text-[11px] font-medium text-dimmer transition-colors duration-150 hover:text-alert">Cancel</button>
+          </div>
+        )}
+
+        <Section title="Primary model">
+          <button
+            type="button"
+            onClick={() => setModelsOpen((open) => !open)}
+            className="flex w-full items-center gap-3 px-4 py-3 text-left"
+            aria-expanded={modelsOpen}
+          >
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] text-ink">{selectedModel?.name ?? state?.selection?.model ?? 'Select a model'}</p>
+              <p className="label-xs mt-0.5 text-dimmer">
+                {state?.selection ? `${state.selection.provider}/${state.selection.model}` : 'Powers delegated work'}
+              </p>
+            </div>
+            <span className={`text-dimmer transition-transform duration-200 ${modelsOpen ? 'rotate-90' : ''}`}>›</span>
+          </button>
+
+          {modelsOpen && (
+            <div className="border-t border-black/[0.05] px-3 py-3">
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Filter models"
-                className="w-full rounded-xl border border-white/10 bg-black px-4 py-2.5 text-sm text-ink outline-none placeholder:text-dimmer focus:border-link/50 sm:w-56"
+                className="mb-2.5 w-full rounded-full border border-black/[0.09] bg-white px-3.5 py-1.5 text-[13px] text-ink outline-none placeholder:text-dimmer focus:border-link/50"
               />
-            </div>
-
-            {(notice || error) && (
-              <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${error ? 'border-alert/30 bg-alert/10 text-alert' : 'border-link/30 bg-link/10 text-ink'}`}>
-                {error ?? (notice?.type === 'device_code'
-                  ? `Enter code ${notice.userCode} at ${notice.verificationUri}`
-                  : notice?.type === 'auth_url'
-                    ? notice.instructions ?? 'Continue authentication in your browser.'
-                    : notice?.message)}
-                {notice?.type === 'auth_url' && (
-                  <button className="ml-3 text-link underline" onClick={() => bridge?.openExternal(notice.url)}>Open browser</button>
-                )}
-                {notice?.type === 'device_code' && (
-                  <button className="ml-3 text-link underline" onClick={() => bridge?.openExternal(notice.verificationUri)}>Open browser</button>
-                )}
-              </div>
-            )}
-
-            {prompt && (
-              <div className="mt-4 rounded-xl border border-warn/30 bg-warn/5 p-4">
-                <p className="text-sm text-ink">{prompt.message}</p>
-                {prompt.type === 'select' ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {prompt.options?.map((option) => (
-                      <button key={option.id} onClick={() => submitPrompt(option.id)} className="rounded-lg border border-white/10 px-3 py-2 text-sm text-dim hover:text-ink">
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <form className="mt-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); submitPrompt(answer); }}>
-                    <input
-                      autoFocus
-                      type={prompt.type === 'secret' ? 'password' : 'text'}
-                      value={answer}
-                      onChange={(event) => setAnswer(event.target.value)}
-                      placeholder={prompt.placeholder}
-                      className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black px-3 py-2 text-sm text-ink outline-none focus:border-warn/50"
-                    />
-                    <button className="rounded-lg bg-ink px-4 py-2 label-xs text-black">CONTINUE</button>
-                  </form>
-                )}
-                <button onClick={() => bridge?.cancelLogin()} className="mt-3 label-xs text-dimmer hover:text-alert">CANCEL LOGIN</button>
-              </div>
-            )}
-
-            <div className="mt-5 min-h-0 flex-1 overflow-y-auto pr-1">
               {models.length === 0 ? (
-                <div className="grid h-full place-items-center text-center">
-                  <div>
-                    <p className="text-base text-dim">No models available.</p>
-                    <p className="label-xs mt-2 text-dimmer">CONNECT THIS PROVIDER OR PICK ANOTHER</p>
-                  </div>
-                </div>
+                <p className="px-1 py-3 text-center text-[12px] text-dim">No models — connect a provider above.</p>
               ) : (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="grid max-h-[300px] gap-1 overflow-y-auto">
                   {models.map((model) => {
                     const chosen = state?.selection;
                     const active = chosen?.provider === model.provider && chosen.model === model.id;
@@ -317,25 +437,28 @@ export function AuthPanel(props: {
                         key={`${model.provider}/${model.id}`}
                         disabled={busy}
                         onClick={() => selectModel(model)}
-                        className={`rounded-xl border p-4 text-left ${active ? 'border-live/50 bg-live/10' : 'border-white/[0.07] bg-black/30 hover:border-link/40'} disabled:opacity-40`}
+                        className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-150 ${active ? 'bg-live/[0.08]' : 'hover:bg-black/[0.03]'} disabled:opacity-40`}
                       >
-                        <span className="block truncate text-sm text-ink">{model.name}</span>
-                        <span className="mt-1 block truncate font-mono text-[10px] text-dimmer">{model.provider}/{model.id}</span>
-                        <span className="label-xs mt-3 block text-dim">
-                          {compactNumber(model.contextWindow)} CTX {model.reasoning ? '· REASONING' : ''}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[13px] text-ink">{model.name}</p>
+                          <p className="mt-0.5 truncate font-mono text-[10px] text-dimmer">{model.provider}/{model.id}</p>
+                        </div>
+                        <span className="label-xs shrink-0 text-dim">
+                          {compactNumber(model.contextWindow)}{model.reasoning ? ' · r' : ''}
                         </span>
+                        {active && <span className="shrink-0 text-live">✓</span>}
                       </button>
                     );
                   })}
                 </div>
               )}
             </div>
-          </main>
-        </div>
+          )}
+        </Section>
 
-        <footer className="border-t border-white/10 px-7 py-3 label-xs text-dimmer">
-          THE SELECTED MODEL POWERS THE PRIMARY WORKER AND ITS HELPERS · VOICE USES OPENAI
-        </footer>
+        <p className="mt-6 px-1 text-center text-[10.5px] text-dimmer">
+          Voice uses OpenAI · The selected model powers delegated work
+        </p>
       </div>
     </div>
   );

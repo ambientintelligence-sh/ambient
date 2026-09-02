@@ -48,11 +48,10 @@ const upsert = (workers: readonly Worker[], next: Worker): readonly Worker[] => 
 };
 
 const announcementInstruction = (announcement: Announcement) => {
-  if (announcement.kind === 'widget') return `Say only: “${announcement.text}”`;
   if (announcement.kind === 'progress') return `Say only: “${announcement.text}”`;
   if (announcement.kind === 'clarification') return `Ask the user: ${announcement.text}`;
   if (announcement.kind === 'error') return `Say only: “${announcement.text}”`;
-  return announcement.text;
+  return `Say only: “${announcement.text}”`;
 };
 
 const stringify = (value: unknown) => JSON.stringify(value);
@@ -158,11 +157,6 @@ export function useSession(): SessionView {
       queuedAnnouncements.current.push(announcement);
       return;
     }
-    if (announcement.kind === 'widget') {
-      // Widget announcements queue like progress but never replace a pending final result.
-      queuedAnnouncements.current.push(announcement);
-      return;
-    }
     queuedAnnouncements.current = queuedAnnouncements.current.filter((queued) => queued.jobId !== announcement.jobId);
     queuedAnnouncements.current.unshift(announcement);
   }, []);
@@ -188,7 +182,7 @@ export function useSession(): SessionView {
       enqueueAnnouncement(announcement);
       return;
     }
-    if (announcement.kind === 'progress' || announcement.kind === 'widget') {
+    if (announcement.kind === 'progress') {
       const delay = Math.max(0, PROGRESS_GAP_MS - (Date.now() - lastProgressDeliveredAt.current));
       if (delay > 0) {
         enqueueAnnouncement(announcement);

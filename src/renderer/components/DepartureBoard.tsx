@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { isTerminal, type Worker, type WorkerStatus } from '@/shared/worker';
 
-const PALETTE = ['#ff8c1a', '#46e05a', '#35c8f0', '#a98bff'] as const;
+const PALETTE = ['#f97316', '#16a34a', '#0891b2', '#7c5af5'] as const;
 const STATUS: Readonly<Record<WorkerStatus, { label: string; color: string }>> = {
-  queued: { label: 'DUE', color: '#ffa32b' }, running: { label: 'IN TRANSIT', color: '#46e05a' },
-  complete: { label: 'ARRIVED', color: '#46e05a' }, failed: { label: 'CANCELLED', color: '#ff5a4d' }, cancelled: { label: 'STOPPED', color: '#5d6672' },
+  queued: { label: 'Queued', color: '#e08300' },
+  running: { label: 'Running', color: '#16a34a' },
+  complete: { label: 'Done', color: '#16a34a' },
+  failed: { label: 'Failed', color: '#e0263c' },
+  cancelled: { label: 'Stopped', color: '#abacb6' },
 };
 const colourOf = (name: string) => PALETTE[[...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % PALETTE.length];
 
@@ -18,70 +21,95 @@ function Row({ worker }: { worker: Worker }) {
     ? 'Waiting for the agent runtime to begin work.'
     : worker.status === 'complete'
       ? 'Work complete.'
-      : 'Waiting for the next field report.');
+      : 'Waiting for the next update.');
   const hasProgress = worker.updates.length > 0 || worker.stops.length > 0;
 
   return (
-    <div className="border-b border-white/[0.06] last:border-b-0">
+    <div className="border-b border-black/[0.05] last:border-b-0">
       <button
         type="button"
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Hide' : 'Show'} details for ${worker.name}`}
         onClick={() => setExpanded((value) => !value)}
-        className={`w-full cursor-pointer px-3 py-3 text-left transition-colors hover:bg-white/[0.035] ${expanded ? 'bg-white/[0.025]' : ''}`}
+        className={`w-full cursor-pointer rounded-xl px-2 py-2.5 text-left transition-colors duration-150 hover:bg-black/[0.03] ${expanded ? 'bg-black/[0.025]' : ''}`}
       >
-        <div className="grid grid-cols-[76px_minmax(0,1fr)_76px] items-start gap-3">
-          <div>
-            <p className="font-mono text-[13px] text-warn led">{worker.startedAt}</p>
-            <span className="mt-2 inline-block rounded-[2px] border px-1.5 py-1 label-xs led" style={{ borderColor: hex, color: hex }}>{worker.name}</span>
+        <div className="flex items-center gap-2.5">
+          <span
+            className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[10px] font-semibold"
+            style={{ background: `${hex}1a`, color: hex }}
+          >
+            {worker.name.slice(0, 1).toUpperCase()}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[12.5px] font-medium text-ink">{current?.detail || current?.tool || worker.task}</p>
+            <p className="mt-px truncate text-[10.5px] text-dimmer">{worker.name} · {worker.startedAt}</p>
           </div>
-          <div className="min-w-0">
-            <p className="truncate font-mono text-[13px] text-led-pale">{current?.detail || current?.tool || worker.task}</p>
-            <p className="mt-2 line-clamp-2 font-mono text-[10px] leading-4 text-[#5d6672]">{worker.task}</p>
-            {worker.stops.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{worker.stops.slice(-4).map((stop, index) => { const live = !settled && index === Math.min(3, worker.stops.length - 1); return <span key={`${stop.tool}-${index}`} className={`rounded-[2px] border px-1.5 py-0.5 font-mono text-[8px] ${live ? 'led' : ''}`} style={{ borderColor: `${hex}55`, color: live ? hex : '#5d6672' }}>{stop.tool}</span>; })}</div>}
-          </div>
-          <p className="text-right font-mono text-[9px] leading-4 tracking-[0.08em] led" style={{ color: status.color }}>{status.label}<br /><span className={expanded ? 'text-warn' : 'text-[#5d6672]'}>{expanded ? '− CLOSE' : '+ DETAILS'}</span></p>
+          <span className="flex shrink-0 items-center gap-1.5 text-[10.5px] font-medium" style={{ color: status.color }}>
+            <span className={`h-1.5 w-1.5 rounded-full ${worker.status === 'running' ? 'animate-pulse' : ''}`} style={{ background: status.color }} />
+            {status.label}
+          </span>
         </div>
+        {worker.stops.length > 0 && (
+          <div className="ml-[34px] mt-1.5 flex flex-wrap gap-1">
+            {worker.stops.slice(-4).map((stop, index) => {
+              const live = !settled && index === Math.min(3, worker.stops.length - 1);
+              return (
+                <span
+                  key={`${stop.tool}-${index}`}
+                  className="rounded-full px-1.5 py-px font-mono text-[9px]"
+                  style={live ? { background: `${hex}1a`, color: hex } : { background: 'rgb(20 22 30 / 0.045)', color: '#abacb6' }}
+                >
+                  {stop.tool}
+                </span>
+              );
+            })}
+          </div>
+        )}
       </button>
 
       {expanded && (
-        <div className="border-t border-white/[0.08] bg-[#07090c] px-4 py-4 font-mono text-[10px] leading-5 text-[#8b95a2]" style={{ borderLeft: `2px solid ${hex}` }}>
-          <div className="grid grid-cols-[82px_minmax(0,1fr)] gap-x-3 gap-y-3">
-            <span className="label-xs pt-1 text-[#5d6672]">ASSIGNMENT</span>
-            <p className="break-words text-led-pale">{worker.task}</p>
-            <span className="label-xs pt-1 text-[#5d6672]">CURRENT</span>
-            <p className="break-words" style={{ color: worker.status === 'queued' ? '#ffa32b' : '#8b95a2' }}>{activity}</p>
-            <span className="label-xs pt-1 text-[#5d6672]">STATE</span>
-            <p className="led" style={{ color: status.color }}>{status.label} · {worker.stops.length} TOOL CALL{worker.stops.length === 1 ? '' : 'S'} · {worker.updates.length} REPORT{worker.updates.length === 1 ? '' : 'S'}</p>
+        <div className="ml-[34px] mb-2 rounded-xl bg-black/[0.02] px-3.5 py-3 text-[12px] leading-5 text-dim" style={{ borderLeft: `2px solid ${hex}33` }}>
+          <div className="grid grid-cols-[76px_minmax(0,1fr)] gap-x-3 gap-y-2">
+            <span className="label-xs pt-1 text-dimmer">Assignment</span>
+            <p className="break-words text-ink">{worker.task}</p>
+            <span className="label-xs pt-1 text-dimmer">Current</span>
+            <p className="break-words" style={{ color: worker.status === 'queued' ? '#e08300' : '#71717c' }}>{activity}</p>
+            <span className="label-xs pt-1 text-dimmer">State</span>
+            <p style={{ color: status.color }}>{status.label} · {worker.stops.length} tool call{worker.stops.length === 1 ? '' : 's'} · {worker.updates.length} report{worker.updates.length === 1 ? '' : 's'}</p>
           </div>
 
           {!hasProgress && (
-            <div className="mt-4 rounded border border-dashed border-white/10 px-3 py-3 text-center text-[#5d6672]">
+            <div className="mt-3 rounded-lg border border-dashed border-black/[0.1] px-3 py-2.5 text-center text-[11px] text-dimmer">
               <span className="mr-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-warn" />
-              AWAITING FIRST FIELD REPORT
+              Awaiting first update
             </div>
           )}
 
           {worker.updates.length > 0 && (
-            <section className="mt-4 border-t border-white/[0.06] pt-3">
-              <p className="label-xs mb-2 text-[#5d6672]">FIELD REPORTS</p>
-              <div className="grid gap-2">
-                {worker.updates.map((update, index) => <p key={`${update.at}-${index}`}><span className="mr-2 text-warn">{update.at}</span>{update.text}</p>)}
+            <section className="mt-3 border-t border-black/[0.05] pt-2.5">
+              <p className="label-xs mb-1.5 text-dimmer">Updates</p>
+              <div className="grid gap-1.5">
+                {worker.updates.map((update, index) => <p key={`${update.at}-${index}`}><span className="mr-2 font-mono text-[10px] text-warn">{update.at}</span>{update.text}</p>)}
               </div>
             </section>
           )}
 
           {worker.stops.length > 0 && (
-            <section className="mt-4 border-t border-white/[0.06] pt-3">
-              <p className="label-xs mb-2 text-[#5d6672]">TOOL TRACE</p>
-              <div className="grid gap-2">
-                {worker.stops.map((stop, index) => <div key={`${stop.tool}-${index}`} className="grid grid-cols-[64px_1fr] gap-2"><span style={{ color: stop.status === 'error' ? '#ff5a4d' : hex }}>{stop.tool}</span><span className="break-all">{stop.detail || '—'}{stop.result ? ` · ${stop.result}` : ''}</span></div>)}
+            <section className="mt-3 border-t border-black/[0.05] pt-2.5">
+              <p className="label-xs mb-1.5 text-dimmer">Tool trace</p>
+              <div className="grid gap-1.5 font-mono text-[10px]">
+                {worker.stops.map((stop, index) => (
+                  <div key={`${stop.tool}-${index}`} className="grid grid-cols-[60px_1fr] gap-2">
+                    <span style={{ color: stop.status === 'error' ? '#e0263c' : hex }}>{stop.tool}</span>
+                    <span className="break-all text-dim">{stop.detail || '—'}{stop.result ? ` · ${stop.result}` : ''}</span>
+                  </div>
+                ))}
               </div>
             </section>
           )}
 
-          {worker.summary && <p className="mt-4 border-t border-white/[0.06] pt-3 text-live"><span className="mr-2">RESULT</span>{worker.summary}</p>}
-          {worker.error && <p className="mt-4 text-alert">ERROR · {worker.error}</p>}
+          {worker.summary && <p className="mt-3 border-t border-black/[0.05] pt-2.5 text-live"><span className="label-xs mr-2">Result</span>{worker.summary}</p>}
+          {worker.error && <p className="mt-3 text-alert">Error · {worker.error}</p>}
         </div>
       )}
     </div>
@@ -89,12 +117,20 @@ function Row({ worker }: { worker: Worker }) {
 }
 
 export function DepartureBoard({ workers }: { workers: readonly Worker[] }) {
-  return (
-    <section className="board-scan relative min-h-[300px] overflow-hidden rounded-xl border border-white/[0.09] bg-[#04060a]">
-      <div className="grid grid-cols-[76px_minmax(0,1fr)_76px] gap-3 border-b border-white/[0.07] px-3 py-3">
-        <span className="label-xs text-[#5d6672]">TIME / AGENT</span><span className="label-xs text-[#5d6672]">DESTINATION / ACTIVITY</span><span className="label-xs text-right text-[#5d6672]">STATUS</span>
+  if (workers.length === 0) {
+    return (
+      <div className="grid place-items-center py-24 text-center">
+        <div>
+          <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-black/[0.04] text-[15px] text-dimmer">◌</div>
+          <p className="mt-3 text-[13px] font-medium text-ink">No active agents</p>
+          <p className="mt-1 text-[11.5px] text-dim">Delegated work will show up here as it runs.</p>
+        </div>
       </div>
-      {workers.length === 0 ? <div className="grid min-h-[250px] place-items-center text-center"><div><p className="font-mono text-[20px] text-[#333a43]">— — —</p><p className="label-xs mt-3 text-[#4b535d]">NO SERVICES DEPARTED</p></div></div> : workers.map((worker) => <Row key={worker.name} worker={worker} />)}
+    );
+  }
+  return (
+    <section className="widget-enter px-1 py-1">
+      {workers.map((worker) => <Row key={worker.name} worker={worker} />)}
     </section>
   );
 }

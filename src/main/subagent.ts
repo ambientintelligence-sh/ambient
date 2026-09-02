@@ -114,6 +114,11 @@ async function run(input: SubagentLaunch) {
   const policies = [
     input.task,
     formatCurrentContext(input.localContext),
+    input.networkEnabled
+      ? 'The mcp tool provides Chrome DevTools for browser navigation, interaction, inspection, and screenshots. Inspect and use it before claiming browser work is unavailable.'
+      : '',
+    'Complete the requested deliverable autonomously. Retry recoverable tool, navigation, loading, and interaction failures instead of substituting manual instructions.',
+    'When asked for a screenshot or other artifact, create and verify it, save it inside the selected workspace, and return its path.',
     'Return complete findings, source links, and useful artifact paths to the router.',
     'You cannot publish widgets or speak to the user. Save artifacts inside the selected workspace.',
   ].filter(Boolean).join('\n\n');
@@ -144,4 +149,3 @@ port.on('message', (event) => {
       void shutdown(1);
     });
 });
-
