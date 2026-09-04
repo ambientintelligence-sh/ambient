@@ -1,54 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
-import type { AuthState } from '@/shared/auth';
-import type { BrowserState } from '@/shared/browser';
-import type { NetworkState } from '@/shared/sandbox';
-import type { WorkspaceState } from '@/shared/workspace';
+import { useEffect, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useSession } from './use-session';
+import { useAppStore } from './store';
 import { AuthPanel } from './components/AuthPanel';
 import { DepartureBoard } from './components/DepartureBoard';
 import { VoiceOrb } from './components/VoiceOrb';
 import { WidgetDock } from './components/WidgetDock';
 
-type Page = 'timeline' | 'agents';
-
 export function App() {
   const session = useSession();
-  const [page, setPage] = useState<Page>('timeline');
-  const [setupOpen, setSetupOpen] = useState(false);
-  const [, setAuthState] = useState<AuthState | null>(null);
-  const [workspace, setWorkspace] = useState<WorkspaceState>({ path: null, name: null });
-  const [browser, setBrowser] = useState<BrowserState>({ mode: 'headless', available: false });
-  const [network, setNetwork] = useState<NetworkState>({ enabled: false });
-  const [dismissedDisplayIds, setDismissedDisplayIds] = useState<ReadonlySet<string>>(() => new Set());
-  const authInitialized = useRef(false);
+  const { initialize, page, setPage, setupOpen, setSetupOpen, workers, primaryAgent, storedTimelineItems, dismissDisplay } = useAppStore(useShallow((state) => ({
+    initialize: state.initialize,
+    page: state.page,
+    setPage: state.setPage,
+    setupOpen: state.setupOpen,
+    setSetupOpen: state.setSetupOpen,
+    workers: state.workers,
+    primaryAgent: state.primaryAgent,
+    storedTimelineItems: state.timelineItems,
+    dismissDisplay: state.dismissDisplay,
+  })));
   const timelineEndRef = useRef<HTMLDivElement>(null);
+  const timelineItems = storedTimelineItems.filter((item) => !item.dismissed);
 
   useEffect(() => {
-    const bridge = window.ambient;
-    if (!bridge) return;
-    void bridge.getWorkspace().then(setWorkspace);
-    void bridge.getBrowserState().then(setBrowser);
-    void bridge.getNetworkState().then(setNetwork);
-    const offNetwork = bridge.onNetworkChanged(setNetwork);
-    const offWorkspace = bridge.onWorkspaceChanged(setWorkspace);
-    return () => {
-      offNetwork();
-      offWorkspace();
-    };
-  }, []);
-
-  const handleAuthState = (next: AuthState) => {
-    setAuthState(next);
-    if (!authInitialized.current) {
-      authInitialized.current = true;
-      if (!next.selection) setSetupOpen(true);
-    }
-  };
+    initialize();
+  }, [initialize]);
 
   const connected = session.status === 'connected';
-  const timelineItems = session.timelineItems
-    .filter(({ display }) => !dismissedDisplayIds.has(display.id))
-    .sort((a, b) => a.display.createdAt - b.display.createdAt);
 
   useEffect(() => {
     if (timelineItems.length > 0) timelineEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -62,7 +41,9 @@ export function App() {
       ? 'listening'
       : connected
         ? 'idle'
-        : 'off';
+        : session.status === 'connecting'
+          ? 'connecting'
+          : 'off';
 
   const subtitle = session.error
     ? `Something went wrong — ${session.error}`
@@ -103,7 +84,7 @@ export function App() {
                 page === item ? 'bg-white text-ink shadow-[0_1px_3px_rgb(20_22_30/0.12)]' : 'text-dim hover:text-ink'
               }`}
             >
-              {item === 'timeline' ? 'Timeline' : `Agents${session.workers.length > 0 ? ` · ${session.workers.length}` : ''}`}
+              {item === 'timeline' ? 'Timeline' : `Agents · ${workers.length + (primaryAgent ? 1 : 0)}`}
             </button>
           ))}
         </nav>
@@ -117,20 +98,20 @@ export function App() {
         </button>
       </div>
 
-      <main className="app-scroll relative z-10 min-h-0 flex-1 overflow-y-auto px-3 pb-40 pt-24">
+      <main className="app-scroll relative z-10 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-40 pt-24">
         {page === 'timeline' ? (
           <div className="mx-auto grid w-full max-w-[620px] gap-3">
             <WidgetDock
               items={timelineItems}
-              hasWorkers={session.workers.length > 0}
-              onDismiss={(id) => setDismissedDisplayIds((current) => new Set(current).add(id))}
+              hasWorkers={workers.length > 0 || primaryAgent?.status === 'running'}
+              onDismiss={dismissDisplay}
               onViewAgents={() => setPage('agents')}
             />
             <div ref={timelineEndRef} />
           </div>
         ) : (
-          <div className="mx-auto grid w-full max-w-[620px]">
-            <DepartureBoard workers={session.workers} />
+          <div className="mx-auto grid w-full min-w-0 max-w-[620px]">
+            <DepartureBoard workers={workers} primaryAgent={primaryAgent} />
           </div>
         )}
       </main>
@@ -160,8 +141,9 @@ export function App() {
             type="button"
             onClick={togglePower}
             disabled={session.status === 'connecting'}
+            aria-busy={session.status === 'connecting'}
             aria-label={connected ? 'Disconnect voice' : 'Connect voice'}
-            className="rounded-full transition-transform duration-150 active:scale-95 disabled:opacity-60"
+            className="rounded-full transition-transform duration-150 active:scale-95 disabled:cursor-wait"
           >
             <VoiceOrb state={orbState} level={orbLevel} />
           </button>
@@ -169,16 +151,7 @@ export function App() {
         </div>
       </div>
 
-      <AuthPanel
-        open={setupOpen}
-        onClose={() => setSetupOpen(false)}
-        onState={handleAuthState}
-        workspace={workspace}
-        browser={browser}
-        network={network}
-        onBrowser={setBrowser}
-        onNetwork={setNetwork}
-      />
+      <AuthPanel open={setupOpen} onClose={() => setSetupOpen(false)} />
     </div>
   );
 }

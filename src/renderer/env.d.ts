@@ -3,7 +3,8 @@ import type { BrowserMode, BrowserState } from '@/shared/browser';
 import type { LocalContextState, LocalContextUpdate } from '@/shared/local-context';
 import type { SendMessageResult, WorkEvent } from '@/shared/router';
 import type { NetworkState } from '@/shared/sandbox';
-import type { WorkerEvent } from '@/shared/worker';
+import type { SessionEvent, SessionSnapshot, SessionSummary } from '@/shared/session';
+import type { PrimaryAgentEvent, WorkerEvent } from '@/shared/worker';
 import type { WorkspaceState } from '@/shared/workspace';
 
 declare global {
@@ -12,6 +13,12 @@ declare global {
     ambient?: {
       setupUrl: string;
       sendMessage: (message: string) => Promise<SendMessageResult>;
+      getSession: () => Promise<SessionSnapshot>;
+      listSessions: () => Promise<readonly SessionSummary[]>;
+      createSession: () => Promise<SessionSnapshot>;
+      selectSession: (id: string) => Promise<SessionSnapshot>;
+      dismissDisplay: (id: string) => Promise<void>;
+      onSessionEvent: (listener: (event: SessionEvent) => void) => () => void;
       getWorkspace: () => Promise<WorkspaceState>;
       selectWorkspace: () => Promise<WorkspaceState>;
       openWorkspace: () => Promise<WorkspaceState>;
@@ -34,6 +41,7 @@ declare global {
       openExternal: (url: string) => Promise<void>;
       onAuthEvent: (listener: (event: AuthEvent) => void) => () => void;
       onWorkerEvent: (listener: (event: WorkerEvent) => void) => () => void;
+      onPrimaryAgentEvent: (listener: (event: PrimaryAgentEvent) => void) => () => void;
       onWorkEvent: (listener: (event: WorkEvent) => void) => () => void;
     };
   }

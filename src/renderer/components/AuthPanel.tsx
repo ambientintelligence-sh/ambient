@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type {
   AuthEvent,
   AuthMethod,
@@ -8,10 +9,8 @@ import type {
   LoginNotice,
   LoginPrompt,
 } from '@/shared/auth';
-import type { BrowserState } from '@/shared/browser';
 import type { LocalContextState } from '@/shared/local-context';
-import type { NetworkState } from '@/shared/sandbox';
-import type { WorkspaceState } from '@/shared/workspace';
+import { useAppStore } from '../store';
 
 const bridge = window.ambient;
 
@@ -72,29 +71,52 @@ function Toggle({ on, onChange, disabled = false }: { on: boolean; onChange: (ne
 export function AuthPanel(props: {
   open: boolean;
   onClose: () => void;
-  onState: (state: AuthState) => void;
-  workspace: WorkspaceState;
-  browser: BrowserState;
-  network: NetworkState;
-  onBrowser: (state: BrowserState) => void;
-  onNetwork: (state: NetworkState) => void;
 }) {
-  const [state, setState] = useState<AuthState | null>(null);
+  const {
+    state,
+    setAuth,
+    workspace,
+    browser,
+    network,
+    location,
+    setLocation,
+    chooseWorkspace,
+    setBrowserVisible,
+    setNetworkEnabled,
+    sessions,
+    currentSessionId,
+    createSession,
+    selectSession,
+  } = useAppStore(useShallow((store) => ({
+    state: store.auth,
+    setAuth: store.setAuth,
+    workspace: store.workspace,
+    browser: store.browser,
+    network: store.network,
+    location: store.location,
+    setLocation: store.setLocation,
+    chooseWorkspace: store.chooseWorkspace,
+    setBrowserVisible: store.setBrowserVisible,
+    setNetworkEnabled: store.setNetworkEnabled,
+    sessions: store.sessions,
+    currentSessionId: store.session?.id ?? null,
+    createSession: store.createSession,
+    selectSession: store.selectSession,
+  })));
   const [busy, setBusy] = useState(false);
   const [busyProvider, setBusyProvider] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<LoginPrompt | null>(null);
   const [notice, setNotice] = useState<LoginNotice | null>(null);
   const [answer, setAnswer] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [locationState, setLocationState] = useState<LocalContextState | null>(null);
+  const [locationState, setLocationState] = useState<LocalContextState | null>(location);
   const [locationDraft, setLocationDraft] = useState('');
   const [locationBusy, setLocationBusy] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
   const [query, setQuery] = useState('');
 
   const publish = (next: AuthState) => {
-    setState(next);
-    props.onState(next);
+    setAuth(next);
   };
 
   const refresh = () => bridge?.getAuthState().then(publish).catch((cause) => setError(String(cause)));
@@ -102,11 +124,9 @@ export function AuthPanel(props: {
   useEffect(() => {
     if (!props.open) return;
     setModelsOpen(false);
-    void bridge?.getLocationState().then((next) => {
-      setLocationState(next);
-      setLocationDraft(next.location ?? '');
-    }).catch((cause) => setError(String(cause)));
-  }, [props.open]);
+    setLocationState(location);
+    setLocationDraft(location?.location ?? '');
+  }, [location, props.open]);
 
   useEffect(() => {
     void refresh();
@@ -195,6 +215,7 @@ export function AuthPanel(props: {
     void request
       .then((next) => {
         setLocationState(next);
+        setLocation(next);
         setLocationDraft(next.location ?? '');
       })
       .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)))
@@ -208,24 +229,11 @@ export function AuthPanel(props: {
     void bridge.clearLocation()
       .then((next) => {
         setLocationState(next);
+        setLocation(next);
         setLocationDraft('');
       })
       .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)))
       .finally(() => setLocationBusy(false));
-  };
-
-  const chooseWorkspace = () => {
-    void bridge?.selectWorkspace();
-  };
-
-  const toggleBrowser = (visible: boolean) => {
-    if (!bridge) return;
-    void bridge.setBrowserMode(visible ? 'visible' : 'headless').then(props.onBrowser);
-  };
-
-  const toggleNetwork = (enabled: boolean) => {
-    if (!bridge) return;
-    void bridge.setNetworkEnabled(enabled).then(props.onNetwork);
   };
 
   if (!props.open) return null;
@@ -253,26 +261,47 @@ export function AuthPanel(props: {
           <Row
             first
             label="Files"
-            value={props.workspace.name ?? 'Select folder'}
+            value={workspace.name ?? 'Select folder'}
             control={<button type="button" onClick={chooseWorkspace} className="flex items-center gap-1 text-[12px] font-medium text-link">Change <Chevron /></button>}
           />
           <Row
             label="Visible browser"
             control={
               <Toggle
-                on={props.browser.mode === 'visible'}
-                disabled={!props.browser.available}
-                onChange={(visible) => toggleBrowser(visible)}
+                on={browser.mode === 'visible'}
+                disabled={!browser.available}
+                onChange={setBrowserVisible}
               />
             }
           />
           <Row
             label="Internet access"
-            control={<Toggle on={props.network.enabled} onChange={toggleNetwork} />}
+            control={<Toggle on={network.enabled} onChange={setNetworkEnabled} />}
           />
           <p className="border-t border-black/[0.05] px-4 py-2.5 text-[10.5px] leading-4 text-dimmer">
             Applies to the next task you delegate. Running agents keep their current access.
           </p>
+        </Section>
+
+        <Section title="Sessions">
+          <div className="flex items-center gap-3 px-4 py-3">
+            <span className="min-w-0 flex-1 text-[12px] text-dim">Conversation history is stored locally.</span>
+            <button type="button" onClick={createSession} className="shrink-0 rounded-full bg-ink px-3.5 py-1.5 text-[11px] font-medium text-white">
+              New
+            </button>
+          </div>
+          {sessions.map((session) => (
+            <button
+              type="button"
+              key={session.id}
+              onClick={() => selectSession(session.id)}
+              className={`flex w-full items-center gap-3 border-t border-black/[0.05] px-4 py-3 text-left ${session.id === currentSessionId ? 'bg-live/[0.06]' : ''}`}
+            >
+              <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{session.title}</span>
+              <span className="label-xs text-dimmer">{session.jobCount} {session.jobCount === 1 ? 'task' : 'tasks'}</span>
+              {session.id === currentSessionId ? <span className="text-live">✓</span> : <Chevron />}
+            </button>
+          ))}
         </Section>
 
         <Section title="Location">

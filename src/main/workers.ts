@@ -8,6 +8,8 @@ import type { BrowserMode } from '../shared/browser';
 import type { LocalContextState } from '../shared/local-context';
 import { isTerminal, type Worker, type WorkerEvent, type WorkerStop } from '../shared/worker';
 import type { SubagentLaunch, SubagentMessage } from './subagent-protocol';
+import { completeStop } from './agent-telemetry';
+import { subagentExitError } from './subagent-exit';
 
 const MAX_STOPS = 8;
 const clock = () => new Date().toTimeString().slice(0, 5);
@@ -15,9 +17,11 @@ const clock = () => new Date().toTimeString().slice(0, 5);
 export type WorkerFleet = ReturnType<typeof createWorkerFleet>;
 
 export function createWorkerFleet(options: {
+  sessionId: string;
   emit: (event: WorkerEvent) => void;
   getSelection: () => DelegationSelection;
   onReport: (worker: Worker) => void;
+  onProgress: (worker: Worker) => void;
   getWorkspace: () => string | null;
   getBrowserConfig: () => Promise<{ mode: BrowserMode; browserUrl?: string; executablePath?: string }>;
   getLocalContext: () => LocalContextState;
@@ -25,6 +29,7 @@ export function createWorkerFleet(options: {
   tempRoot: string;
   subagentEntryPath: string;
   chromeMcpPath: string;
+  sessionDir: string;
 }) {
   const workers = new Map<string, Worker>();
   const processes = new Map<string, UtilityProcess>();
@@ -32,11 +37,12 @@ export function createWorkerFleet(options: {
 
   const patch = (name: string, change: (worker: Worker) => Worker, report = false) => {
     const current = workers.get(name);
-    if (!current) return;
+    if (!current) return null;
     const next = change(current);
     workers.set(name, next);
-    options.emit({ kind: report ? 'report' : 'update', worker: next });
+    options.emit({ kind: report ? 'report' : 'update', sessionId: options.sessionId, worker: next });
     if (report) options.onReport(next);
+    return next;
   };
 
   const cleanup = (name: string) => {
@@ -44,6 +50,13 @@ export function createWorkerFleet(options: {
     const tempDir = tempDirs.get(name);
     tempDirs.delete(name);
     if (tempDir) void rm(tempDir, { recursive: true, force: true });
+  };
+
+  const requestShutdown = (name: string, exitCode: 0 | 1) => {
+    const child = processes.get(name);
+    if (!child) return;
+    child.postMessage({ type: 'shutdown', exitCode });
+    setTimeout(() => child.kill(), 1_500).unref();
   };
 
   const fail = (name: string, error: string) => {
@@ -57,7 +70,12 @@ export function createWorkerFleet(options: {
     if (!current || isTerminal(current.status)) return;
     switch (message.type) {
       case 'ready':
-        patch(name, (worker) => ({ ...worker, status: 'running' }));
+        patch(name, (worker) => ({
+          ...worker,
+          status: 'running',
+          piSessionId: message.piSessionId,
+          piSessionFile: message.piSessionFile,
+        }));
         return;
       case 'tool': {
         const stop: WorkerStop = {
@@ -73,26 +91,33 @@ export function createWorkerFleet(options: {
       case 'tool_result':
         patch(name, (worker) => ({
           ...worker,
-          stops: worker.stops.map((stop) => stop.id === message.id
-            ? {
-                ...stop,
-                status: message.isError ? 'error' : 'done',
-                result: message.result?.trim() || (message.isError ? 'Tool failed.' : 'Completed.'),
-              }
-            : stop),
+          stops: completeStop(worker.stops, message.id, message.result?.trim() ?? '', message.isError),
+        }));
+        return;
+      case 'artifact':
+        patch(name, (worker) => ({
+          ...worker,
+          artifacts: worker.artifacts.some(({ path }) => path === message.artifact.path)
+            ? worker.artifacts
+            : [...worker.artifacts, message.artifact],
         }));
         return;
       case 'done':
         patch(name, (worker) => ({ ...worker, status: 'complete', summary: message.summary }), true);
+        requestShutdown(name, 0);
         return;
       case 'progress':
-        patch(name, (worker) => ({
+        {
+          const next = patch(name, (worker) => ({
           ...worker,
           updates: [...worker.updates, { at: clock(), text: message.text }].slice(-MAX_STOPS),
-        }));
+          }));
+          if (next) options.onProgress(next);
+        }
         return;
       case 'error':
         fail(name, message.message);
+        requestShutdown(name, 1);
     }
   }
 
@@ -120,6 +145,7 @@ export function createWorkerFleet(options: {
         networkEnabled,
         browser,
         chromeMcpPath: options.chromeMcpPath,
+        sessionDir: options.sessionDir,
       };
       const child = utilityProcess.fork(options.subagentEntryPath, [], {
         cwd: workspace,
@@ -139,7 +165,15 @@ export function createWorkerFleet(options: {
       child.once('exit', (code) => {
         const current = workers.get(name);
         if (current && !isTerminal(current.status)) {
-          fail(name, stderr.trim() || `Subagent exited with code ${code}`);
+          const error = subagentExitError(code, stderr);
+          if (error) fail(name, error);
+          else {
+            patch(name, (worker) => ({
+              ...worker,
+              status: 'complete',
+              summary: worker.summary ?? worker.updates.at(-1)?.text ?? 'Finished with no closing summary.',
+            }), true);
+          }
         }
         cleanup(name);
       });
@@ -176,11 +210,14 @@ export function createWorkerFleet(options: {
         startedAt: clock(),
         stops: [],
         updates: [],
+        artifacts: [],
+        piSessionId: null,
+        piSessionFile: null,
         summary: null,
         error: null,
       };
       workers.set(name, worker);
-      options.emit({ kind: 'update', worker });
+      options.emit({ kind: 'update', sessionId: options.sessionId, worker });
       void start(name, task, networkEnabled);
       return worker;
     },

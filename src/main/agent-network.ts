@@ -20,7 +20,7 @@ export async function createExaTool(options: {
   return defineTool({
     name: 'exa_search',
     label: 'Exa Search',
-    description: 'Search the live web and return relevant pages with concise text extracts.',
+    description: 'Fast tool for live-web research, current facts, source discovery, and text lookups. Use browser tools instead when live visual evidence or interactive page state is required.',
     parameters: Type.Object({
       query: Type.String({ minLength: 1, maxLength: 2_000 }),
       numResults: Type.Optional(Type.Integer({ minimum: 1, maximum: 10, default: 5 })),

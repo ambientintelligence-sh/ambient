@@ -13,8 +13,8 @@ import {
   REALTIME_VOICE,
 } from '@/shared/config';
 import { formatCurrentContext, type LocalContextState } from '@/shared/local-context';
-import type { WorkerReply, WorkJob } from '@/shared/router';
-import type { TimelineDisplay, Worker } from '@/shared/worker';
+import { shouldSpeakReply, type WorkerReply } from '@/shared/router';
+import { useAppStore } from './store';
 
 const TRACE_LENGTH = 72;
 const PROGRESS_GAP_MS = 12_000;
@@ -23,8 +23,6 @@ const bridge = window.ambient;
 
 export type SessionView = {
   status: 'disconnected' | 'connecting' | 'connected' | 'error';
-  workers: readonly Worker[];
-  timelineItems: readonly Readonly<{ job: WorkJob; display: TimelineDisplay }>[];
   inTrace: readonly number[];
   outTrace: readonly number[];
   listening: boolean;
@@ -41,12 +39,6 @@ export type SessionView = {
 
 type Announcement = WorkerReply;
 
-const upsert = (workers: readonly Worker[], next: Worker): readonly Worker[] => {
-  const index = workers.findIndex((worker) => worker.name === next.name);
-  if (index === -1) return [...workers, next];
-  return workers.map((worker) => (worker.name === next.name ? next : worker));
-};
-
 const announcementInstruction = (announcement: Announcement) => {
   if (announcement.kind === 'progress') return `Say only: “${announcement.text}”`;
   if (announcement.kind === 'clarification') return `Ask the user: ${announcement.text}`;
@@ -56,13 +48,20 @@ const announcementInstruction = (announcement: Announcement) => {
 
 const stringify = (value: unknown) => JSON.stringify(value);
 
+const acceptedTaskResult = (result: { messageId: string; status: 'sent' }) => stringify({
+  status: 'accepted',
+  requestId: result.messageId,
+  pending: true,
+  instruction: 'The request is underway and you already acknowledged it. Say nothing more; wait silently for the asynchronous outcome.',
+});
+
 function createVoiceTools() {
   if (!bridge) return [];
   return [
     tool({
       name: 'select_workspace',
       description:
-        'Open the folder picker to change the shared workspace. Never call before normal dispatch; reuse the saved workspace unless none exists or the user asks to change it.',
+        'Open the folder picker to change the shared workspace. Reuse the saved workspace unless none exists or the user asks to change it.',
       parameters: z.object({}),
       execute: async () => {
         const workspace = await bridge.selectWorkspace();
@@ -80,11 +79,11 @@ function createVoiceTools() {
     tool({
       name: 'send_message',
       description:
-        'Send the user’s message to the primary worker. Use this for every request for information, judgment, research, action, files, browsing, code, status, changes, or cancellation. The worker owns the request and will send a reply back asynchronously. Returns immediately.',
+        'Submit an actionable request or follow-up. Returns immediately.',
       parameters: z.object({
         message: z.string().describe('The user’s complete message plus relevant conversational context. Preserve exactly what they want, including corrections, follow-ups, and constraints.'),
       }),
-      execute: async ({ message }) => stringify(await bridge.sendMessage(message)),
+      execute: async ({ message }) => acceptedTaskResult(await bridge.sendMessage(message)),
     }),
   ];
 }
@@ -107,8 +106,6 @@ function transcriptFromHistory(history: RealtimeItem[]): string {
 
 export function useSession(): SessionView {
   const [status, setStatus] = useState<SessionView['status']>('disconnected');
-  const [workers, setWorkers] = useState<readonly Worker[]>([]);
-  const [timelineItems, setTimelineItems] = useState<readonly Readonly<{ job: WorkJob; display: TimelineDisplay }>[] >([]);
   const [inTrace, setInTrace] = useState<readonly number[]>(emptyTrace);
   const [outTrace, setOutTrace] = useState<readonly number[]>(emptyTrace);
   const [listening, setListening] = useState(false);
@@ -131,6 +128,8 @@ export function useSession(): SessionView {
   const speakingRef = useRef(false);
 
   const queuedAnnouncements = useRef<Announcement[]>([]);
+  const deliveredAnnouncementIds = useRef(new Set<string>());
+  const deliveredAnnouncementKeys = useRef(new Set<string>());
   const lastProgressDeliveredAt = useRef(0);
   const announcementTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deliverAnnouncementRef = useRef<(announcement: Announcement) => void>(() => {});
@@ -220,14 +219,14 @@ export function useSession(): SessionView {
   useEffect(() => {
     if (!bridge) return;
     return bridge.onWorkerEvent((event) => {
-      setWorkers((current) => upsert(current, event.worker));
+      if (event.sessionId !== useAppStore.getState().session?.id) return;
       if (event.kind === 'update') return;
       setLastReport(
         event.worker.status === 'complete'
-          ? `${event.worker.name} — ONLINE: result returned to primary worker`
+          ? `${event.worker.name} finished`
           : event.worker.status === 'cancelled'
-            ? `${event.worker.name} — STOPPED`
-            : `${event.worker.name} — FAILED: ${event.worker.error ?? 'unknown'}`,
+            ? `${event.worker.name} stopped`
+            : `${event.worker.name} failed: ${event.worker.error ?? 'unknown'}`,
       );
     });
   }, []);
@@ -235,17 +234,29 @@ export function useSession(): SessionView {
   useEffect(() => {
     if (!bridge) return;
     return bridge.onWorkEvent((event) => {
-      if (event.kind === 'display') {
-        setTimelineItems((current) => {
-          const index = current.findIndex((item) => item.display.id === event.display.id);
-          if (index === -1) return [...current, { job: event.job, display: event.display }];
-          return current.map((item, itemIndex) => itemIndex === index ? { job: event.job, display: event.display } : item);
-        });
-        return;
-      }
+      if (event.sessionId !== useAppStore.getState().session?.id) return;
+      if (event.kind === 'display') return;
       if (event.kind === 'job') return;
-      setLastReport(`WORKER — ${event.message.text}`);
-      deliverAnnouncementRef.current(event.message);
+      const announcementKey = `${event.message.jobId}:${event.message.kind}:${event.message.text}`;
+      if (
+        deliveredAnnouncementIds.current.has(event.message.id) ||
+        deliveredAnnouncementKeys.current.has(announcementKey)
+      ) return;
+      deliveredAnnouncementIds.current.add(event.message.id);
+      deliveredAnnouncementKeys.current.add(announcementKey);
+      setLastReport(event.message.text);
+      if (shouldSpeakReply(event.message)) deliverAnnouncementRef.current(event.message);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!bridge) return;
+    return bridge.onSessionEvent((event) => {
+      if (event.kind !== 'selected') return;
+      queuedAnnouncements.current = [];
+      deliveredAnnouncementIds.current.clear();
+      deliveredAnnouncementKeys.current.clear();
+      setLastReport(null);
     });
   }, []);
 
@@ -268,6 +279,7 @@ export function useSession(): SessionView {
 
     void (async () => {
       if (!bridge?.setupUrl) throw new Error('Realtime setup endpoint is unavailable');
+      await bridge.createSession();
       const localContext = await bridge.getLocationState();
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
@@ -425,8 +437,6 @@ export function useSession(): SessionView {
 
   return {
     status,
-    workers,
-    timelineItems,
     inTrace,
     outTrace,
     listening,

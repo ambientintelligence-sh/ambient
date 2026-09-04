@@ -198,6 +198,23 @@
   transform: scaleX(0.86);
 }
 
+.orb[data-state='connecting'] {
+  box-shadow:
+    0 1px 3px rgb(20 22 30 / 0.08),
+    0 8px 24px rgb(20 22 30 / 0.12),
+    inset 0 0 0 0.5px rgb(10 108 255 / 0.24),
+    0 0 28px rgb(10 108 255 / 0.12);
+}
+
+.orb[data-state='connecting']::before {
+  position: absolute;
+  inset: 0;
+  content: '';
+  background: linear-gradient(100deg, transparent 20%, rgb(10 108 255 / 0.12) 50%, transparent 80%);
+  transform: translateX(-100%);
+  animation: orb-scan 1.15s linear infinite;
+}
+
 .orb[data-state='idle'] {
   animation: orb-float 4.6s ease-in-out infinite;
 }
@@ -218,6 +235,8 @@
 }
 
 .wave {
+  position: relative;
+  z-index: 1;
   display: block;
 }
 
@@ -242,6 +261,12 @@
   opacity: 0.35;
 }
 
+.orb[data-state='connecting'] .wave-bar {
+  animation-name: wave-connect;
+  animation-duration: 900ms !important;
+  opacity: 0.75;
+}
+
 /* Live states: bar amplitude follows the real mic/speaker level via the
  * --amp custom property (updated ~20Hz by the session trace). */
 .orb[data-state='listening'] .wave-bar,
@@ -262,6 +287,15 @@
 @keyframes wave-live {
   from { transform: scaleY(max(0.08, var(--amp, 0) * 0.45)); }
   to { transform: scaleY(max(0.1, var(--amp, 0))); }
+}
+
+@keyframes wave-connect {
+  0%, 100% { transform: scaleY(0.14); opacity: 0.3; }
+  50% { transform: scaleY(0.72); opacity: 1; }
+}
+
+@keyframes orb-scan {
+  to { transform: translateX(100%); }
 }
 
 @keyframes orb-float {

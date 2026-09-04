@@ -19,15 +19,18 @@ export type WorkerReply = Readonly<{
   kind: 'progress' | 'result' | 'error' | 'clarification';
   text: string;
   displayTitle: string | null;
+  createdAt: number;
 }>;
 
 export type WorkEvent =
-  | Readonly<{ kind: 'job'; job: WorkJob }>
-  | Readonly<{ kind: 'voice-message'; message: WorkerReply }>
-  | Readonly<{ kind: 'display'; job: WorkJob; display: TimelineDisplay }>;
+  | Readonly<{ kind: 'job'; sessionId: string; job: WorkJob }>
+  | Readonly<{ kind: 'voice-message'; sessionId: string; message: WorkerReply }>
+  | Readonly<{ kind: 'display'; sessionId: string; job: WorkJob; display: TimelineDisplay }>;
 
 export type SendMessageResult = Readonly<{ messageId: string; status: 'sent' }>;
 
 export type CancelWorkResult =
   | Readonly<{ ok: true; jobId: string; status: 'cancelled' }>
   | Readonly<{ ok: false; error: string }>;
+
+export const shouldSpeakReply = (_reply: WorkerReply) => true;

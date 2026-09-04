@@ -1,4 +1,4 @@
-export type VoiceOrbState = 'off' | 'idle' | 'listening' | 'speaking';
+export type VoiceOrbState = 'off' | 'connecting' | 'idle' | 'listening' | 'speaking';
 
 const BARS = 23;
 const BAR_WIDTH = 3;
@@ -36,7 +36,7 @@ function Waveform({ state }: { state: VoiceOrbState }) {
             height={h}
             rx={BAR_WIDTH / 2}
             className="wave-bar"
-            fill={state === 'speaking' ? '#0a6cff' : '#1c1c22'}
+            fill={state === 'speaking' || state === 'connecting' ? '#0a6cff' : '#1c1c22'}
             style={{
               animationDuration: `${(0.9 + s * 1.1).toFixed(2)}s`,
               animationDelay: `${(-s * 2).toFixed(2)}s`,
@@ -56,6 +56,7 @@ export function VoiceOrb({ state, level = 0 }: { state: VoiceOrbState; level?: n
       aria-label={
         state === 'listening' ? 'Listening'
           : state === 'speaking' ? 'Speaking'
+          : state === 'connecting' ? 'Connecting voice'
           : state === 'idle' ? 'Voice ready'
           : 'Voice off'
       }

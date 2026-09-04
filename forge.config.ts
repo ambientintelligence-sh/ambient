@@ -12,7 +12,7 @@ const config: ForgeConfig = {
     name: 'Ambient',
     ignore: (file) => {
       if (!file) return false;
-      if (file.startsWith('/.vite') || file === '/package.json') return false;
+      if (file.startsWith('/.vite') || file.startsWith('/drizzle') || file === '/package.json') return false;
       if (file === '/node_modules' || file.startsWith('/node_modules/')) {
         return file.startsWith('/node_modules/.vite') || file.startsWith('/node_modules/.cache');
       }

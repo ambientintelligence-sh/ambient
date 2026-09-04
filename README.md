@@ -41,7 +41,10 @@ renderer ───────┘
 ```
 
 `OPENAI_API_KEY` stays in the main process. The renderer only ever sees a
-short-lived token, minted per connect.
+short-lived token, minted per connect. Ambient stores conversation history in a
+local SQLite database under Electron's user-data directory. The database is
+accessed only by the main process through Drizzle; Zustand hydrates the renderer
+from a typed IPC snapshot and keeps live events in sync.
 
 ### Audio
 
@@ -61,7 +64,9 @@ Whisper quota requirement.
 | `src/main/main.ts` | Window, mic permission, env loading, network toggle IPC |
 | `src/main/token-server.ts` | Loopback endpoint that mints ephemeral tokens |
 | `src/shared/config.ts` | Model id, voice, instructions, audio format |
-| `src/renderer/use-session.ts` | Realtime session, mic analysis, worker messages and replies |
+| `src/renderer/use-session.ts` | Realtime session, mic analysis, and voice announcements |
+| `src/renderer/store.ts` | Zustand renderer state, IPC hydration, and live event reducers |
+| `src/main/db/` | Drizzle schema, migrations, and local session repository |
 | `src/main/router.ts` | Durable primary-worker session, message mailbox, helper and presentation tools |
 | `src/main/workers.ts` | Subagent registry and utility-process lifecycle |
 | `src/main/subagent.ts` | One-shot subagent entry: run task, report once, exit |
@@ -87,38 +92,55 @@ immediately returns `{ messageId, status: "sent" }`. The voice model may give on
 short acknowledgement such as “Checking current pricing.” Internal IDs and work
 topology are never exposed to the user.
 
+When work is already active, `send_message` is steering rather than another
+mailbox item: the new instruction is inserted at Pi's next agent boundary and
+amends the active request. It is processed before another model turn instead of
+waiting for the current job to finish.
+
+The primary system prompt keeps spoken outcomes to one short sentence and asks
+for useful nontrivial detail to be presented on the timeline first.
+
 ```
 voice calls send_message(message)
   → IPC → primary-worker mailbox, returns { messageId, status: "sent" }
   → primary worker answers quick messages or dispatches helpers for substantive work
   → helper processes stream tool telemetry and progress notes to the board
-  → primary worker polls helpers at its own interval via poll_subagents and may
-    update one compact progress widget after a meaningful milestone
+  → primary agent yields while helpers work; meaningful milestones and final
+    reports wake it automatically for a concise update or synthesis
   → helper results return only to the primary worker
   → primary worker synthesizes, optionally calls show_widget, then uses send_message
     whenever it needs to communicate with the voice agent
   → renderer's response sequencer picks up the worker reply when voice is free
 ```
 
-The primary worker is a host-side Pi session with the same working tools as a helper:
-`read`, `write`, `edit`, `bash`, `ls`, Exa search, and the compact
-Chrome DevTools MCP proxy. It additionally owns `dispatch_subagent`, `poll_subagents`,
-`show_widget`, and `send_message`. It prioritizes dispatching helpers so
-its turns end fast and the voice assistant is not kept waiting, answering directly
-only when the result is trivially quick. While children run, the primary worker calls
-`poll_subagents` with an interval it chooses — short for simple tasks, longer for
-deep work. The poll returns each child's status, latest progress note, and last
-tool action, resolving early when a child reports. Widgets are optional glance
+The primary agent is a host-side Pi orchestration session. It owns
+`dispatch_subagent`, `show_widget`, and `send_message`; computer work belongs to
+persistent subagents. Anything likely to exceed one second is dispatched
+immediately so the primary turn ends fast and remains available for new questions
+and live steering. Meaningful milestones wake the primary after a short delay and
+are throttled; final reports wake it immediately for synthesis. Widgets are optional glance
 cards: one takeaway, no more than three short bullets, and only meaningful
 milestones. Reusing a stable `widgetId` updates the card without adding clutter.
 A serialized mailbox prevents concurrent messages from corrupting worker context.
+Runtime turns carry factual event envelopes only; delegation, progress, synthesis,
+presentation, and voice behavior are defined in the primary system prompt.
+Pressing the voice button starts a new session; the Settings panel can also start
+a session or reopen an earlier one. Each Ambient
+session keeps its application history in SQLite and points to Pi's own persistent
+JSONL context, so model context and cockpit history both survive restarts. Active
+jobs are marked interrupted after an application restart rather than being
+incorrectly resumed without their utility processes.
+
+The Agents view includes the persistent primary agent above its delegated
+subagents. Primary and subagent tool traces, updates, Pi session identities, and
+files written or edited inside the workspace are retained with the session.
 
 Each subagent is a one-shot Electron utility process: it receives one launch
 payload, runs one Pi session, reports once, and exits. There is no steering or
 idle session to manage; cancellation asks Pi to abort and then terminates the
 process tree. Along the way each subagent streams its latest working note as a
-progress update, which feeds both the board and the primary worker's `poll_subagents`
-tool. Subagents get `read`, `write`, `edit`, `bash`, and `ls`, and tool
+progress update, which feeds both the board and throttled primary-agent updates.
+Subagents get `read`, `write`, `edit`, `bash`, and `ls`, and tool
 calls become stops on the board. When the job's captured network policy allows
 it, they also receive `exa_search` (with `EXA_API_KEY` configured) and the
 Chrome DevTools MCP proxy through `pi-mcp-adapter`. **BROWSER HEADLESS/VISIBLE**

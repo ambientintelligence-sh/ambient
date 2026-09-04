@@ -5,6 +5,7 @@ import { SandboxController, createSandboxExtension } from './sandbox-tools';
 import { vendorModuleUrl } from './vendor';
 import type { SubagentCommand, SubagentLaunch, SubagentMessage } from './subagent-protocol';
 import { formatCurrentContext } from '../shared/local-context';
+import { artifactOf, detailOf, resultOf } from './agent-telemetry';
 
 type PiModule = typeof import('@earendil-works/pi-coding-agent');
 type AgentSession = Awaited<ReturnType<PiModule['createAgentSession']>>['session'];
@@ -17,25 +18,7 @@ const emit = (message: SubagentMessage) => port.postMessage(message);
 let session: AgentSession | null = null;
 let controller: SandboxController | null = null;
 let launched = false;
-
-function detailOf(args: unknown) {
-  if (!args || typeof args !== 'object') return '';
-  const input = args as Record<string, unknown>;
-  const raw = input.command ?? input.path ?? input.pattern ?? input.query ?? '';
-  const text = String(raw).replace(/\s+/g, ' ').trim();
-  return text.length > 72 ? `${text.slice(0, 71)}…` : text;
-}
-
-function resultOf(result: unknown) {
-  const value = result as { content?: { type?: string; text?: string }[] } | undefined;
-  const text = (value?.content ?? [])
-    .filter((part) => part.type === 'text')
-    .map((part) => part.text ?? '')
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return text.length > 240 ? `${text.slice(0, 239)}…` : text;
-}
+let shuttingDown = false;
 
 async function run(input: SubagentLaunch) {
   await mkdir(input.tempDir, { recursive: true, mode: 0o700 });
@@ -84,7 +67,7 @@ async function run(input: SubagentLaunch) {
     tools: ['read', 'write', 'edit', 'bash', 'ls', ...(input.networkEnabled ? ['mcp'] : []), ...(exaTool ? ['exa_search'] : [])],
     customTools: exaTool ? [exaTool] : [],
     resourceLoader,
-    sessionManager: pi.SessionManager.inMemory(),
+    sessionManager: pi.SessionManager.create(input.workspace, input.sessionDir),
   });
   session = created.session;
   await session.bindExtensions({ mode: 'print' });
@@ -92,6 +75,8 @@ async function run(input: SubagentLaunch) {
   session.subscribe((event) => {
     if (event.type === 'tool_execution_start') {
       emit({ type: 'tool', id: event.toolCallId, tool: event.toolName, detail: detailOf(event.args) });
+      const artifact = artifactOf(event.toolName, event.args, input.workspace);
+      if (artifact) emit({ type: 'artifact', artifact });
     } else if (event.type === 'tool_execution_end') {
       emit({
         type: 'tool_result',
@@ -110,14 +95,20 @@ async function run(input: SubagentLaunch) {
       if (note) emit({ type: 'progress', text: note.length > 600 ? `${note.slice(0, 599)}…` : note });
     }
   });
-  emit({ type: 'ready' });
+  emit({
+    type: 'ready',
+    piSessionId: session.sessionId,
+    piSessionFile: session.sessionFile ?? null,
+  });
   const policies = [
     input.task,
     formatCurrentContext(input.localContext),
-    input.networkEnabled
-      ? 'The mcp tool provides Chrome DevTools for browser navigation, interaction, inspection, and screenshots. Inspect and use it before claiming browser work is unavailable.'
+    exaTool
+      ? 'Choose the lightest tool that can provide the evidence the request needs. Prefer exa_search for ordinary research, current facts, source discovery, and quick text lookups. Use mcp Chrome DevTools when live visual evidence or page state matters, including webcams, queues, maps, rendered availability, screenshots, interaction, authenticated or JavaScript-only pages, or content Exa could not retrieve. It is often useful to discover the right page or live feed with Exa, then inspect only that page with Chrome. Do not use Chrome merely to repeat text results Exa already answered, but do use it when direct visual verification materially improves the answer.'
+      : input.networkEnabled
+        ? 'The mcp tool provides Chrome DevTools for browser navigation, interaction, inspection, and screenshots. Inspect and use it before claiming browser work is unavailable.'
       : '',
-    'Complete the requested deliverable autonomously. Retry recoverable tool, navigation, loading, and interaction failures instead of substituting manual instructions.',
+    'Complete the requested deliverable autonomously. For a simple fact, score, or screenshot, finish as soon as the requested evidence is available; do not keep searching for redundant confirmation. If the best source blocks access, make one focused fallback attempt, then return the strongest available evidence with the limitation instead of trying query variants, proxy URLs, or unrelated sources.',
     'When asked for a screenshot or other artifact, create and verify it, save it inside the selected workspace, and return its path.',
     'Return complete findings, source links, and useful artifact paths to the router.',
     'You cannot publish widgets or speak to the user. Save artifacts inside the selected workspace.',
@@ -127,6 +118,8 @@ async function run(input: SubagentLaunch) {
 }
 
 async function shutdown(exitCode: number) {
+  if (shuttingDown) return;
+  shuttingDown = true;
   session?.dispose();
   session = null;
   await controller?.reset().catch(() => undefined);
@@ -137,15 +130,20 @@ async function shutdown(exitCode: number) {
 port.on('message', (event) => {
   const command = event.data as SubagentCommand;
   if (command.type === 'abort') {
-    void session?.abort().finally(() => shutdown(0));
+    void (session?.abort() ?? Promise.resolve()).finally(() => shutdown(0));
+    return;
+  }
+  if (command.type === 'shutdown') {
+    void shutdown(command.exitCode);
     return;
   }
   if (command.type !== 'launch' || launched) return;
   launched = true;
   void run(command)
-    .then(() => shutdown(0))
+    // The parent acknowledges terminal messages before asking us to exit, so
+    // process.exit cannot overtake the final IPC delivery.
+    .then(() => undefined)
     .catch((error) => {
       emit({ type: 'error', message: error instanceof Error ? error.message : String(error) });
-      void shutdown(1);
     });
 });

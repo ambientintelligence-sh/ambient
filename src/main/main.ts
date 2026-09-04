@@ -5,6 +5,8 @@ import { config as loadEnv } from 'dotenv';
 import { createAuthService, type AuthService } from './auth-service';
 import { createBrowserService } from './browser';
 import { createLocalContextService, type LocalContextService } from './local-context';
+import { openDatabase } from './db';
+import { createSessionRepository, type SessionRecord, type SessionRepository } from './db/session-repository';
 import { createWorkRouter, type WorkRouter } from './router';
 import { startTokenServer } from './token-server';
 import { createWorkerFleet, type WorkerFleet } from './workers';
@@ -15,6 +17,7 @@ import type { BrowserMode } from '../shared/browser';
 import { WORKER_MODEL_ID } from '../shared/config';
 import type { LocalContextUpdate } from '../shared/local-context';
 import type { NetworkState } from '../shared/sandbox';
+import type { SessionEvent } from '../shared/session';
 
 loadEnv({ path: path.join(app.getAppPath(), '../../.env'), quiet: true });
 loadEnv({ quiet: true });
@@ -42,6 +45,10 @@ let browser: Awaited<ReturnType<typeof createBrowserService>> | null = null;
 let localContext: LocalContextService | null = null;
 let router: WorkRouter | null = null;
 let tempRoot: string | null = null;
+let sessionRepository: SessionRepository | null = null;
+let activeSession: SessionRecord | null = null;
+let closeDatabase: (() => void) | null = null;
+let switchingSession = false;
 // The next-job network toggle. Defaults ON on every launch; captured by each
 // top-level job at dispatch time, so flipping it never alters running work.
 let networkEnabled = true;
@@ -49,6 +56,99 @@ let networkEnabled = true;
 const emitAuth = (event: AuthEvent) => {
   for (const window of BrowserWindow.getAllWindows()) window.webContents.send('auth:event', event);
 };
+
+const emitSession = (event: SessionEvent) => {
+  for (const window of BrowserWindow.getAllWindows()) window.webContents.send('session:event', event);
+};
+
+async function createSessionServices() {
+  if (!auth || !workspace || !browser || !localContext || !tempRoot || !sessionRepository || !activeSession) {
+    throw new Error('application services are not ready');
+  }
+  const sessionId = activeSession.id;
+  let sessionRouter: WorkRouter | null = null;
+  const chromeMcpPath = path.join(vendorNodeModules(), 'chrome-devtools-mcp/build/src/bin/chrome-devtools-mcp.js');
+  fleet = createWorkerFleet({
+    sessionId,
+    getSelection: auth.currentSelection,
+    onReport: (worker) => sessionRouter?.handleWorkerReport(worker),
+    onProgress: (worker) => sessionRouter?.handleWorkerProgress(worker),
+    getWorkspace: workspace.getPath,
+    getBrowserConfig: browser.workerConfig,
+    getLocalContext: localContext.state,
+    agentDir: auth.agentDir,
+    tempRoot,
+    subagentEntryPath: path.join(__dirname, 'subagent.js'),
+    chromeMcpPath,
+    sessionDir: path.join(auth.agentDir, 'ambient-subagent-sessions', sessionId),
+    emit: (event) => {
+      sessionRepository?.saveWorker(event.sessionId, event.worker);
+      for (const target of BrowserWindow.getAllWindows()) target.webContents.send('worker:event', event);
+    },
+  });
+  sessionRouter = await createWorkRouter({
+    sessionId,
+    piSessionFile: activeSession.piSessionFile,
+    piSessionDir: path.join(auth.agentDir, 'ambient-sessions'),
+    onPiSessionFile: (file) => {
+      sessionRepository?.setPiSessionFile(sessionId, file);
+      if (activeSession?.id === sessionId) activeSession = { ...activeSession, piSessionFile: file };
+    },
+    initialPrimaryAgent: sessionRepository.snapshot(sessionId).primaryAgent,
+    emitPrimaryAgent: (agent) => {
+      sessionRepository?.savePrimaryAgent(agent);
+      for (const target of BrowserWindow.getAllWindows()) {
+        target.webContents.send('primary-agent:event', { sessionId, agent });
+      }
+    },
+    runtime: auth.runtime,
+    getSelection: auth.currentSelection,
+    getLocalContext: localContext.state,
+    getWorkspace: workspace.getPath,
+    getNetworkEnabled: () => networkEnabled,
+    fleet,
+    agentDir: auth.agentDir,
+    emit: (event) => {
+      if (event.kind === 'job') sessionRepository?.saveJob(event.sessionId, event.job);
+      else if (event.kind === 'voice-message') sessionRepository?.saveReply(event.sessionId, event.message);
+      else sessionRepository?.saveDisplay(event.sessionId, event.job.id, event.display);
+      for (const target of BrowserWindow.getAllWindows()) target.webContents.send('work:event', event);
+    },
+  });
+  router = sessionRouter;
+}
+
+async function switchSession(next: SessionRecord, interruptActive = false) {
+  if (switchingSession) throw new Error('A session change is already in progress');
+  if (router?.hasActive() && !interruptActive) throw new Error('Wait for active work to finish before changing sessions');
+  switchingSession = true;
+  const previous = activeSession;
+  try {
+    if (previous && previous.id !== next.id) {
+      sessionRepository?.reconcileInterrupted(previous.id, 'Interrupted when the voice session ended.');
+    }
+    router?.shutdown();
+    fleet?.shutdown();
+    router = null;
+    fleet = null;
+    sessionRepository?.reconcileInterrupted(next.id);
+    activeSession = sessionRepository?.getSession(next.id) ?? next;
+    await createSessionServices();
+    const snapshot = sessionRepository!.snapshot(next.id);
+    emitSession({ kind: 'selected', snapshot });
+    return snapshot;
+  } catch (cause) {
+    router?.shutdown();
+    fleet?.shutdown();
+    router = null;
+    fleet = null;
+    activeSession = previous;
+    if (previous) await createSessionServices();
+    throw cause;
+  } finally {
+    switchingSession = false;
+  }
+}
 
 async function createWindow(setupUrl: string) {
   const window = new BrowserWindow({
@@ -70,38 +170,7 @@ async function createWindow(setupUrl: string) {
     return { action: 'deny' };
   });
 
-  if (!auth || !workspace || !browser || !localContext || !tempRoot) throw new Error('application services are not ready');
-
-  const chromeMcpPath = path.join(vendorNodeModules(), 'chrome-devtools-mcp/build/src/bin/chrome-devtools-mcp.js');
-  fleet ??= createWorkerFleet({
-    getSelection: auth.currentSelection,
-    onReport: (worker) => router?.handleWorkerReport(worker),
-    getWorkspace: workspace.getPath,
-    getBrowserConfig: browser.workerConfig,
-    getLocalContext: localContext.state,
-    agentDir: auth.agentDir,
-    tempRoot,
-    subagentEntryPath: path.join(__dirname, 'subagent.js'),
-    chromeMcpPath,
-    emit: (event) => {
-      for (const target of BrowserWindow.getAllWindows()) target.webContents.send('worker:event', event);
-    },
-  });
-  router ??= await createWorkRouter({
-    runtime: auth.runtime,
-    getSelection: auth.currentSelection,
-    getLocalContext: localContext.state,
-    getWorkspace: workspace.getPath,
-    getNetworkEnabled: () => networkEnabled,
-    getBrowserConfig: browser.routerConfig,
-    chromeMcpPath,
-    fleet,
-    agentDir: auth.agentDir,
-    tempRoot,
-    emit: (event) => {
-      for (const target of BrowserWindow.getAllWindows()) target.webContents.send('work:event', event);
-    },
-  });
+  if (!router || !fleet) await createSessionServices();
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     await window.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -133,12 +202,42 @@ app.whenReady().then(async () => {
   workspace = await createWorkspaceService(app.getPath('userData'));
   browser = await createBrowserService(app.getPath('userData'));
   localContext = await createLocalContextService(app.getPath('userData'), countryCode);
+  const database = openDatabase(
+    path.join(agentDir, 'ambient.sqlite'),
+    path.join(app.getAppPath(), 'drizzle'),
+  );
+  closeDatabase = database.close;
+  sessionRepository = createSessionRepository(database.db);
+  activeSession = sessionRepository.latestOrCreate(workspace.getPath());
+  sessionRepository.reconcileInterrupted(activeSession.id);
+  activeSession = sessionRepository.getSession(activeSession.id);
   // Private per-task temp dirs. Wipe leftovers from any previous run.
   tempRoot = path.join(app.getPath('userData'), 'agent-tmp');
   await rm(tempRoot, { recursive: true, force: true });
   await mkdir(tempRoot, { recursive: true, mode: 0o700 });
 
   ipcMain.handle('worker:message', (_event, message: string) => router?.sendMessage(message) ?? null);
+  ipcMain.handle('session:current', () => {
+    if (!sessionRepository || !activeSession) throw new Error('Session storage is unavailable');
+    return sessionRepository.snapshot(activeSession.id);
+  });
+  ipcMain.handle('session:list', () => sessionRepository?.list() ?? []);
+  ipcMain.handle('session:create', () => {
+    if (!sessionRepository) throw new Error('Session storage is unavailable');
+    if (switchingSession) throw new Error('A session change is already in progress');
+    return switchSession(sessionRepository.createSession(workspace?.getPath() ?? null), true);
+  });
+  ipcMain.handle('session:select', (_event, id: string) => {
+    const next = sessionRepository?.getSession(id);
+    if (!next) throw new Error(`Unknown session ${id}`);
+    if (activeSession?.id === next.id) return sessionRepository!.snapshot(next.id);
+    return switchSession(next);
+  });
+  ipcMain.handle('session:dismiss-display', (_event, id: string) => {
+    if (!sessionRepository || !activeSession) throw new Error('Session storage is unavailable');
+    sessionRepository.dismissDisplay(activeSession.id, id);
+    emitSession({ kind: 'display-dismissed', displayId: id });
+  });
   ipcMain.handle('network:state', (): NetworkState => ({ enabled: networkEnabled }));
   ipcMain.handle('network:set', (_event, enabled: boolean): NetworkState => {
     networkEnabled = enabled === true;
@@ -150,6 +249,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('workspace:select', async (event) => {
     const state = await workspace?.select(BrowserWindow.fromWebContents(event.sender) ?? undefined);
     if (state) {
+      if (activeSession) {
+        sessionRepository?.setWorkspace(activeSession.id, state.path);
+        activeSession = { ...activeSession, workspace: state.path, updatedAt: Date.now() };
+      }
       for (const window of BrowserWindow.getAllWindows()) window.webContents.send('workspace:event', state);
     }
     return state;
@@ -196,6 +299,8 @@ app.on('before-quit', () => {
   fleet?.shutdown();
   browser?.shutdown();
 });
+
+app.on('will-quit', () => closeDatabase?.());
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

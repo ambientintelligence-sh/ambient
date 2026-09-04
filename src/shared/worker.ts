@@ -10,6 +10,11 @@ export type WorkerStop = Readonly<{
 
 export type WorkerUpdate = Readonly<{ at: string; text: string }>;
 
+export type AgentArtifact = Readonly<{
+  path: string;
+  tool: string;
+}>;
+
 export type TimelineDisplay = Readonly<{
   id: string;
   widgetId: string | null;
@@ -31,13 +36,38 @@ export type Worker = Readonly<{
   startedAt: string;
   stops: readonly WorkerStop[];
   updates: readonly WorkerUpdate[];
+  artifacts: readonly AgentArtifact[];
+  piSessionId: string | null;
+  piSessionFile: string | null;
   summary: string | null;
   error: string | null;
 }>;
 
 export type WorkerEvent =
-  | { kind: 'update'; worker: Worker }
-  | { kind: 'report'; worker: Worker };
+  | { kind: 'update'; sessionId: string; worker: Worker }
+  | { kind: 'report'; sessionId: string; worker: Worker };
+
+export type PrimaryAgentStatus = 'initializing' | 'idle' | 'running';
+
+export type PrimaryAgent = Readonly<{
+  sessionId: string;
+  name: 'PRIMARY';
+  status: PrimaryAgentStatus;
+  currentJobId: string | null;
+  currentTask: string | null;
+  startedAt: string;
+  stops: readonly WorkerStop[];
+  updates: readonly WorkerUpdate[];
+  artifacts: readonly AgentArtifact[];
+  piSessionId: string;
+  piSessionFile: string | null;
+  error: string | null;
+}>;
+
+export type PrimaryAgentEvent = Readonly<{
+  sessionId: string;
+  agent: PrimaryAgent;
+}>;
 
 export const isTerminal = (status: WorkerStatus) => status === 'complete' || status === 'failed' || status === 'cancelled';
 
