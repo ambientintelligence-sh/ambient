@@ -1,19 +1,14 @@
 import { cleanAgentText } from '@/shared/live-activity';
-import { useState } from 'react';
+import { useId, useState, type CSSProperties } from 'react';
 import type { PrimaryAgent, PrimaryAgentStatus, Worker, WorkerStatus } from '@/shared/worker';
 
-const PALETTE = ['#f97316', '#16a34a', '#0891b2', '#7c5af5'] as const;
-const STATUS: Readonly<Record<WorkerStatus, { label: string; color: string }>> = {
-  queued: { label: 'Queued', color: '#e08300' },
-  running: { label: 'Running', color: '#16a34a' },
-  complete: { label: 'Done', color: '#16a34a' },
-  failed: { label: 'Failed', color: '#e0263c' },
-  cancelled: { label: 'Stopped', color: '#abacb6' },
+const PALETTE = ['#244bd8', '#107d66', '#65277d', '#ac3228'] as const;
+const STATUS: Readonly<Record<WorkerStatus, { label: string }>> = {
+  queued: { label: 'Queued' }, running: { label: 'Running' }, complete: { label: 'Done' },
+  failed: { label: 'Failed' }, cancelled: { label: 'Stopped' },
 };
-const PRIMARY_STATUS: Readonly<Record<PrimaryAgentStatus, { label: string; color: string }>> = {
-  initializing: { label: 'Starting', color: '#e08300' },
-  idle: { label: 'Ready', color: '#7c5af5' },
-  running: { label: 'Running', color: '#16a34a' },
+const PRIMARY_STATUS: Readonly<Record<PrimaryAgentStatus, { label: string }>> = {
+  initializing: { label: 'Starting' }, idle: { label: 'Ready' }, running: { label: 'Running' },
 };
 const colourOf = (name: string) => PALETTE[[...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % PALETTE.length];
 
@@ -21,7 +16,7 @@ type AgentRow = Readonly<{
   key: string;
   name: string;
   assignment: string;
-  status: { label: string; color: string };
+  status: { label: string };
   running: boolean;
   queued: boolean;
   startedAt: string;
@@ -36,111 +31,41 @@ type AgentRow = Readonly<{
 
 function Row({ agent }: { agent: AgentRow }) {
   const [expanded, setExpanded] = useState(false);
-  const hex = colourOf(agent.name);
+  const detailsId = useId();
   const current = [...agent.stops].reverse().find((stop) => stop.status === 'running') ?? agent.stops.at(-1);
-  const activity = current?.detail || current?.tool || agent.currentTask || (agent.queued
-    ? 'Waiting for the agent runtime to begin work.'
-    : agent.status.label === 'Done'
-      ? 'Work complete.'
-      : agent.running ? 'Working on the current request.' : 'Ready for the next request.');
-  const hasProgress = agent.updates.length > 0 || agent.stops.length > 0;
-
+  const activity = agent.running || agent.queued
+    ? current?.detail || current?.tool || agent.currentTask || 'Getting started.'
+    : agent.summary || (agent.status.label === 'Done' ? 'Work complete.' : agent.status.label === 'Failed' ? agent.error || 'Something went wrong.' : agent.status.label === 'Stopped' ? 'Work stopped.' : 'Ready for the next request.');
   return (
-    <div className="min-w-0 border-b border-white/[0.05] last:border-b-0">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-label={`${expanded ? 'Hide' : 'Show'} details for ${agent.name}`}
-        onClick={() => setExpanded((value) => !value)}
-        className={`w-full min-w-0 cursor-pointer rounded-xl px-2 py-2.5 text-left transition-colors duration-150 hover:bg-white/[0.03] ${expanded ? 'bg-white/[0.025]' : ''}`}
-      >
-        <div className="flex items-center gap-2.5">
-          <span
-            className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[10px] font-semibold"
-            style={{ background: `${hex}1a`, color: hex }}
-          >
-            {agent.name.slice(0, 1).toUpperCase()}
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[12.5px] font-medium text-ink">{current?.detail || current?.tool || agent.currentTask || agent.assignment}</p>
-            <p className="mt-px truncate text-[10.5px] text-dimmer">{agent.name} · {agent.startedAt}</p>
-          </div>
-          <span className="flex shrink-0 items-center gap-1.5 text-[10.5px] font-medium" style={{ color: agent.status.color }}>
-            <span className={`h-1.5 w-1.5 rounded-full ${agent.running ? 'animate-pulse' : ''}`} style={{ background: agent.status.color }} />
-            {agent.status.label}
-          </span>
+    <article className="agent-folder" style={{ '--agent-color': colourOf(agent.name) } as CSSProperties}>
+      <button type="button" className="agent-cover" aria-expanded={expanded} aria-controls={detailsId}
+        aria-label={`${expanded ? 'Hide' : 'Show'} details for ${agent.name}`} onClick={() => setExpanded(value => !value)}>
+        <div className="agent-folder-tab"><h3>{agent.name}</h3><span aria-hidden="true">{expanded ? '−' : '+'}</span></div>
+        <div className="agent-cover-body">
+          <div className="agent-cover-meta"><span>{agent.key.startsWith('primary:') ? 'Primary agent' : 'Delegated agent'} · {agent.startedAt}</span><span className="agent-status" data-status={agent.status.label}>{agent.status.label}</span></div>
+          <p className="agent-assignment">{agent.currentTask || agent.assignment}</p>
+          <div className="agent-cover-bottom"><span>{agent.stops.length} tool calls / {agent.updates.length} updates</span><span>Details {expanded ? '↑' : '↓'}</span></div>
         </div>
-        {agent.stops.length > 0 && (
-          <div className="ml-[34px] mt-1.5 flex flex-wrap gap-1">
-            {agent.stops.slice(-4).map((stop) => {
-              const live = stop.status === 'running';
-              return (
-                <span
-                  key={stop.id}
-                  className="rounded-full px-1.5 py-px font-mono text-[9px]"
-                  style={live ? { background: `${hex}1a`, color: hex } : { background: 'rgb(20 22 30 / 0.045)', color: '#abacb6' }}
-                >
-                  {stop.tool}
-                </span>
-              );
-            })}
-          </div>
-        )}
       </button>
-
-      {expanded && (
-        <div className="mb-2 min-w-0 rounded-xl bg-white/[0.02] px-3.5 py-3 text-[12px] leading-5 text-dim" style={{ borderLeft: `2px solid ${hex}33` }}>
-          <div className="grid min-w-0 grid-cols-[68px_minmax(0,1fr)] gap-x-3 gap-y-2">
-            <span className="label-xs pt-1 text-dimmer">Assignment</span>
-            <p className="min-w-0 break-words text-ink">{agent.assignment}</p>
-            <span className="label-xs pt-1 text-dimmer">Current</span>
-            <p className="min-w-0 break-words" style={{ color: agent.queued ? '#e08300' : '#71717c' }}>{activity}</p>
-            <span className="label-xs pt-1 text-dimmer">State</span>
-            <p className="min-w-0 break-words" style={{ color: agent.status.color }}>{agent.status.label} · {agent.stops.length} tool call{agent.stops.length === 1 ? '' : 's'} · {agent.updates.length} update{agent.updates.length === 1 ? '' : 's'}</p>
-            {agent.piSessionId && agent.piSessionId !== 'pending' && <><span className="label-xs pt-1 text-dimmer">Session</span><p className="min-w-0 truncate font-mono text-[10px]">{agent.piSessionId}</p></>}
-          </div>
-
-          {!hasProgress && (
-            <div className="mt-3 rounded-lg border border-dashed border-white/[0.1] px-3 py-2.5 text-center text-[11px] text-dimmer">
-              <span className="mr-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-warn" />
-              Awaiting first update
-            </div>
-          )}
-
-          {agent.updates.length > 0 && (
-            <section className="mt-3 border-t border-white/[0.05] pt-2.5">
-              <p className="label-xs mb-1.5 text-dimmer">Updates</p>
-              <div className="grid gap-1.5">
-                {agent.updates.map((update, index) => <p key={`${update.at}-${index}`} className="min-w-0 break-words"><span className="mr-2 font-mono text-[10px] text-warn">{update.at}</span>{update.text}</p>)}
-              </div>
-            </section>
-          )}
-
-          {agent.stops.length > 0 && (
-            <section className="mt-3 border-t border-white/[0.05] pt-2.5">
-              <p className="label-xs mb-1.5 text-dimmer">Tool trace</p>
-              <div className="grid gap-1.5 font-mono text-[10px]">
-                {agent.stops.map((stop) => (
-                  <div key={stop.id} className="grid min-w-0 grid-cols-[60px_minmax(0,1fr)] gap-2">
-                    <span style={{ color: stop.status === 'error' ? '#e0263c' : hex }}>{stop.tool}</span>
-                    <span className="break-all text-dim">{stop.detail || '—'}{stop.result ? ` · ${stop.result}` : ''}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {agent.artifacts.length > 0 && (
-            <section className="mt-3 border-t border-white/[0.05] pt-2.5">
-              <p className="label-xs mb-1.5 text-dimmer">Artifacts</p>
-              {agent.artifacts.map((artifact) => <p key={artifact.path} className="truncate font-mono text-[10px] text-link">{artifact.path}</p>)}
-            </section>
-          )}
-          {agent.summary && <p className="mt-3 border-t border-white/[0.05] pt-2.5 text-live"><span className="label-xs mr-2">Result</span>{agent.summary}</p>}
-          {agent.error && <p className="mt-3 text-alert">Error · {agent.error}</p>}
-        </div>
-      )}
-    </div>
+      {expanded && <div id={detailsId} className="agent-details">
+        <dl className="agent-facts">
+          <dt>Assignment</dt><dd>{agent.assignment}</dd>
+          {agent.currentTask && agent.currentTask !== agent.assignment && <><dt>Task</dt><dd>{agent.currentTask}</dd></>}
+          <dt>Current</dt><dd>{activity}</dd>
+          {agent.piSessionId && agent.piSessionId !== 'pending' && <><dt>Session</dt><dd className="agent-session-id">{agent.piSessionId}</dd></>}
+        </dl>
+        {!agent.updates.length && !agent.stops.length && <p className="agent-awaiting">Updates will appear here when work begins.</p>}
+        {agent.updates.length > 0 && <section className="agent-detail-section"><h4>Updates <span>{agent.updates.length}</span></h4><ol className="agent-updates">
+          {agent.updates.map((update, index) => <li key={`${update.at}-${index}`}><time>{update.at}</time><p>{update.text}</p></li>)}
+        </ol></section>}
+        {agent.stops.length > 0 && <section className="agent-detail-section"><h4>Tool trace <span>{agent.stops.length}</span></h4><ol className="agent-trace">
+          {agent.stops.map(stop => <li key={stop.id}><span className="agent-tool" data-error={stop.status === 'error'}>{stop.tool}</span><p>{stop.detail || '—'}{stop.result ? ` · ${stop.result}` : ''}</p></li>)}
+        </ol></section>}
+        {agent.artifacts.length > 0 && <section className="agent-detail-section"><h4>Artifacts</h4>{agent.artifacts.map(artifact => <p className="agent-artifact" key={artifact.path}>{artifact.path}</p>)}</section>}
+        {agent.summary && <section className="agent-detail-section"><h4>Result</h4><p>{agent.summary}</p></section>}
+        {agent.error && <p className="agent-error">Error · {agent.error}</p>}
+      </div>}
+    </article>
   );
 }
 
@@ -181,17 +106,16 @@ const primaryRow = (agent: PrimaryAgent): AgentRow => ({
 export function DepartureBoard({ workers, primaryAgent }: { workers: readonly Worker[]; primaryAgent: PrimaryAgent | null }) {
   if (!primaryAgent && workers.length === 0) {
     return (
-      <div className="grid place-items-center py-24 text-center">
-        <div>
-          <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-white/[0.04] text-[15px] text-dimmer">◌</div>
-          <p className="mt-3 text-[13px] font-medium text-ink">No active agents</p>
-          <p className="mt-1 text-[11.5px] text-dim">Delegated work will show up here as it runs.</p>
-        </div>
-      </div>
+      <section className="agents-empty">
+        <div className="agents-empty-shapes" aria-hidden="true"><span /><span /><span /></div>
+        <p>Your team, in motion.</p>
+        <h2>A little help.<br />A lot of possibility.</h2>
+        <p>Start a conversation. Your agents and their<br />progress will appear here as they work.</p>
+      </section>
     );
   }
   return (
-    <section className="widget-enter min-w-0 max-w-full px-1 py-1">
+    <section className="agent-board widget-enter" aria-label="Agents">
       {primaryAgent && <Row key={`primary:${primaryAgent.sessionId}`} agent={primaryRow(primaryAgent)} />}
       {workers.map((worker) => {
         const agent = workerRow(worker);

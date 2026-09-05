@@ -85,19 +85,10 @@ export function App() {
           <span className="connection-state"><i />{connected ? 'Connected' : session.status === 'connecting' ? 'Connecting' : 'Offline'}</span>
         </header>
         <div className="canvas-toolbar">
-        <nav className="view-switch" aria-label="Main views">
-          {(['timeline', 'agents'] as const).map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setPage(item)}
-              aria-current={page === item ? 'page' : undefined}
-              className="view-tab"
-            >
-              {item === 'timeline' ? 'Overview' : `Agents ${workers.length + (primaryAgent ? 1 : 0)}`}
-            </button>
-          ))}
-        </nav>
+          <button type="button" className="agents-toggle" aria-pressed={page === 'agents'}
+            onClick={() => setPage(page === 'agents' ? 'timeline' : 'agents')}>
+            Agents <span>{workers.length + (primaryAgent ? 1 : 0)}</span><span aria-hidden="true">{page === 'agents' ? '×' : '↗'}</span>
+          </button>
           <span className="canvas-date">{selectedSession && new Date(selectedSession.createdAt).toLocaleDateString([], { month: 'long', day: 'numeric' })}</span>
         </div>
         {error && <p className="workspace-error" role="alert">{error}</p>}
@@ -106,6 +97,12 @@ export function App() {
             <div className="overview-layout">
               <section className="results-column" aria-label="Results">
                 <div className="column-heading"><h2>Results</h2><span>{results.length}</span></div>
+                {results.length === 0 && <section className="empty-workspace">
+                  <div className="empty-art" aria-hidden="true"><span className="empty-flower" /><span className="empty-pebble" /><span className="empty-dot" /></div>
+                  <p className="empty-eyebrow">A little space for big ideas.</p>
+                  <h2>What’s on<br />your mind?</h2>
+                  <p>Start a conversation. Your results<br />will find a home here.</p>
+                </section>}
                 <WidgetDock items={results} hasWorkers={false} onDismiss={dismissDisplay} onViewAgents={() => setPage('agents')} />
                 <div ref={timelineEndRef} />
               </section>
