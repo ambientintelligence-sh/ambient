@@ -1,41 +1,54 @@
-import { useId, type CSSProperties } from 'react';
+import { useEffect, useId, useRef } from 'react';
 
 export type VoiceOrbState = 'off' | 'connecting' | 'idle' | 'listening' | 'speaking';
 
-/** Layered light surfaces keep their shape while real audio modulates their height. */
+/** A continuous horizon whose amplitude and contours follow the live audio meter. */
 export function VoiceOrb({ state, level = 0 }: { state: VoiceOrbState; level?: number }) {
   const id = useId().replace(/:/g, '');
-  const gradient = `${id}-spectrum`;
-  const glow = `${id}-glow`;
-  const haze = `${id}-haze`;
+  const paths = useRef<(SVGPathElement | null)[]>([]);
+  const input = useRef({ state, level });
+  input.current = { state, level };
+
+  useEffect(() => {
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let frame = 0;
+    let amplitude = 0;
+    const draw = (time: number) => {
+      const { state, level } = input.current;
+      const active = state !== 'off';
+      amplitude += (Math.max(0, Math.min(1, level)) - amplitude) * .18;
+      const phase = reduced.matches ? 0 : time / 1500;
+      paths.current.forEach((path, layer) => {
+        if (!path) return;
+        const points = Array.from({ length: 121 }, (_, index) => {
+          const x = index / 120;
+          const envelope = .22 + .78 * Math.sin(Math.PI * x);
+          const wave = Math.sin(x * Math.PI * (4 + layer * .8) - phase * (1 + layer * .15))
+            + .35 * Math.sin(x * Math.PI * 11 + phase * 1.7 + layer);
+          const height = (active ? 13 : 5) + amplitude * (reduced.matches ? 15 : 57);
+          return `${index ? 'L' : 'M'}${(x * 1200).toFixed(1)},${(95 + wave * height * envelope * (1 - layer * .12)).toFixed(1)}`;
+        }).join(' ');
+        path.setAttribute('d', points);
+      });
+      frame = requestAnimationFrame(draw);
+    };
+    frame = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
   return (
-    <span className="orb" data-state={state} style={{ '--amp': Math.max(0, Math.min(1, level)) } as CSSProperties}>
-      <svg className="light-ribbon" viewBox="0 0 360 180" fill="none" aria-hidden="true">
+    <div className="voice-horizon" data-state={state} aria-hidden="true">
+      <svg viewBox="0 0 1200 190" preserveAspectRatio="none" fill="none">
         <defs>
-          <linearGradient id={gradient} x1="40" y1="100" x2="310" y2="75" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#427aff" stopOpacity="0" />
-            <stop offset=".23" stopColor="#536aff" />
-            <stop offset=".48" stopColor="#b58dff" />
-            <stop offset=".64" stopColor="#f2c8f3" />
-            <stop offset=".8" stopColor="#86eeed" />
-            <stop offset="1" stopColor="#6adbdc" stopOpacity="0" />
+          <linearGradient id={id} x1="0" x2="1">
+            <stop stopColor="#edab80" /><stop offset=".25" stopColor="#e8a0c9" />
+            <stop offset=".5" stopColor="#b5a2f4" /><stop offset=".75" stopColor="#9bdde9" />
+            <stop offset="1" stopColor="#edb395" />
           </linearGradient>
-          <filter id={glow} x="-50%" y="-100%" width="200%" height="300%"><feGaussianBlur stdDeviation="5" /></filter>
-          <filter id={haze} x="-50%" y="-100%" width="200%" height="300%"><feGaussianBlur stdDeviation="16" /></filter>
+          <filter id={`${id}-blur`} x="-10%" y="-100%" width="120%" height="300%"><feGaussianBlur stdDeviation="9" /></filter>
         </defs>
-        <g className="ribbon-energy">
-          <path d="M28 104C85 111 100 42 161 57C222 72 228 128 332 86C255 146 215 128 169 105C112 79 76 122 28 104Z" fill={`url(#${gradient})`} filter={`url(#${haze})`} opacity=".8" />
-          <g className="ribbon-back">
-            <path d="M26 104C89 115 102 39 161 57C219 75 239 118 335 85C270 126 223 131 167 93C112 60 84 120 26 104Z" fill={`url(#${gradient})`} opacity=".55" />
-            <path d="M26 104C89 115 102 39 161 57C219 75 239 118 335 85" stroke={`url(#${gradient})`} strokeWidth="1.2" />
-          </g>
-          <g className="ribbon-front">
-            <path d="M25 105C89 88 115 128 168 109C226 88 238 67 335 85C258 80 242 117 181 126C115 135 91 98 25 105Z" fill={`url(#${gradient})`} opacity=".8" />
-            <path d="M25 105C89 88 115 128 168 109C226 88 238 67 335 85" stroke={`url(#${gradient})`} strokeWidth="3" filter={`url(#${glow})`} />
-            <path d="M25 105C89 88 115 128 168 109C226 88 238 67 335 85" stroke={`url(#${gradient})`} strokeWidth="1.5" />
-          </g>
-        </g>
+        {[0, 1, 2, 3].map(layer => <path key={layer} ref={node => { paths.current[layer] = node; }} stroke={`url(#${id})`} strokeWidth={layer === 3 ? 18 : 1.5} opacity={layer === 3 ? .45 : 1 - layer * .23} filter={layer === 3 ? `url(#${id}-blur)` : undefined} />)}
       </svg>
-    </span>
+    </div>
   );
 }

@@ -6,24 +6,24 @@
   --font-sans: 'Inter Variable', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
 
-  --color-void: #08090d;
-  --color-panel: #191b23;
-  --color-panel-2: #22252e;
+  --color-void: #e5e9ea;
+  --color-panel: #eef1f2;
+  --color-panel-2: #f7f9f9;
   --color-hairline: rgb(255 255 255 / 0.1);
 
-  --color-ink: #f0f0f5;
-  --color-dim: #a0a3b3;
-  --color-dimmer: #8b8f9f;
+  --color-ink: #283438;
+  --color-dim: #5e6d73;
+  --color-dimmer: #64747b;
 
   --color-led-amber: #e08300;
   --color-led-green: #16a34a;
   --color-led-pale: #2b2b33;
 
-  --color-live: #76d8af;
-  --color-warn: #e08300;
-  --color-alert: #e0263c;
-  --color-link: #9caeff;
-  --color-deep: #7c5af5;
+  --color-live: #38745e;
+  --color-warn: #91652c;
+  --color-alert: #ac495c;
+  --color-link: #536b86;
+  --color-deep: #73628f;
 }
 
 @layer base {
@@ -464,3 +464,119 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
   .canvas-title h1 { font-size: 21px; }
   .canvas-header { gap: 12px; }
 }
+
+/* Atmospheric workspace: fine architectural lines and a spectrum at the horizon. */
+.workspace-shell {
+  background: #20272b;
+  background-image: repeating-linear-gradient(90deg, transparent 0, transparent calc(12.5% - 1px), #eff8ff06 calc(12.5% - 1px), #eff8ff06 12.5%), radial-gradient(ellipse at 70% 105%, #7b627951, transparent 55%);
+}
+.session-sidebar { background: linear-gradient(160deg, #edf1f2f5, #dce2e7e8 65%, #e9d7dfe8); border: 1px solid #ffffff90; box-shadow: 0 16px 50px #10192026; }
+.sidebar-heading > span { font-weight: 400; letter-spacing: -1.5px; font-size: 30px; }
+.session-canvas { padding-top: 20px; }
+.canvas-title h1 { font-size: clamp(24px, 2.8vw, 40px); font-weight: 350; letter-spacing: -1.4px; }
+.canvas-title p, .intro-eyebrow { text-transform: uppercase; letter-spacing: .16em; font-size: 9px; color: #acbabe; }
+.canvas-header { padding-bottom: 28px; }
+.canvas-toolbar { padding-bottom: 20px; border-bottom: 1px solid #e3f2f217; }
+.canvas-toolbar .view-switch { border-radius: 30px; background: #e4eef20a; border-color: #e5f4ff15; padding: 4px; }
+.canvas-toolbar .view-tab { border-radius: 22px; height: 33px; }
+.view-tab[aria-current='page'] { background: #d9e6ec20; box-shadow: inset 0 1px #ffffff22; }
+.column-heading { color: #bfcbcf; }
+.column-heading > span { border: 1px solid #e3f2f21c; border-radius: 50%; min-width: 20px; height: 20px; display: grid; place-items: center; }
+.session-intro { padding: clamp(25px, 6vh, 70px) 0 32px; }
+.session-intro h2 { margin: 20px 0; font-size: clamp(32px, 4.5vw, 68px); line-height: 1.08; letter-spacing: -.055em; font-weight: 330; color: #e6edef; }
+.session-intro h2 em { font-style: normal; color: #c8b8d5; }
+.session-intro p { max-width: 310px; color: #9eafb7; font-size: 13px; line-height: 1.8; }
+.workspace-shell .result-card, .workspace-shell .live-activity { background: linear-gradient(145deg, #d5e5ed0d, #14202585); border: 1px solid #e1f0f21c; box-shadow: inset 0 1px #ffffff07, 0 12px 30px #07131b12; backdrop-filter: blur(24px); }
+.workspace-shell .voice-stage { align-items: center; min-height: 190px; justify-content: flex-end; padding: 110px 0 15px; margin-inline: -28px; overflow: hidden; isolation: isolate; }
+.voice-stage::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(ellipse at 8% 120%, #efa27a77, transparent 45%), radial-gradient(ellipse at 38% 125%, #df9acb66, transparent 48%), radial-gradient(ellipse at 68% 125%, #91d9e966, transparent 45%), radial-gradient(ellipse at 100% 120%, #e6ae8c66, transparent 40%); mask-image: linear-gradient(transparent, #000); opacity: .55; transition: opacity .5s; }
+.workspace-shell:is([data-voice='idle'], [data-voice='listening'], [data-voice='speaking'], [data-voice='connecting']) .voice-stage::before { opacity: 1; }
+.voice-horizon { position: absolute; inset: 0 0 auto; height: 150px; pointer-events: none; opacity: 1; transition: opacity .5s; }
+.voice-horizon[data-state='off'] { opacity: .4; }
+.voice-horizon svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.workspace-shell .voice-button { padding: 3px 19px; min-height: 42px; border-radius: 30px; background: #e9f2f1e6; border: 1px solid #fff9; box-shadow: 0 4px 16px #06111925, inset 0 1px #fff; backdrop-filter: blur(20px); }
+.workspace-shell .voice-action { color: #303e43; font-size: 12px; font-weight: 500; }
+.workspace-shell .voice-button:hover { background: #fff; }
+.workspace-shell .voice-button:hover .voice-action { color: #17292f; background: transparent; }
+.workspace-shell .mute-button { width: 40px; height: 40px; background: #dce9ee16; border-color: #eaf6fc30; color: #e1ecef; }
+.workspace-shell .mute-button:disabled { display: none; }
+.workspace-shell .voice-hint { padding: 0; color: #c0cdd1; font-size: 10px; letter-spacing: .035em; }
+.workspace-shell .subtitle { position: relative; margin: -90px 20px 12px; z-index: 2; background: #273238eb; border: 1px solid #e3f2f224; }
+.workspace-shell[data-voice='listening'] .connection-state i, .workspace-shell[data-voice='idle'] .connection-state i, .workspace-shell[data-voice='speaking'] .connection-state i { background: #afe2ce; box-shadow: 0 0 10px #afe2ce80; }
+@media (max-width: 1050px) { .workspace-shell .voice-stage { margin-inline: -22px; } }
+@media (max-width: 700px) { .session-intro h2 { font-size: 42px; } .canvas-title h1 { font-size: 26px; } .workspace-shell .voice-stage { min-height: 165px; padding-top: 90px; } .voice-horizon { height: 125px; } }
+@media (max-height: 650px) { .workspace-shell .voice-stage { min-height: 130px; padding-top: 65px; } .voice-horizon { height: 100px; } .session-intro { padding-top: 15px; } }
+
+/* Agent directory and inspectable histories share the workspace's glass surfaces. */
+.agent-board { min-width: 0; padding: 2px 0 20px; }
+.agent-board-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; gap: 16px; }
+.agent-board-eyebrow { color: #a5b6be; font-size: 9px; text-transform: uppercase; letter-spacing: .16em; margin-bottom: 9px; }
+.agent-board-header h2 { font-size: 32px; font-weight: 350; letter-spacing: -1.2px; line-height: 1.2; }
+.agent-board-header h2 > span { color: #9baeb8; font-size: 18px; margin-left: 8px; font-weight: 350; }
+.agent-board-count { font-size: 11px; color: #b5c5c9; border: 1px solid #e7f2f21a; border-radius: 30px; padding: 7px 12px; }
+.agent-list { display: grid; gap: 14px; }
+.agent-card { min-width: 0; overflow: hidden; border-radius: 23px; border: 1px solid #e1f0f220; background: linear-gradient(125deg, #dfecf210, #19262c88); box-shadow: inset 0 1px #ffffff09, 0 10px 30px #101a2015; backdrop-filter: blur(22px); }
+.agent-card[data-expanded='true'] { border-color: #e0edf234; }
+.agent-card-toggle { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto 16px; width: 100%; align-items: center; gap: 14px; padding: 22px; text-align: left; cursor: pointer; transition: background .2s; }
+.agent-card-toggle:hover { background: #e5f4ff07; }
+.agent-card-toggle:focus-visible { outline-offset: -4px; }
+.agent-avatar { display: grid; place-items: center; height: 42px; width: 42px; border: 1px solid color-mix(in srgb, var(--agent-accent) 30%, transparent); background: color-mix(in srgb, var(--agent-accent) 10%, transparent); border-radius: 50%; color: var(--agent-accent); font-size: 17px; font-weight: 400; }
+.agent-identity { display: grid; gap: 5px; min-width: 0; }
+.agent-role { color: #b2c0c7; font-size: 10px; }
+.agent-role > span { color: #91a3ad; }
+.agent-name { color: #e5edef; font-size: 20px; font-weight: 400; letter-spacing: -.5px; overflow-wrap: anywhere; }
+.agent-status { display: flex; align-items: center; gap: 6px; color: var(--status-color); font-size: 10px; padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--status-color) 20%, transparent); border-radius: 30px; background: color-mix(in srgb, var(--status-color) 6%, transparent); }
+.agent-status i { height: 4px; width: 4px; border-radius: 50%; background: currentColor; }
+.agent-chevron { color: #a9bec5; transition: transform .2s; }
+.agent-card[data-expanded='true'] .agent-chevron { transform: rotate(180deg); }
+.agent-task { grid-column: 2 / -1; color: #c7d2d6; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.agent-card-footer { grid-column: 2 / -1; display: flex; gap: 16px; color: #96aab3; font-size: 10px; padding-top: 3px; }
+.agent-detail-label { margin-left: auto; color: #bfced3; }
+.agent-details { border-top: 1px solid #e5f2f216; padding: 24px; background: #16212730; font-size: 12px; line-height: 1.7; color: #b7c7ce; user-select: text; overflow-wrap: anywhere; }
+.agent-facts { display: grid; gap: 14px; }
+.agent-facts > div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 16px; }
+.agent-facts dt { color: #93aab5; font-size: 11px; }
+.agent-facts dd { min-width: 0; color: #d3dfe3; }
+.agent-session-id { font-family: var(--font-mono); font-size: 10px; }
+.agent-detail-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid #e5f2f212; }
+.agent-detail-section h3 { display: flex; align-items: center; gap: 9px; color: #d6e1e5; font-size: 12px; font-weight: 500; margin-bottom: 14px; }
+.agent-detail-section h3 > span { font-size: 10px; color: #99adb8; }
+.agent-updates { display: grid; gap: 14px; }
+.agent-updates li { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 12px; }
+.agent-updates time { color: #a5bbc5; font-size: 10px; font-family: var(--font-mono); }
+.agent-tools { display: grid; gap: 8px; }
+.agent-tools > li { min-width: 0; border: 1px solid #dcecf014; background: #d9eaf105; border-radius: 13px; overflow: hidden; }
+.agent-tool-heading { display: flex; align-items: baseline; gap: 12px; padding: 12px 14px; }
+.agent-tool-number { color: #8199a5; font-family: var(--font-mono); font-size: 9px; flex-shrink: 0; }
+.agent-tool-heading code { min-width: 0; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 11px; color: var(--agent-accent); }
+.agent-tool-status { margin-left: auto; flex-shrink: 0; font-size: 9px; color: #a2b6bf; }
+.agent-tools > li[data-status='error'] .agent-tool-status { color: #e8acb8; }
+.agent-tools > li[data-status='running'] .agent-tool-status { color: #a8d8c5; }
+.agent-tool-content { border-top: 1px solid #dcecf00c; padding: 12px 14px 14px; font-family: var(--font-mono); font-size: 11px; line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; }
+.agent-tool-result { color: #a7bdc7; }
+.agent-tool-content p + p { margin-top: 10px; padding-top: 10px; border-top: 1px solid #dcecf00c; }
+.agent-files { display: grid; gap: 8px; color: #bcbde6; font-size: 11px; }
+.agent-files li { padding: 10px 12px; border-radius: 10px; background: #d9eaf105; }
+.agent-result p { color: #c4dcd2; white-space: pre-wrap; }
+.agent-error { margin-top: 18px; padding: 12px 14px; border-radius: 12px; background: #e8acb80a; color: #e8acb8; }
+.agent-no-updates { color: #9bb0ba; margin-top: 18px; font-size: 11px; }
+.agent-empty { padding: 50px 20px; text-align: center; border: 1px solid #dfedf21a; border-radius: 23px; background: #d9eaf105; color: #adbec7; font-size: 12px; }
+.agent-empty > span { display: block; font-size: 30px; color: #c5b3e6; margin-bottom: 14px; }
+@media (max-width: 700px) {
+  .agent-card-toggle { grid-template-columns: 34px minmax(0, 1fr) auto 12px; padding: 16px; gap: 10px; }
+  .agent-avatar { height: 34px; width: 34px; font-size: 14px; }
+  .agent-name { font-size: 17px; }
+  .agent-role > span { display: none; }
+  .agent-status { padding: 5px 7px; font-size: 9px; }
+  .agent-task, .agent-card-footer { grid-column: 1 / -1; }
+  .agent-card-footer { gap: 10px; }
+  .agent-details { padding: 16px; }
+  .agent-facts > div { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  .agent-updates li { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  .agent-tool-heading { flex-wrap: wrap; gap: 8px; }
+}
+/* Leave more room for inspecting long histories without losing voice controls. */
+.workspace-shell[data-page='agents'] .voice-stage { min-height: 125px; padding-top: 60px; }
+.workspace-shell[data-page='agents'] .voice-horizon { height: 95px; }
+.workspace-shell[data-page='agents'] .canvas-header { padding-bottom: 18px; }
+.workspace-shell[data-page='agents'] .canvas-toolbar { margin-bottom: 20px; padding-bottom: 14px; }
+.workspace-shell[data-page='agents'] .subtitle { margin-top: 0; }

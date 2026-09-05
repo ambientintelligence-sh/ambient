@@ -60,10 +60,10 @@ export function App() {
       ? session.transcript
       : null;
 
-  const orbLevel = session.listening
-    ? (session.inTrace[session.inTrace.length - 1] ?? 0)
-    : session.speaking
-      ? (session.outTrace[session.outTrace.length - 1] ?? 0)
+  const orbLevel = session.speaking
+    ? (session.outTrace[session.outTrace.length - 1] ?? 0)
+    : connected && !session.muted
+      ? (session.inTrace[session.inTrace.length - 1] ?? 0)
       : 0;
 
   const results = timelineItems.filter(item => item.display.format !== 'activity');
@@ -72,7 +72,7 @@ export function App() {
   const togglePower = () => (connected ? session.disconnect() : session.connect());
 
   return (
-    <div className="app-bg workspace-shell" data-voice={orbState} data-sidebar-open={sidebarOpen}>
+    <div className="app-bg workspace-shell" data-voice={orbState} data-page={page} data-sidebar-open={sidebarOpen}>
       <div aria-hidden="true" className="window-drag" />
       {sidebarOpen && <button className="sidebar-scrim" aria-label="Close sessions" onClick={() => setSidebarOpen(false)} />}
       <SessionSidebar sessions={sessions} selectedId={selectedSession?.id} workspace={workspace.name}
@@ -119,6 +119,7 @@ export function App() {
         </main>
       {/* Floating voice stage */}
       <div className="voice-stage">
+        <VoiceOrb state={orbState} level={orbLevel} />
         {subtitle && (
           <div className="glass subtitle pointer-events-auto shadow-[0_4px_24px_rgb(20_22_30/0.10)]" data-show="true" role="status">
             {subtitle}
@@ -143,12 +144,11 @@ export function App() {
             aria-label={connected ? 'End voice' : 'Start voice'}
             className="voice-button"
           >
-            <VoiceOrb state={orbState} level={orbLevel} />
             <span className="voice-action">{session.status === 'connecting' ? 'Connecting…' : !connected ? 'Start voice' : 'End voice'}</span>
           </button>
           <div className="voice-balance" aria-hidden="true" />
         </div>
-        {connected && <p className="voice-hint" role="status">{session.muted ? 'Microphone muted' : session.speaking ? 'Speaking' : session.listening ? 'Listening' : 'Ready'}</p>}
+        <p className="voice-hint" role="status">{connected ? session.speaking ? 'Speaking' : session.muted ? 'Microphone muted' : session.listening ? 'Listening' : 'Ready' : session.status === 'connecting' ? 'Connecting…' : ''}</p>
       </div>
 
 

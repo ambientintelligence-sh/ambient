@@ -120,6 +120,8 @@ export function useSession(): SessionView {
   const transportRef = useRef<OpenAIRealtimeWebRTC | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const outputAnalyserRef = useRef<AnalyserNode | null>(null);
+  const outputAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const connectingRef = useRef(false);
   const connectedRef = useRef(false);
@@ -141,6 +143,13 @@ export function useSession(): SessionView {
     void audioCtxRef.current?.close();
     audioCtxRef.current = null;
     analyserRef.current = null;
+    outputAnalyserRef.current = null;
+    if (outputAudioRef.current) {
+      outputAudioRef.current.onloadedmetadata = null;
+      outputAudioRef.current.pause();
+      outputAudioRef.current.srcObject = null;
+      outputAudioRef.current = null;
+    }
     listeningRef.current = false;
     speakingRef.current = false;
     setListening(false);
@@ -284,6 +293,7 @@ export function useSession(): SessionView {
         audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
       });
       streamRef.current = stream;
+      setMuted(false);
 
       const meterContext = new AudioContext();
       const analyser = meterContext.createAnalyser();
@@ -298,7 +308,19 @@ export function useSession(): SessionView {
         throw new Error(tokenPayload.error ?? `Realtime setup failed (${tokenResponse.status})`);
       }
 
-      const transport = new OpenAIRealtimeWebRTC({ mediaStream: stream });
+      await meterContext.resume();
+      const audioElement = document.createElement('audio');
+      outputAudioRef.current = audioElement;
+      audioElement.onloadedmetadata = () => {
+        if (audioCtxRef.current !== meterContext || outputAnalyserRef.current) return;
+        const remoteStream = audioElement.srcObject;
+        if (!(remoteStream instanceof MediaStream)) return;
+        const outputAnalyser = meterContext.createAnalyser();
+        outputAnalyser.fftSize = 512;
+        meterContext.createMediaStreamSource(remoteStream).connect(outputAnalyser);
+        outputAnalyserRef.current = outputAnalyser;
+      };
+      const transport = new OpenAIRealtimeWebRTC({ mediaStream: stream, audioElement });
       transportRef.current = transport;
       const agent = createAmbientAgent(localContext);
       const realtime = new RealtimeSession(agent, {
@@ -416,20 +438,17 @@ export function useSession(): SessionView {
   useEffect(() => {
     const bins = new Uint8Array(256);
     const timer = setInterval(() => {
-      const analyser = analyserRef.current;
-      let energy = 0;
-      if (analyser) {
+      const readLevel = (analyser: AnalyserNode | null) => {
+        if (!analyser) return 0;
         analyser.getByteTimeDomainData(bins);
         let sum = 0;
         for (const bin of bins) sum += (bin - 128) ** 2;
-        energy = Math.min(1, Math.sqrt(sum / bins.length) / 42);
-      }
-      setInTrace((trace) => [...trace.slice(1), energy]);
-      setOutTrace((trace) => {
-        const target = speakingRef.current ? 0.45 + Math.random() * 0.5 : 0;
-        const last = trace[trace.length - 1] ?? 0;
-        return [...trace.slice(1), last + (target - last) * 0.4];
-      });
+        return Math.min(1, Math.sqrt(sum / bins.length) / 32);
+      };
+      const input = readLevel(analyserRef.current);
+      const output = readLevel(outputAnalyserRef.current);
+      setInTrace((trace) => [...trace.slice(1), input]);
+      setOutTrace((trace) => [...trace.slice(1), output]);
     }, 50);
     return () => clearInterval(timer);
   }, []);

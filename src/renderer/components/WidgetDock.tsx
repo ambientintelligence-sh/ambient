@@ -34,7 +34,7 @@ const documentFor = (html: string) => `<!doctype html>
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src https: data:;">
   <base target="_blank">
   <style>
-    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; --foreground: #f3f3f5; --secondary: #999ba5; --accent: #9fb8ff; --surface: #08090b; background: var(--surface); }
+    :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; --foreground: #283438; --secondary: #5e6d73; --accent: #536b86; --surface: #e8edee; background: var(--surface); }
     * { box-sizing: border-box; }
     body { margin: 0; padding: 4px 22px 20px; background: transparent; color: var(--foreground); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
     h1, h2, h3 { margin: 0 0 10px; font-size: 1.1em; color: var(--foreground); }
@@ -43,7 +43,7 @@ const documentFor = (html: string) => `<!doctype html>
     a { color: var(--accent); }
     img { display: block; max-width: 100%; height: auto; border-radius: 10px; }
     table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 7px 6px; border-bottom: 1px solid rgba(255,255,255,.09); text-align: left; }
+    th, td { padding: 7px 6px; border-bottom: 1px solid rgba(45,65,75,.12); text-align: left; }
   </style>
 </head>
 <body>${html}</body>
