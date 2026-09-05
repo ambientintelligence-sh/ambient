@@ -1,70 +1,41 @@
+import { useId, type CSSProperties } from 'react';
+
 export type VoiceOrbState = 'off' | 'connecting' | 'idle' | 'listening' | 'speaking';
 
-const BARS = 23;
-const BAR_WIDTH = 3;
-const BAR_GAP = 3;
-const BAR_MAX = 22;
-const BAR_MIN = 3;
-const CENTER = (BARS - 1) / 2;
-const FALLOFF = 4.6;
-const VIEWBOX_HEIGHT = 30;
-const WAVE_WIDTH = BARS * (BAR_WIDTH + BAR_GAP) - BAR_GAP;
-
-const fract = (n: number) => n - Math.floor(n);
-const seed = (index: number) => fract(Math.sin((index + 1) * 12.9898) * 43758.5453);
-const envelope = (index: number) =>
-  Math.exp(-(((index - CENTER) ** 2) / (2 * FALLOFF * FALLOFF)));
-
-function Waveform({ state }: { state: VoiceOrbState }) {
-  return (
-    <svg
-      width={WAVE_WIDTH}
-      height={VIEWBOX_HEIGHT}
-      viewBox={`0 0 ${WAVE_WIDTH} ${VIEWBOX_HEIGHT}`}
-      className="wave"
-      aria-hidden="true"
-    >
-      {Array.from({ length: BARS }, (_, index) => {
-        const s = seed(index);
-        const h = BAR_MIN + (BAR_MAX - BAR_MIN) * envelope(index) * (0.55 + 0.45 * s);
-        return (
-          <rect
-            key={index}
-            x={index * (BAR_WIDTH + BAR_GAP)}
-            y={(VIEWBOX_HEIGHT - h) / 2}
-            width={BAR_WIDTH}
-            height={h}
-            rx={BAR_WIDTH / 2}
-            className="wave-bar"
-            fill={state === 'speaking' || state === 'connecting' ? '#0a6cff' : '#1c1c22'}
-            style={{
-              animationDuration: `${(0.9 + s * 1.1).toFixed(2)}s`,
-              animationDelay: `${(-s * 2).toFixed(2)}s`,
-            }}
-          />
-        );
-      })}
-    </svg>
-  );
-}
-
+/** Layered light surfaces keep their shape while real audio modulates their height. */
 export function VoiceOrb({ state, level = 0 }: { state: VoiceOrbState; level?: number }) {
-  const amp = Math.max(0.05, Math.min(1, level));
+  const id = useId().replace(/:/g, '');
+  const gradient = `${id}-spectrum`;
+  const glow = `${id}-glow`;
+  const haze = `${id}-haze`;
   return (
-    <span
-      role="img"
-      aria-label={
-        state === 'listening' ? 'Listening'
-          : state === 'speaking' ? 'Speaking'
-          : state === 'connecting' ? 'Connecting voice'
-          : state === 'idle' ? 'Voice ready'
-          : 'Voice off'
-      }
-      data-state={state}
-      className="orb"
-      style={{ '--amp': amp.toFixed(3) } as React.CSSProperties}
-    >
-      <Waveform state={state} />
+    <span className="orb" data-state={state} style={{ '--amp': Math.max(0, Math.min(1, level)) } as CSSProperties}>
+      <svg className="light-ribbon" viewBox="0 0 360 180" fill="none" aria-hidden="true">
+        <defs>
+          <linearGradient id={gradient} x1="40" y1="100" x2="310" y2="75" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#427aff" stopOpacity="0" />
+            <stop offset=".23" stopColor="#536aff" />
+            <stop offset=".48" stopColor="#b58dff" />
+            <stop offset=".64" stopColor="#f2c8f3" />
+            <stop offset=".8" stopColor="#86eeed" />
+            <stop offset="1" stopColor="#6adbdc" stopOpacity="0" />
+          </linearGradient>
+          <filter id={glow} x="-50%" y="-100%" width="200%" height="300%"><feGaussianBlur stdDeviation="5" /></filter>
+          <filter id={haze} x="-50%" y="-100%" width="200%" height="300%"><feGaussianBlur stdDeviation="16" /></filter>
+        </defs>
+        <g className="ribbon-energy">
+          <path d="M28 104C85 111 100 42 161 57C222 72 228 128 332 86C255 146 215 128 169 105C112 79 76 122 28 104Z" fill={`url(#${gradient})`} filter={`url(#${haze})`} opacity=".8" />
+          <g className="ribbon-back">
+            <path d="M26 104C89 115 102 39 161 57C219 75 239 118 335 85C270 126 223 131 167 93C112 60 84 120 26 104Z" fill={`url(#${gradient})`} opacity=".55" />
+            <path d="M26 104C89 115 102 39 161 57C219 75 239 118 335 85" stroke={`url(#${gradient})`} strokeWidth="1.2" />
+          </g>
+          <g className="ribbon-front">
+            <path d="M25 105C89 88 115 128 168 109C226 88 238 67 335 85C258 80 242 117 181 126C115 135 91 98 25 105Z" fill={`url(#${gradient})`} opacity=".8" />
+            <path d="M25 105C89 88 115 128 168 109C226 88 238 67 335 85" stroke={`url(#${gradient})`} strokeWidth="3" filter={`url(#${glow})`} />
+            <path d="M25 105C89 88 115 128 168 109C226 88 238 67 335 85" stroke={`url(#${gradient})`} strokeWidth="1.5" />
+          </g>
+        </g>
+      </svg>
     </span>
   );
 }

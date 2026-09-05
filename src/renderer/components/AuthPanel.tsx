@@ -20,7 +20,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="mt-6 first:mt-0">
       <p className="label-xs px-1 pb-2 text-dimmer">{title}</p>
-      <div className="overflow-hidden rounded-2xl bg-white/70 shadow-[0_1px_3px_rgb(20_22_30/0.06),inset_0_0_0_0.5px_rgb(20_22_30/0.04)]">
+      <div className="overflow-hidden rounded-2xl bg-panel/80 shadow-[0_1px_3px_rgb(20_22_30/0.06),inset_0_0_0_0.5px_rgb(20_22_30/0.04)]">
         {children}
       </div>
     </section>
@@ -29,7 +29,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function Row({ label, value, control, first = false }: { label: string; value?: string; control?: ReactNode; first?: boolean }) {
   return (
-    <div className={`flex min-h-[44px] items-center gap-3 px-4 py-2.5 ${first ? '' : 'border-t border-black/[0.05]'}`}>
+    <div className={`flex min-h-[44px] items-center gap-3 px-4 py-2.5 ${first ? '' : 'border-t border-white/[0.05]'}`}>
       <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{label}</span>
       {value && <span className="truncate text-[12px] text-dim">{value}</span>}
       {control}
@@ -51,12 +51,12 @@ function Toggle({ on, onChange, disabled = false }: { on: boolean; onChange: (ne
       onClick={() => onChange(!on)}
       className={`relative h-[24px] w-[54px] shrink-0 overflow-hidden rounded-full transition-[background-color,box-shadow] duration-200 disabled:opacity-30 ${
         on
-          ? 'bg-ink shadow-[0_2px_8px_rgb(20_22_30/0.22)]'
-          : 'bg-black/[0.06] shadow-[inset_0_0_0_0.5px_rgb(20_22_30/0.08)]'
+          ? 'bg-link shadow-[0_2px_8px_rgb(20_22_30/0.22)]'
+          : 'bg-white/[0.06] shadow-[inset_0_0_0_0.5px_rgb(20_22_30/0.08)]'
       }`}
     >
       <span
-        className={`absolute top-[3px] grid h-[18px] w-[26px] place-items-center rounded-full bg-white text-[8px] font-semibold uppercase tracking-[0.06em] transition-transform duration-200 ${
+        className={`absolute top-[3px] grid h-[18px] w-[26px] place-items-center rounded-full bg-panel-2 text-[8px] font-semibold uppercase tracking-[0.06em] transition-transform duration-200 ${
           on
             ? 'translate-x-[25px] text-ink shadow-none'
             : 'translate-x-[3px] text-dim shadow-[0_1px_3px_rgb(20_22_30/0.18)]'
@@ -83,10 +83,6 @@ export function AuthPanel(props: {
     chooseWorkspace,
     setBrowserVisible,
     setNetworkEnabled,
-    sessions,
-    currentSessionId,
-    createSession,
-    selectSession,
   } = useAppStore(useShallow((store) => ({
     state: store.auth,
     setAuth: store.setAuth,
@@ -98,10 +94,7 @@ export function AuthPanel(props: {
     chooseWorkspace: store.chooseWorkspace,
     setBrowserVisible: store.setBrowserVisible,
     setNetworkEnabled: store.setNetworkEnabled,
-    sessions: store.sessions,
     currentSessionId: store.session?.id ?? null,
-    createSession: store.createSession,
-    selectSession: store.selectSession,
   })));
   const [busy, setBusy] = useState(false);
   const [busyProvider, setBusyProvider] = useState<string | null>(null);
@@ -243,13 +236,13 @@ export function AuthPanel(props: {
     : null;
 
   return (
-    <div className="absolute inset-0 z-40 flex flex-col bg-void/95 backdrop-blur-xl [-webkit-app-region:no-drag]">
+    <div className="settings-sheet absolute z-40 flex flex-col bg-void/95 backdrop-blur-xl [-webkit-app-region:no-drag]">
       <header className="flex items-center justify-between px-5 pb-3 pt-14">
         <h2 className="text-[17px] font-semibold tracking-tight text-ink">Settings</h2>
         <button
           type="button"
           onClick={props.onClose}
-          className="grid h-7 w-7 place-items-center rounded-full bg-black/[0.05] text-[13px] text-dim transition-colors duration-150 hover:bg-black/[0.08] hover:text-ink"
+          className="grid h-7 w-7 place-items-center rounded-full bg-white/[0.05] text-[13px] text-dim transition-colors duration-150 hover:bg-white/[0.08] hover:text-ink"
           aria-label="Close settings"
         >
           ✕
@@ -278,30 +271,9 @@ export function AuthPanel(props: {
             label="Internet access"
             control={<Toggle on={network.enabled} onChange={setNetworkEnabled} />}
           />
-          <p className="border-t border-black/[0.05] px-4 py-2.5 text-[10.5px] leading-4 text-dimmer">
+          <p className="border-t border-white/[0.05] px-4 py-2.5 text-[10.5px] leading-4 text-dimmer">
             Applies to the next task you delegate. Running agents keep their current access.
           </p>
-        </Section>
-
-        <Section title="Sessions">
-          <div className="flex items-center gap-3 px-4 py-3">
-            <span className="min-w-0 flex-1 text-[12px] text-dim">Conversation history is stored locally.</span>
-            <button type="button" onClick={createSession} className="shrink-0 rounded-full bg-ink px-3.5 py-1.5 text-[11px] font-medium text-white">
-              New
-            </button>
-          </div>
-          {sessions.map((session) => (
-            <button
-              type="button"
-              key={session.id}
-              onClick={() => selectSession(session.id)}
-              className={`flex w-full items-center gap-3 border-t border-black/[0.05] px-4 py-3 text-left ${session.id === currentSessionId ? 'bg-live/[0.06]' : ''}`}
-            >
-              <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{session.title}</span>
-              <span className="label-xs text-dimmer">{session.jobCount} {session.jobCount === 1 ? 'task' : 'tasks'}</span>
-              {session.id === currentSessionId ? <span className="text-live">✓</span> : <Chevron />}
-            </button>
-          ))}
         </Section>
 
         <Section title="Location">
@@ -322,9 +294,9 @@ export function AuthPanel(props: {
                 onChange={(event) => setLocationDraft(event.target.value)}
                 placeholder="Vancouver, BC, Canada"
                 maxLength={160}
-                className="min-w-0 flex-1 rounded-full border border-black/[0.09] bg-white px-3 py-1.5 text-[13px] text-ink outline-none placeholder:text-dimmer focus:border-link/50"
+                className="min-w-0 flex-1 rounded-full border border-white/[0.09] bg-panel-2 px-3 py-1.5 text-[13px] text-ink outline-none placeholder:text-dimmer focus:border-link/50"
               />
-              <button disabled={locationBusy} className="rounded-full bg-ink px-3.5 py-1.5 text-[11px] font-medium text-white transition-opacity duration-150 disabled:opacity-40">
+              <button disabled={locationBusy} className="rounded-full bg-link px-3.5 py-1.5 text-[11px] font-medium text-void transition-opacity duration-150 disabled:opacity-40">
                 Save
               </button>
               {locationState?.enabled && (
@@ -348,10 +320,10 @@ export function AuthPanel(props: {
             visibleProviders.map((provider, index) => (
               <div
                 key={provider.id}
-                className={`flex min-h-[52px] items-center gap-3 px-4 py-3 ${index === 0 ? '' : 'border-t border-black/[0.05]'}`}
+                className={`flex min-h-[52px] items-center gap-3 px-4 py-3 ${index === 0 ? '' : 'border-t border-white/[0.05]'}`}
               >
                 <span
-                  className={`h-2 w-2 shrink-0 rounded-full ${provider.configured ? 'bg-live' : 'bg-black/[0.15]'}`}
+                  className={`h-2 w-2 shrink-0 rounded-full ${provider.configured ? 'bg-live' : 'bg-white/[0.15]'}`}
                   aria-hidden="true"
                 />
                 <div className="min-w-0 flex-1">
@@ -374,7 +346,7 @@ export function AuthPanel(props: {
                     type="button"
                     disabled={busy}
                     onClick={() => connect(provider)}
-                    className="shrink-0 rounded-full bg-ink px-3.5 py-1.5 text-[11px] font-medium text-white transition-opacity duration-150 hover:opacity-85 disabled:opacity-40"
+                    className="shrink-0 rounded-full bg-link px-3.5 py-1.5 text-[11px] font-medium text-void transition-opacity duration-150 hover:opacity-85 disabled:opacity-40"
                   >
                     {busyProvider === provider.id ? 'Connecting…' : 'Connect'}
                   </button>
@@ -403,12 +375,12 @@ export function AuthPanel(props: {
         )}
 
         {prompt && (
-          <div className="mt-4 rounded-2xl bg-white/70 p-4 shadow-[0_1px_3px_rgb(20_22_30/0.06),inset_0_0_0_0.5px_rgb(20_22_30/0.04)]">
+          <div className="mt-4 rounded-2xl bg-panel/80 p-4 shadow-[0_1px_3px_rgb(20_22_30/0.06),inset_0_0_0_0.5px_rgb(20_22_30/0.04)]">
             <p className="text-[13px] text-ink">{prompt.message}</p>
             {prompt.type === 'select' ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {prompt.options?.map((option) => (
-                  <button key={option.id} onClick={() => submitPrompt(option.id)} className="rounded-full border border-black/[0.09] bg-white px-3 py-1.5 text-[12px] text-dim transition-colors duration-150 hover:text-ink">
+                  <button key={option.id} onClick={() => submitPrompt(option.id)} className="rounded-full border border-white/[0.09] bg-panel-2 px-3 py-1.5 text-[12px] text-dim transition-colors duration-150 hover:text-ink">
                     {option.label}
                   </button>
                 ))}
@@ -421,9 +393,9 @@ export function AuthPanel(props: {
                   value={answer}
                   onChange={(event) => setAnswer(event.target.value)}
                   placeholder={prompt.placeholder}
-                  className="min-w-0 flex-1 rounded-full border border-black/[0.09] bg-white px-3 py-1.5 text-[13px] text-ink outline-none focus:border-link/50"
+                  className="min-w-0 flex-1 rounded-full border border-white/[0.09] bg-panel-2 px-3 py-1.5 text-[13px] text-ink outline-none focus:border-link/50"
                 />
-                <button className="rounded-full bg-ink px-4 py-1.5 text-[11px] font-medium text-white">Continue</button>
+                <button className="rounded-full bg-link px-4 py-1.5 text-[11px] font-medium text-void">Continue</button>
               </form>
             )}
             <button onClick={() => bridge?.cancelLogin()} className="mt-3 text-[11px] font-medium text-dimmer transition-colors duration-150 hover:text-alert">Cancel</button>
@@ -447,12 +419,12 @@ export function AuthPanel(props: {
           </button>
 
           {modelsOpen && (
-            <div className="border-t border-black/[0.05] px-3 py-3">
+            <div className="border-t border-white/[0.05] px-3 py-3">
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Filter models"
-                className="mb-2.5 w-full rounded-full border border-black/[0.09] bg-white px-3.5 py-1.5 text-[13px] text-ink outline-none placeholder:text-dimmer focus:border-link/50"
+                className="mb-2.5 w-full rounded-full border border-white/[0.09] bg-panel-2 px-3.5 py-1.5 text-[13px] text-ink outline-none placeholder:text-dimmer focus:border-link/50"
               />
               {models.length === 0 ? (
                 <p className="px-1 py-3 text-center text-[12px] text-dim">No models — connect a provider above.</p>
@@ -466,7 +438,7 @@ export function AuthPanel(props: {
                         key={`${model.provider}/${model.id}`}
                         disabled={busy}
                         onClick={() => selectModel(model)}
-                        className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-150 ${active ? 'bg-live/[0.08]' : 'hover:bg-black/[0.03]'} disabled:opacity-40`}
+                        className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-150 ${active ? 'bg-live/[0.08]' : 'hover:bg-white/[0.03]'} disabled:opacity-40`}
                       >
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[13px] text-ink">{model.name}</p>

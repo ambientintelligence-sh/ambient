@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useSession } from './use-session';
 import { useAppStore } from './store';
+import { SessionSidebar } from './components/SessionSidebar';
 import { AuthPanel } from './components/AuthPanel';
 import { DepartureBoard } from './components/DepartureBoard';
 import { VoiceOrb } from './components/VoiceOrb';
@@ -9,7 +10,14 @@ import { WidgetDock } from './components/WidgetDock';
 
 export function App() {
   const session = useSession();
-  const { initialize, page, setPage, setupOpen, setSetupOpen, workers, primaryAgent, storedTimelineItems, dismissDisplay } = useAppStore(useShallow((state) => ({
+  const { initialize, page, setPage, setupOpen, setSetupOpen, workers, primaryAgent, storedTimelineItems, dismissDisplay, sessions, selectedSession, createSession, selectSession, workspace, jobs, error } = useAppStore(useShallow((state) => ({
+    sessions: state.sessions,
+    selectedSession: state.session,
+    createSession: state.createSession,
+    selectSession: state.selectSession,
+    workspace: state.workspace,
+    jobs: state.jobs,
+    error: state.error,
     initialize: state.initialize,
     page: state.page,
     setPage: state.setPage,
@@ -20,6 +28,7 @@ export function App() {
     storedTimelineItems: state.timelineItems,
     dismissDisplay: state.dismissDisplay,
   })));
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const timelineEndRef = useRef<HTMLDivElement>(null);
   const timelineItems = storedTimelineItems.filter((item) => !item.dismissed);
 
@@ -30,7 +39,7 @@ export function App() {
   const connected = session.status === 'connected';
 
   useEffect(() => {
-    if (timelineItems.length > 0) timelineEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    if (timelineItems.length > 0) timelineEndRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'end' });
   }, [timelineItems.length]);
 
   const openSetup = () => setSetupOpen(true);
@@ -57,67 +66,59 @@ export function App() {
       ? (session.outTrace[session.outTrace.length - 1] ?? 0)
       : 0;
 
+  const results = timelineItems.filter(item => item.display.format !== 'activity');
+  const activities = timelineItems.filter(item => item.display.format === 'activity');
+
   const togglePower = () => (connected ? session.disconnect() : session.connect());
 
   return (
-    <div className="app-bg relative flex h-full flex-col overflow-hidden text-ink">
-      {/* Grain-gradient backdrop */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="blob blob-a" />
-        <div className="blob blob-b" />
-        <div className="blob blob-c" />
-        <div className="grain" />
-      </div>
-
-      {/* Draggable window region (frameless) */}
-      <div aria-hidden="true" className="absolute inset-x-0 top-0 z-30 h-10 [-webkit-app-region:drag]" />
-
-      {/* Quiet floating controls — clear of the traffic lights */}
-      <div className="absolute right-3 top-14 z-30 flex items-center gap-1.5">
-        <nav className="flex rounded-full bg-black/[0.045] p-0.5 backdrop-blur-sm" aria-label="Main views">
+    <div className="app-bg workspace-shell" data-voice={orbState} data-sidebar-open={sidebarOpen}>
+      <div aria-hidden="true" className="window-drag" />
+      {sidebarOpen && <button className="sidebar-scrim" aria-label="Close sessions" onClick={() => setSidebarOpen(false)} />}
+      <SessionSidebar sessions={sessions} selectedId={selectedSession?.id} workspace={workspace.name}
+        onSelect={(id) => { selectSession(id); setSidebarOpen(false); }}
+        onCreate={() => { createSession(); setSidebarOpen(false); }}
+        onSettings={openSetup} onClose={() => setSidebarOpen(false)} />
+      <div className="session-canvas">
+        <header className="canvas-header">
+          <div className="canvas-title"><button className="sidebar-toggle" aria-label="Show sessions" aria-controls="session-sidebar" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button><div><p>{selectedSession ? 'Session' : 'Workspace'}</p><h1>{selectedSession?.title ?? 'New session'}</h1></div></div>
+          <span className="connection-state"><i />{connected ? 'Connected' : session.status === 'connecting' ? 'Connecting' : 'Offline'}</span>
+        </header>
+        <div className="canvas-toolbar">
+        <nav className="view-switch" aria-label="Main views">
           {(['timeline', 'agents'] as const).map((item) => (
             <button
               key={item}
               type="button"
               onClick={() => setPage(item)}
-              className={`h-6 rounded-full px-2.5 text-[11px] font-medium transition-colors duration-150 ${
-                page === item ? 'bg-white text-ink shadow-[0_1px_3px_rgb(20_22_30/0.12)]' : 'text-dim hover:text-ink'
-              }`}
+              aria-current={page === item ? 'page' : undefined}
+              className="view-tab"
             >
-              {item === 'timeline' ? 'Timeline' : `Agents · ${workers.length + (primaryAgent ? 1 : 0)}`}
+              {item === 'timeline' ? 'Overview' : `Agents ${workers.length + (primaryAgent ? 1 : 0)}`}
             </button>
           ))}
         </nav>
-        <button
-          type="button"
-          onClick={openSetup}
-          aria-label="Open settings"
-          className="grid h-6 w-6 place-items-center rounded-full text-[12px] text-dim transition-colors duration-150 hover:bg-black/[0.05] hover:text-ink"
-        >
-          ⚙
-        </button>
-      </div>
-
-      <main className="app-scroll relative z-10 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-40 pt-24">
-        {page === 'timeline' ? (
-          <div className="mx-auto grid w-full max-w-[620px] gap-3">
-            <WidgetDock
-              items={timelineItems}
-              hasWorkers={workers.length > 0 || primaryAgent?.status === 'running'}
-              onDismiss={dismissDisplay}
-              onViewAgents={() => setPage('agents')}
-            />
-            <div ref={timelineEndRef} />
-          </div>
-        ) : (
-          <div className="mx-auto grid w-full min-w-0 max-w-[620px]">
-            <DepartureBoard workers={workers} primaryAgent={primaryAgent} />
-          </div>
-        )}
-      </main>
-
+          <span className="canvas-date">{selectedSession && new Date(selectedSession.createdAt).toLocaleDateString([], { month: 'long', day: 'numeric' })}</span>
+        </div>
+        {error && <p className="workspace-error" role="alert">{error}</p>}
+        <main className="workspace-content app-scroll">
+          {page === 'timeline' ? (
+            <div className="overview-layout">
+              <section className="results-column" aria-label="Results">
+                <div className="column-heading"><h2>Results</h2><span>{results.length}</span></div>
+                <WidgetDock items={results} hasWorkers={false} onDismiss={dismissDisplay} onViewAgents={() => setPage('agents')} />
+                <div ref={timelineEndRef} />
+              </section>
+              <aside className="activity-column" aria-label="Session activity">
+                <div className="column-heading"><h2>Live activity</h2><span>{activities.length}</span></div>
+                {activities.length > 0 ? <WidgetDock items={activities} hasWorkers={false} onDismiss={dismissDisplay} onViewAgents={() => setPage('agents')} /> : <p className="quiet-status">No activity in progress</p>}
+                <section className="session-context"><h2>Session details</h2><dl><div><dt>Workspace</dt><dd>{workspace.name ?? 'Not selected'}</dd></div><div><dt>Requests</dt><dd>{jobs.length}</dd></div><div><dt>Agents</dt><dd>{workers.length + (primaryAgent ? 1 : 0)}</dd></div></dl></section>
+              </aside>
+            </div>
+          ) : <DepartureBoard workers={workers} primaryAgent={primaryAgent} />}
+        </main>
       {/* Floating voice stage */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-3 px-4 pb-6">
+      <div className="voice-stage">
         {subtitle && (
           <div className="glass subtitle pointer-events-auto shadow-[0_4px_24px_rgb(20_22_30/0.10)]" data-show="true" role="status">
             {subtitle}
@@ -129,28 +130,29 @@ export function App() {
             onClick={session.toggleMute}
             disabled={!connected}
             aria-label={session.muted ? 'Unmute microphone' : 'Mute microphone'}
-            className={`grid h-9 w-9 place-items-center rounded-full text-[12px] transition-[background-color,color,transform] duration-150 active:scale-95 disabled:opacity-0 ${
-              session.muted
-                ? 'bg-alert/10 text-alert'
-                : 'bg-white/60 text-dim shadow-[0_1px_3px_rgb(20_22_30/0.08)] hover:text-ink'
-            }`}
+            aria-pressed={session.muted}
+            className={`mute-button ${session.muted ? 'is-muted' : ''}`}
           >
-            {session.muted ? '◉' : '○'}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M9 22h6" />{session.muted && <path d="m3 3 18 18" />}</svg>
           </button>
           <button
             type="button"
             onClick={togglePower}
             disabled={session.status === 'connecting'}
             aria-busy={session.status === 'connecting'}
-            aria-label={connected ? 'Disconnect voice' : 'Connect voice'}
-            className="rounded-full transition-transform duration-150 active:scale-95 disabled:cursor-wait"
+            aria-label={connected ? 'End voice' : 'Start voice'}
+            className="voice-button"
           >
             <VoiceOrb state={orbState} level={orbLevel} />
+            <span className="voice-action">{session.status === 'connecting' ? 'Connecting…' : !connected ? 'Start voice' : 'End voice'}</span>
           </button>
-          <div className="w-9" aria-hidden="true" />
+          <div className="voice-balance" aria-hidden="true" />
         </div>
+        {connected && <p className="voice-hint" role="status">{session.muted ? 'Microphone muted' : session.speaking ? 'Speaking' : session.listening ? 'Listening' : 'Ready'}</p>}
       </div>
 
+
+      </div>
       <AuthPanel open={setupOpen} onClose={() => setSetupOpen(false)} />
     </div>
   );

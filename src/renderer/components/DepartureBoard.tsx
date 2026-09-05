@@ -46,13 +46,13 @@ function Row({ agent }: { agent: AgentRow }) {
   const hasProgress = agent.updates.length > 0 || agent.stops.length > 0;
 
   return (
-    <div className="min-w-0 border-b border-black/[0.05] last:border-b-0">
+    <div className="min-w-0 border-b border-white/[0.05] last:border-b-0">
       <button
         type="button"
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Hide' : 'Show'} details for ${agent.name}`}
         onClick={() => setExpanded((value) => !value)}
-        className={`w-full min-w-0 cursor-pointer rounded-xl px-2 py-2.5 text-left transition-colors duration-150 hover:bg-black/[0.03] ${expanded ? 'bg-black/[0.025]' : ''}`}
+        className={`w-full min-w-0 cursor-pointer rounded-xl px-2 py-2.5 text-left transition-colors duration-150 hover:bg-white/[0.03] ${expanded ? 'bg-white/[0.025]' : ''}`}
       >
         <div className="flex items-center gap-2.5">
           <span
@@ -89,7 +89,7 @@ function Row({ agent }: { agent: AgentRow }) {
       </button>
 
       {expanded && (
-        <div className="mb-2 min-w-0 rounded-xl bg-black/[0.02] px-3.5 py-3 text-[12px] leading-5 text-dim" style={{ borderLeft: `2px solid ${hex}33` }}>
+        <div className="mb-2 min-w-0 rounded-xl bg-white/[0.02] px-3.5 py-3 text-[12px] leading-5 text-dim" style={{ borderLeft: `2px solid ${hex}33` }}>
           <div className="grid min-w-0 grid-cols-[68px_minmax(0,1fr)] gap-x-3 gap-y-2">
             <span className="label-xs pt-1 text-dimmer">Assignment</span>
             <p className="min-w-0 break-words text-ink">{agent.assignment}</p>
@@ -101,14 +101,14 @@ function Row({ agent }: { agent: AgentRow }) {
           </div>
 
           {!hasProgress && (
-            <div className="mt-3 rounded-lg border border-dashed border-black/[0.1] px-3 py-2.5 text-center text-[11px] text-dimmer">
+            <div className="mt-3 rounded-lg border border-dashed border-white/[0.1] px-3 py-2.5 text-center text-[11px] text-dimmer">
               <span className="mr-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-warn" />
               Awaiting first update
             </div>
           )}
 
           {agent.updates.length > 0 && (
-            <section className="mt-3 border-t border-black/[0.05] pt-2.5">
+            <section className="mt-3 border-t border-white/[0.05] pt-2.5">
               <p className="label-xs mb-1.5 text-dimmer">Updates</p>
               <div className="grid gap-1.5">
                 {agent.updates.map((update, index) => <p key={`${update.at}-${index}`} className="min-w-0 break-words"><span className="mr-2 font-mono text-[10px] text-warn">{update.at}</span>{update.text}</p>)}
@@ -117,7 +117,7 @@ function Row({ agent }: { agent: AgentRow }) {
           )}
 
           {agent.stops.length > 0 && (
-            <section className="mt-3 border-t border-black/[0.05] pt-2.5">
+            <section className="mt-3 border-t border-white/[0.05] pt-2.5">
               <p className="label-xs mb-1.5 text-dimmer">Tool trace</p>
               <div className="grid gap-1.5 font-mono text-[10px]">
                 {agent.stops.map((stop) => (
@@ -131,12 +131,12 @@ function Row({ agent }: { agent: AgentRow }) {
           )}
 
           {agent.artifacts.length > 0 && (
-            <section className="mt-3 border-t border-black/[0.05] pt-2.5">
+            <section className="mt-3 border-t border-white/[0.05] pt-2.5">
               <p className="label-xs mb-1.5 text-dimmer">Artifacts</p>
               {agent.artifacts.map((artifact) => <p key={artifact.path} className="truncate font-mono text-[10px] text-link">{artifact.path}</p>)}
             </section>
           )}
-          {agent.summary && <p className="mt-3 border-t border-black/[0.05] pt-2.5 text-live"><span className="label-xs mr-2">Result</span>{agent.summary}</p>}
+          {agent.summary && <p className="mt-3 border-t border-white/[0.05] pt-2.5 text-live"><span className="label-xs mr-2">Result</span>{agent.summary}</p>}
           {agent.error && <p className="mt-3 text-alert">Error · {agent.error}</p>}
         </div>
       )}
@@ -183,7 +183,7 @@ export function DepartureBoard({ workers, primaryAgent }: { workers: readonly Wo
     return (
       <div className="grid place-items-center py-24 text-center">
         <div>
-          <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-black/[0.04] text-[15px] text-dimmer">◌</div>
+          <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-white/[0.04] text-[15px] text-dimmer">◌</div>
           <p className="mt-3 text-[13px] font-medium text-ink">No active agents</p>
           <p className="mt-1 text-[11.5px] text-dim">Delegated work will show up here as it runs.</p>
         </div>

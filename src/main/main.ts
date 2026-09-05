@@ -152,11 +152,11 @@ async function switchSession(next: SessionRecord, interruptActive = false) {
 
 async function createWindow(setupUrl: string) {
   const window = new BrowserWindow({
-    width: 430,
-    height: 820,
-    minWidth: 360,
+    width: 1180,
+    height: 780,
+    minWidth: 800,
     minHeight: 560,
-    backgroundColor: '#e9e9ec',
+    backgroundColor: '#101116',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 18 },
     webPreferences: {

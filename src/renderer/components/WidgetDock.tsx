@@ -34,16 +34,16 @@ const documentFor = (html: string) => `<!doctype html>
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src https: data:;">
   <base target="_blank">
   <style>
-    :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; --foreground: #f3f3f5; --secondary: #999ba5; --accent: #9fb8ff; --surface: #08090b; background: var(--surface); }
     * { box-sizing: border-box; }
-    body { margin: 0; padding: 14px; background: transparent; color: #3a3a44; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
-    h1, h2, h3 { margin: 0 0 10px; font-size: 1.1em; color: #1c1c22; }
+    body { margin: 0; padding: 4px 22px 20px; background: transparent; color: var(--foreground); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+    h1, h2, h3 { margin: 0 0 10px; font-size: 1.1em; color: var(--foreground); }
     p { margin: 0 0 10px; }
     p:last-child { margin-bottom: 0; }
-    a { color: #0a6cff; }
+    a { color: var(--accent); }
     img { display: block; max-width: 100%; height: auto; border-radius: 10px; }
     table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 7px 6px; border-bottom: 1px solid rgba(20,22,30,.08); text-align: left; }
+    th, td { padding: 7px 6px; border-bottom: 1px solid rgba(255,255,255,.09); text-align: left; }
   </style>
 </head>
 <body>${html}</body>
@@ -59,7 +59,7 @@ function HtmlPreview({ display }: { display: Display }) {
       sandbox="allow-same-origin"
       srcDoc={documentFor(display.content || (display as Display & { html?: string }).html || '')}
       onLoad={() => {
-        const measured = frame.current?.contentDocument?.documentElement.scrollHeight ?? 180;
+        const measured = frame.current?.contentDocument?.body.scrollHeight ?? 180;
         setHeight(Math.max(120, Math.min(420, measured)));
       }}
       style={{ height }}
@@ -73,7 +73,7 @@ function DisplayContent({ display }: { display: Display }) {
   const format = display.format ?? 'html';
   const content = display.content || legacy.html || '';
   if (format === 'image') {
-    return <img src={content} alt={display.alt ?? display.title} className="block h-auto max-h-[70vh] w-full object-contain" />;
+    return <img src={content} alt={display.alt ?? display.title} className="widget-image" />;
   }
   if (format === 'markdown') {
     return <div className="widget-markdown"><Markdown>{content}</Markdown></div>;
@@ -89,11 +89,11 @@ export function WidgetDock(props: {
 }) {
   if (props.items.length === 0) {
     return (
-      <section aria-hidden="true">
+      <section>
         {props.hasWorkers && (
           <div className="grid place-items-center pt-6">
             <button type="button" onClick={props.onViewAgents} className="text-[12px] font-medium text-link hover:underline">
-              View active agents →
+              View active agents
             </button>
           </div>
         )}
@@ -102,36 +102,32 @@ export function WidgetDock(props: {
   }
 
   return (
-    <section className="grid gap-3">
+    <section className="widget-stack">
       {props.items.map(({ job, display }) => {
         if (display.format === 'activity') return <LiveActivityCard key={display.id} job={job} display={display} onDismiss={() => props.onDismiss(display.id)} />;
         return (
-          <article key={display.id} className="glass-card widget-enter overflow-hidden">
-            <header className="flex items-start justify-between gap-3 px-4 pb-2.5 pt-3.5">
-              <div className="min-w-0">
-                <h2 className="truncate text-[13px] font-semibold leading-5 text-ink">{display.title}</h2>
-                <p className="mt-0.5 text-[11px] text-dimmer">{new Date(job.createdAt).toTimeString().slice(0, 5)}</p>
-              </div>
+          <article key={display.id} className="result-card widget-enter" data-format={display.format}>
+            <header className="result-header">
               <button
                 type="button"
                 aria-label={`Dismiss ${display.title}`}
                 onClick={() => props.onDismiss(display.id)}
-                className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[13px] text-dimmer transition-colors duration-150 hover:bg-black/[0.05] hover:text-ink"
-              >
-                ×
-              </button>
+                className="card-dismiss"
+              >×</button>
+              <h2>{display.title}</h2>
+              <time dateTime={new Date(display.createdAt).toISOString()}>{new Date(display.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
             </header>
-            <div className="border-t border-black/[0.05]">
+            <div className="result-content">
               <DisplayContent display={display} />
               {display.caption && <div className="widget-caption"><Markdown>{display.caption}</Markdown></div>}
               {display.links.length > 0 && (
-                <div className="flex flex-wrap gap-2 border-t border-black/[0.05] p-3">
+                <div className="result-links">
                   {display.links.map((link, index) => (
                     <button
                       key={`${link.url}-${index}`}
                       type="button"
                       onClick={() => openExternal(link.url)}
-                      className="min-h-9 rounded-full bg-link/10 px-3.5 py-1.5 text-left text-[12px] font-medium text-link transition-colors duration-150 hover:bg-link/15"
+                      className="result-link"
                     >
                       {link.label} <span aria-hidden="true">↗</span>
                     </button>
