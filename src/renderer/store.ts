@@ -52,12 +52,16 @@ const upsertWorker = (items: readonly Worker[], worker: Worker) => {
 
 const applyWorkEvent = (state: AppState, event: WorkEvent): Partial<AppState> => {
   if (event.sessionId !== state.session?.id) return {};
+  if (event.kind === 'display-removed') {
+    return { timelineItems: state.timelineItems.map((item) => item.display.id === event.displayId ? { ...item, dismissed: true } : item) };
+  }
   if (event.kind === 'job') {
     const index = state.jobs.findIndex((job) => job.id === event.job.id);
     const title = event.job.request.replace(/\s+/g, ' ').trim().slice(0, 64) || 'New session';
     const session = state.session?.title === 'New session' ? { ...state.session, title, updatedAt: Date.now() } : state.session;
     return {
       session,
+      timelineItems: state.timelineItems.map((item) => item.job.id === event.job.id ? { ...item, job: event.job } : item),
       sessions: session ? state.sessions.map((item) => item.id === session.id
         ? { ...item, title: session.title, updatedAt: session.updatedAt, jobCount: index === -1 ? item.jobCount + 1 : item.jobCount }
         : item) : state.sessions,

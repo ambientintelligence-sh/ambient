@@ -72,7 +72,6 @@ async function createSessionServices() {
     sessionId,
     getSelection: auth.currentSelection,
     onReport: (worker) => sessionRouter?.handleWorkerReport(worker),
-    onProgress: (worker) => sessionRouter?.handleWorkerProgress(worker),
     getWorkspace: workspace.getPath,
     getBrowserConfig: browser.workerConfig,
     getLocalContext: localContext.state,
@@ -111,6 +110,7 @@ async function createSessionServices() {
     emit: (event) => {
       if (event.kind === 'job') sessionRepository?.saveJob(event.sessionId, event.job);
       else if (event.kind === 'voice-message') sessionRepository?.saveReply(event.sessionId, event.message);
+      else if (event.kind === 'display-removed') sessionRepository?.dismissDisplay(event.sessionId, event.displayId);
       else sessionRepository?.saveDisplay(event.sessionId, event.job.id, event.display);
       for (const target of BrowserWindow.getAllWindows()) target.webContents.send('work:event', event);
     },

@@ -1,3 +1,4 @@
+import { updateActivity, readLiveActivity, cleanAgentText } from '../shared/live-activity';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, realpath, stat } from 'node:fs/promises';
@@ -16,12 +17,11 @@ import { vendorModuleUrl } from './vendor';
 import { artifactOf, completeStop, detailOf, resultOf } from './agent-telemetry';
 import { PRIMARY_AGENT_INSTRUCTIONS } from './primary-agent-instructions';
 import { createFallbackResultDisplay, MAX_WIDGET_TEXT_LENGTH } from './result-display';
+import { startSubagentPolling } from './subagent-polling';
 
 const MAX_CHILDREN_PER_JOB = 4;
 const MAX_IMAGE_BYTES = 5_000_000;
 const MAX_PRIMARY_TRACE = 12;
-const PROGRESS_WAKE_DELAY_MS = 8_000;
-const PROGRESS_WAKE_GAP_MS = 20_000;
 const clock = () => new Date().toTimeString().slice(0, 5);
 const IMAGE_MIME: Readonly<Record<string, string>> = {
   '.gif': 'image/gif',
@@ -55,13 +55,14 @@ export async function createWorkRouter(options: {
   const { createAgentSession, DefaultResourceLoader, defineTool, SessionManager } = await importEsm(vendorModuleUrl('@earendil-works/pi-coding-agent'));
 
   const jobs = new Map<string, WorkJob>();
+  const workerActivities = new Map<string, string>();
+  const activityIdParameter = Type.String({ minLength: 1, maxLength: 60, pattern: '^[a-zA-Z0-9_-]+$', description: 'Stable task ID, e.g. weather or sale-lines. Use a distinct ID for each independent task.' });
   const displaysByWidgetId = new Map<string, TimelineDisplay>();
   const displayTitlesByJobId = new Map<string, string>();
   let activeJobId: string | null = null;
   let lastDisplayTitleInTurn: string | null = null;
   let mailbox = Promise.resolve();
   let closed = false;
-  const lastProgressWakeAt = new Map<string, number>();
   let primaryAgent = options.initialPrimaryAgent;
 
   if (!primaryAgent) {
@@ -209,15 +210,17 @@ export async function createWorkRouter(options: {
     label: 'Dispatch Subagent',
     description: 'Start an isolated background task. Returns immediately.',
     parameters: Type.Object({
+      activityId: activityIdParameter,
       task: Type.String({ minLength: 1, maxLength: 20_000, description: 'The background task and its relevant context.' }),
     }),
     execute: async (_id, params) => {
       const job = currentJob();
       if (job.childWorkers.length >= MAX_CHILDREN_PER_JOB) throw new Error(`A job may dispatch at most ${MAX_CHILDREN_PER_JOB} subagents`);
       const worker = options.fleet.dispatch(params.task.trim(), job.id, job.networkEnabled);
+      workerActivities.set(`${job.id}:${worker.name}`, params.activityId);
       updateJob(job.id, (item) => ({ ...item, status: 'working', childWorkers: [...item.childWorkers, worker.name] }));
       return {
-        content: [{ type: 'text', text: `Background task ${worker.name} accepted. Milestones and the final report return automatically.` }],
+        content: [{ type: 'text', text: `Background task ${worker.name} accepted. Status snapshots return automatically about every five seconds; the final report returns immediately on completion.` }],
         details: { worker: worker.name, status: 'accepted' },
       };
     },
@@ -256,7 +259,7 @@ export async function createWorkRouter(options: {
   const describeWorker = (worker: Worker) => {
     const latest = worker.updates.at(-1)?.text;
     const lastStop = worker.stops.at(-1);
-    const lines = [`- ${worker.name}: ${worker.status}`];
+    const lines = [`- ${worker.name}: ${worker.status} (activity: ${workerActivities.get(`${worker.parentJobId}:${worker.name}`) ?? 'unknown'})`];
     if (worker.status === 'complete') lines.push(`  result: ${worker.summary ?? '(no result)'}`);
     if (worker.status === 'failed' || worker.status === 'cancelled') lines.push(`  error: ${worker.error ?? worker.status}`);
     if (isActive(worker.status)) {
@@ -307,10 +310,52 @@ export async function createWorkRouter(options: {
     },
   });
 
+  const activityTool = defineTool({
+    name: 'update_live_activity',
+    label: 'Update Live Activity',
+    description: 'Create or replace one independent task’s compact live progress card by activityId. Silent: this does not speak or complete the request. Describe only what is happening now. Previous updates are saved to history automatically.',
+    parameters: Type.Object({
+      activityId: activityIdParameter,
+      title: Type.String({ minLength: 1, maxLength: 80 }),
+      summary: Type.String({ minLength: 1, maxLength: 180 }),
+      status: Type.Union([Type.Literal('running'), Type.Literal('blocked')]),
+    }),
+    execute: async (_id, params) => {
+      const job = currentJob();
+      const key = `${job.id}:live-activity-${params.activityId}`;
+      const previous = displaysByWidgetId.get(key);
+      const activity = updateActivity(previous ? readLiveActivity(previous.content) : null, { ...params, updatedAt: Date.now() });
+      const display: TimelineDisplay = {
+        id: `${job.id}-live-activity-${params.activityId}`, widgetId: `live-activity-${params.activityId}`,
+        title: params.title.trim(), format: 'activity', content: JSON.stringify(activity),
+        alt: null, caption: null, links: [], createdAt: job.createdAt,
+      };
+      displaysByWidgetId.set(key, display);
+      options.emit({ kind: 'display', sessionId: options.sessionId, job, display });
+      return { content: [{ type: 'text', text: 'Live activity updated.' }], details: { id: display.id } };
+    },
+  });
+
+  const removeActivityTool = defineTool({
+    name: 'remove_live_activity',
+    label: 'Remove Live Activity',
+    description: 'Remove a task’s live activity after presenting its result. Other activities and result widgets remain visible.',
+    parameters: Type.Object({ activityId: activityIdParameter }),
+    execute: async (_id, params) => {
+      const job = currentJob();
+      const active = options.fleet.list().some((worker) => worker.parentJobId === job.id &&
+        workerActivities.get(`${job.id}:${worker.name}`) === params.activityId && isActive(worker.status));
+      if (active) throw new Error('This activity still has active work. Wait for its report or stop unneeded work first.');
+      const displayId = `${job.id}-live-activity-${params.activityId}`;
+      options.emit({ kind: 'display-removed', sessionId: options.sessionId, displayId });
+      return { content: [{ type: 'text', text: 'Live activity removed.' }], details: { displayId } };
+    },
+  });
+
   const selected = options.getSelection();
   const model = options.runtime.getModel(selected.provider, selected.model);
   if (!model) throw new Error(`Router model is not available: ${selected.provider}/${selected.model}`);
-  const customTools = [dispatchTool, killSubagentsTool, sendMessageTool, widgetTool];
+  const customTools = [dispatchTool, killSubagentsTool, sendMessageTool, widgetTool, activityTool, removeActivityTool];
   const scratchCwd = resolve(options.agentDir, '..', 'router-workspace');
   await mkdir(scratchCwd, { recursive: true, mode: 0o700 });
   let routerCwd = options.getWorkspace() ?? scratchCwd;
@@ -392,12 +437,12 @@ export async function createWorkRouter(options: {
         }));
       } else if (event.type === 'message_end' && event.message.role === 'assistant' && 'stopReason' in event.message) {
         const message = event.message;
-        const text = message.content
+        const text = cleanAgentText(message.content
           .filter((part) => part.type === 'text')
           .map((part) => part.text)
           .join('')
           .replace(/\s+/g, ' ')
-          .trim();
+          .trim());
         const update: WorkerUpdate | null = text
           ? { at: clock(), text: text.length > 600 ? `${text.slice(0, 599)}...` : text }
           : null;
@@ -417,11 +462,13 @@ export async function createWorkRouter(options: {
 
   let session = await createSession(routerCwd, model, true);
 
-  const enqueueTurn = (jobId: string, prompt: string) => {
+  const enqueueTurn = (jobId: string, prompt: string | (() => string | null)) => {
     mailbox = mailbox.then(async () => {
       if (closed) return;
       const job = jobs.get(jobId);
       if (!job || job.status === 'cancelled' || job.status === 'complete' || job.status === 'failed') return;
+      const resolvedPrompt = typeof prompt === 'function' ? prompt() : prompt;
+      if (!resolvedPrompt) return;
       const firstTurn = job.status === 'accepted';
       const desiredCwd = options.getWorkspace() ?? scratchCwd;
       const anotherJobIsActive = [...jobs.values()].some((item) =>
@@ -445,7 +492,7 @@ export async function createWorkRouter(options: {
           if (!nextModel) throw new Error(`Router model is not available: ${nextSelection.provider}/${nextSelection.model}`);
           await session.setModel(nextModel, { persist: false });
         }
-        await session.prompt(prompt);
+        await session.prompt(resolvedPrompt);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const current = jobs.get(jobId);
@@ -458,7 +505,15 @@ export async function createWorkRouter(options: {
     }).catch(() => {
       // Each turn handles its own failure; keep the mailbox alive.
     });
+    return mailbox;
   };
+
+  const stopPolling = startSubagentPolling({
+    getJobs: () => [...jobs.values()],
+    getWorkers: () => options.fleet.list(),
+    describeWorker,
+    enqueue: enqueueTurn,
+  });
 
   return {
     async sendMessage(request: string): Promise<SendMessageResult> {
@@ -512,6 +567,7 @@ export async function createWorkRouter(options: {
         'Event: subagent_report',
         `Job ID: ${job.id}`,
         `Subagent: ${worker.name}`,
+        `Activity ID: ${workerActivities.get(`${job.id}:${worker.name}`) ?? 'unknown'}`,
         `Original user request: ${job.request}`,
         `Assigned task: ${worker.task}`,
         `Status: ${worker.status}`,
@@ -519,23 +575,6 @@ export async function createWorkRouter(options: {
         'Current children:',
         ...siblings.map(describeWorker),
       ].join('\n'));
-    },
-
-    handleWorkerProgress(worker: Worker) {
-      if (closed) return;
-      const job = jobs.get(worker.parentJobId);
-      if (!job || job.status === 'cancelled' || job.status === 'complete' || job.status === 'failed') return;
-      const now = Date.now();
-      const lastWake = lastProgressWakeAt.get(job.id);
-      if (now - job.createdAt < PROGRESS_WAKE_DELAY_MS || (lastWake && now - lastWake < PROGRESS_WAKE_GAP_MS)) return;
-      lastProgressWakeAt.set(job.id, now);
-      enqueueTurn(job.id, [
-        'Event: subagent_milestone',
-        `Job ID: ${job.id}`,
-        `Subagent: ${worker.name}`,
-        `Milestone: ${worker.updates.at(-1)?.text ?? 'Work is continuing.'}`,
-        `Original user request: ${job.request}`,
-      ].join('\n\n'));
     },
 
     list: (): readonly WorkJob[] => [...jobs.values()],
@@ -565,6 +604,7 @@ export async function createWorkRouter(options: {
 
     shutdown() {
       closed = true;
+      stopPolling();
       session.dispose();
     },
   };

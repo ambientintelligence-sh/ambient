@@ -478,3 +478,23 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+.live-activity {
+  padding: 12px 16px 14px;
+  border-radius: 19px;
+  background: linear-gradient(115deg, #202729, #171b20);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: 0 4px 14px rgba(18,24,30,.1);
+  color: #71e5bc;
+}
+.live-activity-attention { background: linear-gradient(115deg, #32291f, #1e1b18); color: #ffc779; }
+.live-activity-dot { height: 5px; width: 5px; flex-shrink: 0; border-radius: 50%; background: #71e5bc; }
+.live-activity-attention .live-activity-dot { background: #ffc779; }
+.live-activity-history { margin-top: 9px; font-size: 10px; color: rgba(255,255,255,.4); }
+.live-activity-history summary { cursor: pointer; width: fit-content; }
+.live-activity-history summary:hover { color: rgba(255,255,255,.75); }
+.live-activity-history ol { margin: 10px 0 0; padding: 0; list-style: none; max-height: 180px; overflow-y: auto; }
+.live-activity-history li { display: flex; gap: 12px; padding: 5px 0; font-size: 11px; line-height: 1.5; }
+.live-activity-history time { flex-shrink: 0; font-size: 10px; color: rgba(255,255,255,.3); }
+@keyframes activity-breathe { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: no-preference) { .live-activity-pulse { animation: activity-breathe 2s ease-in-out infinite; } }

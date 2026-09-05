@@ -235,8 +235,7 @@ export function useSession(): SessionView {
     if (!bridge) return;
     return bridge.onWorkEvent((event) => {
       if (event.sessionId !== useAppStore.getState().session?.id) return;
-      if (event.kind === 'display') return;
-      if (event.kind === 'job') return;
+      if (event.kind !== 'voice-message') return;
       const announcementKey = `${event.message.jobId}:${event.message.kind}:${event.message.text}`;
       if (
         deliveredAnnouncementIds.current.has(event.message.id) ||

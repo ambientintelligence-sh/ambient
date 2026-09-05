@@ -54,5 +54,13 @@ test('runtime event payloads contain facts rather than behavioral prompts', () =
   assert.match(runtimeSection, /Event: user_request/);
   assert.match(runtimeSection, /Event: user_steering/);
   assert.match(runtimeSection, /Event: subagent_report/);
-  assert.match(runtimeSection, /Event: subagent_milestone/);
+  const polling = readFileSync(new URL('../src/main/subagent-polling.ts', import.meta.url), 'utf8');
+  assert.match(polling, /Event: subagent_status/);
+});
+
+test('status snapshots leave the decision to speak to the primary agent', () => {
+  assert.match(PRIMARY_AGENT_INSTRUCTIONS, /runtime polls active subagents about every five seconds/i);
+  assert.match(PRIMARY_AGENT_INSTRUCTIONS, /Stay silent by default/i);
+  assert.match(PRIMARY_AGENT_INSTRUCTIONS, /do not repeat an update already shared/i);
+  assert.match(PRIMARY_AGENT_INSTRUCTIONS, /never infer completion or failure from silence/i);
 });

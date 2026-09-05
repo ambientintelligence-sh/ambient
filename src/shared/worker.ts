@@ -19,7 +19,7 @@ export type TimelineDisplay = Readonly<{
   id: string;
   widgetId: string | null;
   title: string;
-  format: 'html' | 'markdown' | 'image';
+  format: 'html' | 'markdown' | 'image' | 'activity';
   content: string;
   alt: string | null;
   caption: string | null;

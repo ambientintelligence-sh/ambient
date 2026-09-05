@@ -21,7 +21,6 @@ export function createWorkerFleet(options: {
   emit: (event: WorkerEvent) => void;
   getSelection: () => DelegationSelection;
   onReport: (worker: Worker) => void;
-  onProgress: (worker: Worker) => void;
   getWorkspace: () => string | null;
   getBrowserConfig: () => Promise<{ mode: BrowserMode; browserUrl?: string; executablePath?: string }>;
   getLocalContext: () => LocalContextState;
@@ -107,13 +106,10 @@ export function createWorkerFleet(options: {
         requestShutdown(name, 0);
         return;
       case 'progress':
-        {
-          const next = patch(name, (worker) => ({
+        patch(name, (worker) => ({
           ...worker,
           updates: [...worker.updates, { at: clock(), text: message.text }].slice(-MAX_STOPS),
-          }));
-          if (next) options.onProgress(next);
-        }
+        }));
         return;
       case 'error':
         fail(name, message.message);

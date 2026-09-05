@@ -1,3 +1,4 @@
+import { LiveActivityCard } from './LiveActivityCard';
 import { useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -103,6 +104,7 @@ export function WidgetDock(props: {
   return (
     <section className="grid gap-3">
       {props.items.map(({ job, display }) => {
+        if (display.format === 'activity') return <LiveActivityCard key={display.id} job={job} display={display} onDismiss={() => props.onDismiss(display.id)} />;
         return (
           <article key={display.id} className="glass-card widget-enter overflow-hidden">
             <header className="flex items-start justify-between gap-3 px-4 pb-2.5 pt-3.5">

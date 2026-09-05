@@ -163,3 +163,43 @@ test('captures write and edit artifacts only inside the workspace', () => {
   assert.equal(artifactOf('edit', { file_path: '../outside.txt' }, '/workspace'), null);
   assert.equal(artifactOf('read', { path: 'reports/result.md' }, '/workspace'), null);
 });
+
+test('live activity updates stay in one persisted card and reflect interruption on reload', async () => {
+  const { database, repository } = await fixture();
+  try {
+    const session = repository.createSession(null);
+    repository.saveJob(session.id, job('job-1', 'working'));
+    const display: TimelineDisplay = {
+      id: 'job-1-live-activity', widgetId: 'live-activity', title: 'Forecast', format: 'activity',
+      content: JSON.stringify({ summary: 'Comparing sources', status: 'running', steps: [{ label: 'Sources', status: 'active' }], updatedAt: 100 }),
+      alt: null, caption: null, links: [], createdAt: 100,
+    };
+    repository.saveDisplay(session.id, 'job-1', display);
+    const updated = { ...display, content: display.content.replace('Comparing sources', 'Checking rain timing') };
+    repository.saveDisplay(session.id, 'job-1', updated);
+    const snapshot = repository.snapshot(session.id);
+    assert.equal(snapshot.timelineItems.length, 1);
+    assert.deepEqual(snapshot.timelineItems[0].display, updated);
+    repository.reconcileInterrupted(session.id);
+    assert.equal(repository.snapshot(session.id).timelineItems[0].job.status, 'failed');
+  } finally { database.close(); }
+});
+
+test('removing one activity preserves sibling activities and result widgets', async () => {
+  const { database, repository } = await fixture();
+  try {
+    const session = repository.createSession(null);
+    repository.saveJob(session.id, job('job-1', 'working'));
+    const display = (id: string, format: TimelineDisplay['format']): TimelineDisplay => ({
+      id, widgetId: id, title: id, format, content: '{}', alt: null, caption: null, links: [], createdAt: 100,
+    });
+    for (const item of [display('weather', 'activity'), display('sale-lines', 'activity'), display('weather-result', 'markdown')]) {
+      repository.saveDisplay(session.id, 'job-1', item);
+    }
+    repository.dismissDisplay(session.id, 'weather');
+    const items = repository.snapshot(session.id).timelineItems;
+    assert.equal(items.find((item) => item.display.id === 'weather')?.dismissed, true);
+    assert.deepEqual(items.filter((item) => !item.dismissed).map((item) => item.display.id), ['sale-lines', 'weather-result']);
+    assert.equal(repository.snapshot(session.id).jobs[0].status, 'working');
+  } finally { database.close(); }
+});

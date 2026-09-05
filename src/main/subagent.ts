@@ -1,3 +1,4 @@
+import { cleanAgentText } from '../shared/live-activity';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { createExaTool, writeBrowserMcpExtension } from './agent-network';
@@ -86,11 +87,11 @@ async function run(input: SubagentLaunch) {
         isError: event.isError,
       });
     } else if (event.type === 'message_end' && event.message?.role === 'assistant') {
-      summary = event.message.content
+      summary = cleanAgentText(event.message.content
         .filter((part) => part.type === 'text')
         .map((part) => part.text)
         .join('')
-        .trim();
+        .trim());
       const note = summary.replace(/\s+/g, ' ');
       if (note) emit({ type: 'progress', text: note.length > 600 ? `${note.slice(0, 599)}…` : note });
     }
@@ -109,7 +110,9 @@ async function run(input: SubagentLaunch) {
         ? 'The mcp tool provides Chrome DevTools for browser navigation, interaction, inspection, and screenshots. Inspect and use it before claiming browser work is unavailable.'
       : '',
     'Complete the requested deliverable autonomously. For a simple fact, score, or screenshot, finish as soon as the requested evidence is available; do not keep searching for redundant confirmation. If the best source blocks access, make one focused fallback attempt, then return the strongest available evidence with the limitation instead of trying query variants, proxy URLs, or unrelated sources.',
+    'When you use Chrome to inspect information that supports the answer, capture the useful evidence before leaving the page, even if the user did not explicitly request a screenshot. Prefer one or two readable screenshots of the relevant result, price, map, availability, or live view. Reuse screenshots already captured instead of taking duplicates. Save the image files inside the selected workspace, verify that they show the evidence, and return their paths together with the source URL, capture time, and a short explanation of what each image supports. Keep each image under 5 MB for presentation. Avoid irrelevant page areas and unrelated private information. A screenshot documents what was visible; it does not prove facts beyond that view. If capture fails, return the findings with that limitation rather than delaying the answer with repeated attempts.',
     'When asked for a screenshot or other artifact, create and verify it, save it inside the selected workspace, and return its path.',
+    'As you work, emit concise progress notes when you reach a meaningful finding, change phase, or encounter a blocker. The router receives your latest note and tool activity automatically about every five seconds and decides whether to update the user. Do not pause for polling, invent progress, or repeat unchanged status. Clearly distinguish provisional findings from verified results.',
     'Return complete findings, source links, and useful artifact paths to the router.',
     'You cannot publish widgets or speak to the user. Save artifacts inside the selected workspace.',
   ].filter(Boolean).join('\n\n');

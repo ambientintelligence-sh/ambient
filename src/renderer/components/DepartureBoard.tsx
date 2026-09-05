@@ -1,3 +1,4 @@
+import { cleanAgentText } from '@/shared/live-activity';
 import { useState } from 'react';
 import type { PrimaryAgent, PrimaryAgentStatus, Worker, WorkerStatus } from '@/shared/worker';
 
@@ -153,7 +154,7 @@ const workerRow = (worker: Worker): AgentRow => ({
   startedAt: worker.startedAt,
   currentTask: worker.task,
   stops: worker.stops,
-  updates: worker.updates,
+  updates: worker.updates.map((update) => ({ ...update, text: cleanAgentText(update.text) })).filter((update) => update.text),
   artifacts: worker.artifacts,
   piSessionId: worker.piSessionId,
   summary: worker.summary,
@@ -170,7 +171,7 @@ const primaryRow = (agent: PrimaryAgent): AgentRow => ({
   startedAt: agent.startedAt,
   currentTask: agent.currentTask,
   stops: agent.stops,
-  updates: agent.updates,
+  updates: agent.updates.map((update) => ({ ...update, text: cleanAgentText(update.text) })).filter((update) => update.text),
   artifacts: agent.artifacts,
   piSessionId: agent.piSessionId,
   summary: null,

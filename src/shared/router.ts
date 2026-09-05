@@ -25,6 +25,7 @@ export type WorkerReply = Readonly<{
 export type WorkEvent =
   | Readonly<{ kind: 'job'; sessionId: string; job: WorkJob }>
   | Readonly<{ kind: 'voice-message'; sessionId: string; message: WorkerReply }>
+  | Readonly<{ kind: 'display-removed'; sessionId: string; displayId: string }>
   | Readonly<{ kind: 'display'; sessionId: string; job: WorkJob; display: TimelineDisplay }>;
 
 export type SendMessageResult = Readonly<{ messageId: string; status: 'sent' }>;
